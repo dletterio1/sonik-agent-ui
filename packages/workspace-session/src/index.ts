@@ -504,15 +504,20 @@ class InMemoryWorkspacePersistence implements WorkspacePersistenceAdapter {
 
   appendMessage<TParts = unknown>(input: { session_id?: string | null; id?: string; role: WorkspaceMessageRecord<TParts>["role"]; content?: string | null; parts?: TParts | null }): WorkspaceMessageRecord<TParts> {
     const session = this.ensureSession(input.session_id);
+    const messages = this.#messages.get(session.id) ?? [];
+    const id = input.id?.trim() || this.#nextId("workspace-message");
+    const existing = messages.find((message) => message.id === id);
+    if (existing) return clone(existing as WorkspaceMessageRecord<TParts>);
+
     const message: WorkspaceMessageRecord<TParts> = {
-      id: input.id?.trim() || this.#nextId("workspace-message"),
+      id,
       session_id: session.id,
       role: input.role,
       content: input.content ?? "",
       parts: input.parts === undefined ? null : clone(input.parts),
       created_at: this.#now(),
     };
-    this.#messages.set(session.id, [...(this.#messages.get(session.id) ?? []), message as WorkspaceMessageRecord]);
+    this.#messages.set(session.id, [...messages, message as WorkspaceMessageRecord]);
     this.#sessions.set(session.id, { ...session, message_count: session.message_count + 1, last_message_at: message.created_at, last_accessed: message.created_at, updated_at: message.created_at });
     return clone(message);
   }

@@ -16,11 +16,13 @@ export type PreferredDocumentView = z.infer<typeof preferredDocumentViewSchema>;
 
 export interface DocumentToolContext {
   activeDocument?: WorkspaceDocumentRecord | null;
+  sessionId?: string | null;
 }
 
 interface DocumentToolRuntime {
   activeDocument: WorkspaceDocumentRecord | null;
   preferredView: PreferredDocumentView;
+  sessionId: string | null;
 }
 
 function resolveDocumentSnapshot(document: WorkspaceDocumentRecord | null | undefined): WorkspaceDocumentRecord | null {
@@ -40,9 +42,11 @@ function isPreviewableDocumentLanguage(language?: string): boolean {
 }
 
 export function createDocumentTools(context: DocumentToolContext = {}) {
+  const activeDocument = resolveDocumentSnapshot(context.activeDocument);
   const runtime: DocumentToolRuntime = {
-    activeDocument: resolveDocumentSnapshot(context.activeDocument),
-    preferredView: normalizePreferredView("auto", context.activeDocument?.language),
+    activeDocument,
+    preferredView: normalizePreferredView("auto", activeDocument?.language),
+    sessionId: activeDocument?.session_id ?? context.sessionId ?? null,
   };
 
   return {
@@ -55,6 +59,7 @@ export function createDocumentTools(context: DocumentToolContext = {}) {
           return { ok: false, error: "NO_ACTIVE_DOCUMENT", message: "No active document is open in the workspace." };
         }
         runtime.activeDocument = document;
+        runtime.sessionId = document.session_id ?? runtime.sessionId;
         runtime.preferredView = normalizePreferredView(runtime.preferredView, document.language);
         return { ok: true, document, preferredView: runtime.preferredView };
       },
@@ -70,6 +75,7 @@ export function createDocumentTools(context: DocumentToolContext = {}) {
           return { ok: false, error: "DOCUMENT_NOT_FOUND", message: documentId ? `Document ${documentId} was not found.` : "No active document is open in the workspace." };
         }
         runtime.activeDocument = document;
+        runtime.sessionId = document.session_id ?? runtime.sessionId;
         runtime.preferredView = normalizePreferredView(runtime.preferredView, document.language);
         return { ok: true, document, preferredView: runtime.preferredView };
       },
@@ -83,8 +89,16 @@ export function createDocumentTools(context: DocumentToolContext = {}) {
         preferredView: preferredDocumentViewSchema.describe("Initial editor view. Use preview for HTML/Markdown/SVG/XML when the user asks to see the rendered document; use edit for code/source-first work; auto lets the app infer from language."),
       }),
       execute: async ({ title, language, content, preferredView }) => {
-        const document = createWorkspaceDocument({ title, language, content, source: "ai", summary: "Created by agent" });
+        const document = createWorkspaceDocument({
+          session_id: runtime.sessionId,
+          title,
+          language,
+          content,
+          source: "ai",
+          summary: "Created by agent",
+        });
         runtime.activeDocument = document;
+        runtime.sessionId = document.session_id ?? runtime.sessionId;
         runtime.preferredView = normalizePreferredView(preferredView, document.language);
         const artifact = createWorkspaceArtifact({
           session_id: document.session_id,
@@ -127,6 +141,7 @@ export function createDocumentTools(context: DocumentToolContext = {}) {
           return { ok: false, error: "DOCUMENT_NOT_FOUND", message: `Document ${targetId} was not found.` };
         }
         runtime.activeDocument = document;
+        runtime.sessionId = document.session_id ?? runtime.sessionId;
         runtime.preferredView = normalizePreferredView(preferredView, document.language);
         return {
           kind: "document-artifact" as const,

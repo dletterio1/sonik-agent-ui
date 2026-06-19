@@ -4,14 +4,21 @@
   interface Props {
     chat: Snippet;
     artifact: Snippet;
+    rail?: Snippet;
     title?: string;
     artifactOpen?: boolean;
   }
 
-  let { chat, artifact, title = "Agent workspace", artifactOpen = true }: Props = $props();
+  let { chat, artifact, rail, title = "Agent workspace", artifactOpen = true }: Props = $props();
 </script>
 
-<div class="workspace-root" data-artifact-open={artifactOpen}>
+<div class="workspace-root" data-artifact-open={artifactOpen} data-has-rail={Boolean(rail)}>
+  {#if rail}
+    <aside class="workspace-rail" aria-label={`${title} session rail`}>
+      {@render rail()}
+    </aside>
+  {/if}
+
   <div class="workspace-grid" class:workspace-grid--artifact-open={artifactOpen}>
     <section class="workspace-pane workspace-pane--chat" aria-label={`${title} chat pane`}>
       {@render chat()}
@@ -31,6 +38,19 @@
     min-height: 0;
     overflow: hidden;
     background: var(--background);
+  }
+
+  .workspace-root[data-has-rail="true"] {
+    display: grid;
+    grid-template-columns: minmax(220px, 17rem) minmax(0, 1fr);
+  }
+
+  .workspace-rail {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border-right: 1px solid var(--border);
+    background: color-mix(in srgb, var(--background) 94%, var(--foreground) 6%);
   }
 
   .workspace-grid {
@@ -55,6 +75,19 @@
 
   .workspace-pane--artifact {
     border-radius: 0.75rem;
+  }
+
+  @media (max-width: 820px) {
+    .workspace-root[data-has-rail="true"] {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .workspace-rail {
+      max-height: 12rem;
+      border-right: 0;
+      border-bottom: 1px solid var(--border);
+    }
   }
 
   @media (min-width: 1024px) {

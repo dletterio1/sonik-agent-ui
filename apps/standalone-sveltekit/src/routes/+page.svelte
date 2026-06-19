@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { SvelteSet } from "svelte/reactivity";
   import { Chat } from "@ai-sdk/svelte";
   import { DefaultChatTransport } from "ai";
   import type { DataPart, Spec } from "@json-render/svelte";
@@ -10,6 +12,7 @@
   import { hasActiveArtifactUpdateIntent, hasExplicitArtifactIntent } from "$lib/artifacts/artifact-promotion";
   import { logArtifactTelemetry, summarizeSpec } from "$lib/artifacts/artifact-telemetry";
   import ArtifactInspector from "$lib/artifacts/ArtifactInspector.svelte";
+  import SessionRail from "$lib/session/SessionRail.svelte";
   import {
     appendArtifactObservationEvent,
     createArtifactObservationEvent,
@@ -31,6 +34,43 @@
     updated_at?: string;
   }
 
+  interface WorkspaceSessionSummary {
+    id: string;
+    name: string;
+    mode: "chat" | "artifact" | "document" | "research";
+    archived: boolean;
+    is_important: boolean;
+    folder: string | null;
+    message_count: number;
+    active_document_id: string | null;
+    active_artifact_id: string | null;
+    created_at: string;
+    updated_at: string;
+    last_accessed: string;
+    last_message_at: string | null;
+  }
+
+  interface WorkspaceMessageSnapshot {
+    id: string;
+    session_id: string;
+    role: "system" | "user" | "assistant" | "tool";
+    content: string;
+    parts: DataPart[] | null;
+    created_at: string;
+  }
+
+  interface WorkspaceSessionDetail {
+    session: WorkspaceSessionSummary;
+    activeDocument: ActiveDocumentSnapshot | null;
+    messages: WorkspaceMessageSnapshot[];
+    telemetry?: unknown[];
+    artifactState?: {
+      persistence: "ephemeral-v0";
+      activeArtifactId: string | null;
+      note: string;
+    };
+  }
+
   // =============================================================================
   // Chat Setup
   // =============================================================================
@@ -47,6 +87,15 @@
   let observationIndex = $state(0);
   let lastPromotionKey = $state<string | null>(null);
   let lastDocumentPromotionKey = $state<string | null>(null);
+  let sessions = $state<WorkspaceSessionSummary[]>([]);
+  let activeSessionId = $state<string | null>(null);
+  let sessionRailBusy = $state(false);
+  let sessionRailError = $state<string | null>(null);
+  let persistedMessageIds = new SvelteSet<string>();
+  let messagePersistInFlight = false;
+  let pendingDocumentSnapshot: ActiveDocumentSnapshot | null = null;
+  let documentPersistPromise: Promise<void> | null = null;
+  let lastPersistedDocumentSignature = "";
 
   const conversation = new Chat({
     transport: new DefaultChatTransport({
@@ -61,6 +110,7 @@
             messages,
             workspace: {
               activeDocument,
+              sessionId: activeSessionId,
             },
           },
         };
@@ -71,6 +121,7 @@
   const isStreaming = $derived(
     conversation.status === "streaming" || conversation.status === "submitted",
   );
+  const currentSession = $derived(sessions.find((session) => session.id === activeSessionId) ?? null);
   const activeArtifactRawSpec = $derived(
     activeArtifact ? JSON.stringify(activeArtifact.content, null, 2) : "",
   );
@@ -328,6 +379,267 @@
     return Boolean(value) && typeof value === "object" && !Array.isArray(value);
   }
 
+  onMount(() => {
+    void initializeSessions();
+  });
+
+  $effect(() => {
+    if (!activeSessionId) return;
+    if (isStreaming) return;
+    void persistConversationMessages();
+  });
+
+  async function initializeSessions(): Promise<void> {
+    await loadSessions();
+    const firstSession = sessions[0];
+    if (firstSession) {
+      await switchSession(firstSession.id);
+      return;
+    }
+    await createSession();
+  }
+
+  async function loadSessions(): Promise<void> {
+    sessionRailError = null;
+    try {
+      const response = await fetch("/api/sessions");
+      if (!response.ok) throw new Error(await response.text());
+      sessions = (await response.json()) as WorkspaceSessionSummary[];
+    } catch (error) {
+      sessionRailError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  async function createSession({ force = false }: { force?: boolean } = {}): Promise<void> {
+    if (isStreaming) {
+      sessionRailError = "Stop the current stream before creating a new session.";
+      return;
+    }
+    if (sessionRailBusy && !force) return;
+    sessionRailBusy = true;
+    sessionRailError = null;
+    try {
+      await flushPendingDocumentPersistence();
+      const response = await fetch("/api/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Sonik workspace", mode: "chat" }),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const session = (await response.json()) as WorkspaceSessionSummary;
+      await loadSessions();
+      await switchSession(session.id, { force: true });
+    } catch (error) {
+      sessionRailError = error instanceof Error ? error.message : String(error);
+    } finally {
+      sessionRailBusy = false;
+    }
+  }
+
+  async function switchSession(sessionId: string, { force = false }: { force?: boolean } = {}): Promise<void> {
+    if (isStreaming) {
+      sessionRailError = "Stop the current stream before switching sessions.";
+      return;
+    }
+    if (sessionId === activeSessionId && conversation.messages.length > 0) return;
+    if (sessionRailBusy && !force) return;
+    sessionRailBusy = true;
+    sessionRailError = null;
+    try {
+      await flushPendingDocumentPersistence();
+      const response = await fetch(`/api/session/${encodeURIComponent(sessionId)}`);
+      if (!response.ok) throw new Error(await response.text());
+      const detail = (await response.json()) as WorkspaceSessionDetail;
+      activeSessionId = detail.session.id;
+      sessions = upsertSessionSummary(sessions, detail.session);
+      hydrateWorkspaceSession(detail);
+    } catch (error) {
+      sessionRailError = error instanceof Error ? error.message : String(error);
+    } finally {
+      sessionRailBusy = false;
+    }
+  }
+
+  async function archiveSession(sessionId: string): Promise<void> {
+    if (isStreaming) {
+      sessionRailError = "Stop the current stream before archiving sessions.";
+      return;
+    }
+    if (sessionRailBusy) return;
+    sessionRailBusy = true;
+    sessionRailError = null;
+    try {
+      await flushPendingDocumentPersistence();
+      const response = await fetch(`/api/session/${encodeURIComponent(sessionId)}/archive`, { method: "POST" });
+      if (!response.ok) throw new Error(await response.text());
+      await loadSessions();
+      if (activeSessionId === sessionId) {
+        const nextSession = sessions.find((session) => session.id !== sessionId);
+        if (nextSession) {
+          await switchSession(nextSession.id, { force: true });
+        } else {
+          await createSession({ force: true });
+        }
+      }
+    } catch (error) {
+      sessionRailError = error instanceof Error ? error.message : String(error);
+    } finally {
+      sessionRailBusy = false;
+    }
+  }
+
+  function hydrateWorkspaceSession(detail: WorkspaceSessionDetail): void {
+    conversation.messages = detail.messages.map((message) => ({
+      id: message.id,
+      role: message.role,
+      parts: normalizePersistedParts(message),
+    })) as typeof conversation.messages;
+    persistedMessageIds = new SvelteSet(detail.messages.map((message) => message.id));
+    activeDocument = detail.activeDocument;
+    documentSeed = detail.activeDocument;
+    documentPreferredView = detail.activeDocument ? inferPreferredDocumentView(detail.activeDocument.language) : "auto";
+    documentEditorOpen = Boolean(detail.activeDocument);
+    activeArtifact = null;
+    activeArtifactStatus = null;
+    pendingArtifactIntent = null;
+    artifactEvents = [];
+    observationIndex = 0;
+    lastPromotionKey = null;
+    lastDocumentPromotionKey = null;
+    pendingDocumentSnapshot = null;
+    lastPersistedDocumentSignature = detail.activeDocument ? createDocumentSnapshotSignature(detail.activeDocument) : "";
+  }
+
+  async function persistConversationMessages(): Promise<void> {
+    const sessionId = activeSessionId;
+    if (!sessionId) return;
+    if (messagePersistInFlight) return;
+    const messagesToPersist = conversation.messages.filter((message) => !persistedMessageIds.has(message.id));
+    if (messagesToPersist.length === 0) return;
+
+    messagePersistInFlight = true;
+    try {
+      for (const message of messagesToPersist) {
+        const parts = message.parts as DataPart[];
+        const response = await fetch(`/api/session/${encodeURIComponent(sessionId)}/messages`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            id: message.id,
+            role: message.role,
+            content: getText(parts),
+            parts,
+          }),
+        });
+        if (!response.ok) {
+          sessionRailError = await response.text();
+          return;
+        }
+        persistedMessageIds.add(message.id);
+      }
+      await loadSessions();
+    } finally {
+      messagePersistInFlight = false;
+    }
+  }
+
+
+  function scheduleDocumentPersistence(document: ActiveDocumentSnapshot): void {
+    pendingDocumentSnapshot = document;
+    startDocumentPersistenceWorker();
+  }
+
+  function startDocumentPersistenceWorker(): void {
+    if (documentPersistPromise) return;
+    let failed = false;
+    documentPersistPromise = (async () => {
+      try {
+        await persistPendingDocumentSnapshots();
+      } catch (error) {
+        failed = true;
+        sessionRailError = error instanceof Error ? error.message : String(error);
+        throw error;
+      } finally {
+        documentPersistPromise = null;
+        if (!failed && pendingDocumentSnapshot) startDocumentPersistenceWorker();
+      }
+    })();
+    void documentPersistPromise.catch(() => undefined);
+  }
+
+  async function tryFlushPendingDocumentPersistence(): Promise<boolean> {
+    try {
+      await flushPendingDocumentPersistence();
+      return true;
+    } catch (error) {
+      sessionRailError = error instanceof Error ? error.message : String(error);
+      return false;
+    }
+  }
+
+  async function flushPendingDocumentPersistence(): Promise<void> {
+    if (!pendingDocumentSnapshot && !documentPersistPromise) return;
+    if (!documentPersistPromise) startDocumentPersistenceWorker();
+    await documentPersistPromise;
+    if (pendingDocumentSnapshot) await flushPendingDocumentPersistence();
+  }
+
+  async function persistPendingDocumentSnapshots(): Promise<void> {
+    while (pendingDocumentSnapshot) {
+      const snapshot = pendingDocumentSnapshot;
+      const signature = createDocumentSnapshotSignature(snapshot);
+      if (signature === lastPersistedDocumentSignature) {
+        if (pendingDocumentSnapshot && createDocumentSnapshotSignature(pendingDocumentSnapshot) === signature) {
+          pendingDocumentSnapshot = null;
+        }
+        continue;
+      }
+
+      const response = await fetch(`/api/document/${encodeURIComponent(snapshot.id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          session_id: activeSessionId ?? snapshot.session_id ?? undefined,
+          title: snapshot.title,
+          language: snapshot.language,
+          content: snapshot.current_content,
+        }),
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Document changes could not be saved; session transition was blocked.");
+      }
+      const persisted = (await response.json()) as ActiveDocumentSnapshot;
+      lastPersistedDocumentSignature = createDocumentSnapshotSignature(persisted);
+      if (pendingDocumentSnapshot && createDocumentSnapshotSignature(pendingDocumentSnapshot) === signature) {
+        pendingDocumentSnapshot = null;
+        activeDocument = persisted;
+        documentSeed = persisted;
+      }
+    }
+  }
+
+  function createDocumentSnapshotSignature(document: ActiveDocumentSnapshot): string {
+    return JSON.stringify({
+      id: document.id,
+      session_id: document.session_id ?? null,
+      title: document.title,
+      language: document.language,
+      current_content: document.current_content,
+    });
+  }
+
+  function normalizePersistedParts(message: WorkspaceMessageSnapshot): DataPart[] {
+    if (Array.isArray(message.parts) && message.parts.length > 0) return message.parts;
+    if (!message.content) return [];
+    return [{ type: "text", text: message.content }] as DataPart[];
+  }
+
+  function upsertSessionSummary(current: WorkspaceSessionSummary[], session: WorkspaceSessionSummary): WorkspaceSessionSummary[] {
+    const withoutSession = current.filter((entry) => entry.id !== session.id);
+    return [session, ...withoutSession].sort((a, b) => b.last_accessed.localeCompare(a.last_accessed));
+  }
+
   // =============================================================================
   // Suggestions
   // =============================================================================
@@ -392,6 +704,7 @@
 
   function handleClear() {
     conversation.messages = [];
+    persistedMessageIds.clear();
     input = "";
     activeArtifact = null;
     activeArtifactStatus = null;
@@ -435,6 +748,7 @@
       documentSeed = event.document;
     }
     if (event.type === "changed" || event.type === "saved" || event.type === "opened") {
+      scheduleDocumentPersistence(event.document);
       logArtifactTelemetry({
         source: "client",
         event: `document_frame.${event.type}`,
@@ -453,6 +767,19 @@
 </script>
 
 <WorkspaceRoot title="json-render Svelte Chat" {artifactOpen}>
+  {#snippet rail()}
+    <SessionRail
+      {sessions}
+      {currentSession}
+      {activeSessionId}
+      busy={sessionRailBusy || isStreaming}
+      error={sessionRailError}
+      onCreate={() => void createSession()}
+      onSwitch={(sessionId) => void switchSession(sessionId)}
+      onArchive={(sessionId) => void archiveSession(sessionId)}
+    />
+  {/snippet}
+
   {#snippet chat()}
     <AgentConversation
       title="json-render Svelte Chat"

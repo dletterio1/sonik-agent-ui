@@ -50,7 +50,8 @@ export const POST: RequestHandler = async ({ request }) => {
   const uiMessages: UIMessage[] = body.messages;
   const activeDocument = _resolveActiveDocument(body?.workspace?.activeDocument);
   const requestId = crypto.randomUUID();
-  const telemetrySessionId = activeDocument?.session_id ?? (routeString(body?.id, "chat.id", WORKSPACE_SESSION_ID_MAX_CHARS, "") || undefined);
+  const workspaceSessionId = routeString(body?.workspace?.sessionId, "workspace.sessionId", WORKSPACE_SESSION_ID_MAX_CHARS, "") || undefined;
+  const telemetrySessionId = activeDocument?.session_id ?? workspaceSessionId;
   const startedAt = Date.now();
 
   if (!uiMessages || !Array.isArray(uiMessages) || uiMessages.length === 0) {
@@ -94,7 +95,7 @@ export const POST: RequestHandler = async ({ request }) => {
     elementCount: toolManifestSummary.split("\n- ").length - 1,
     ok: true,
   });
-  const agent = createAgent({ activeDocument });
+  const agent = createAgent({ activeDocument, sessionId: telemetrySessionId });
 
   try {
     const result = await agent.stream({ messages: contextualModelMessages });

@@ -107,4 +107,12 @@ const library = store.listDocumentLibrary({ search: "echo" });
 assert.equal(library.total, 1);
 assert.equal(library.documents[0]?.session_name, "Local Session");
 
+const idempotentSession = store.createSession({ id: "message-idempotency", name: "Message Idempotency" });
+const firstMessage = store.appendMessage({ session_id: idempotentSession.id, id: "same-message-id", role: "user", content: "first write" });
+const replayedMessage = store.appendMessage({ session_id: idempotentSession.id, id: "same-message-id", role: "user", content: "replayed write" });
+const idempotentMessages = store.listMessages(idempotentSession.id).filter((message) => message.id === "same-message-id");
+assert.equal(replayedMessage.id, firstMessage.id, "replayed message append should return the existing message");
+assert.equal(idempotentMessages.length, 1, "message append should be idempotent by session/id");
+assert.equal(store.getSession(idempotentSession.id)?.message_count, 1, "idempotent replay should not increment message_count");
+
 console.log("workspace-session tests passed");
