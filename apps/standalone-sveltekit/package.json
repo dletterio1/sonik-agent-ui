@@ -42,6 +42,7 @@
     "tailwind-merge": "^3.2.0",
     "zod": "4.3.6",
     "@sonik-agent-ui/tool-contracts": "workspace:*",
-    "@sonik-agent-ui/platform-adapters": "workspace:*"
+    "@sonik-agent-ui/platform-adapters": "workspace:*",
+    "@sonik-agent-ui/workspace-session": "workspace:*"
   }
 }

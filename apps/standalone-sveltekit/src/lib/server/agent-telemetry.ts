@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, appendFile } from "node:fs/promises";
 import path from "node:path";
+import { recordWorkspaceTelemetryEvent } from "./workspace-store.ts";
 
 export type AgentTelemetrySource = "server" | "client" | "odysseus-host";
 
@@ -8,6 +9,7 @@ export interface AgentTelemetryEvent {
   source: AgentTelemetrySource;
   event: string;
   requestId?: string;
+  sessionId?: string;
   messageId?: string;
   toolCallId?: string;
   artifactId?: string;
@@ -32,11 +34,41 @@ export async function writeAgentTelemetry(event: AgentTelemetryEvent): Promise<v
   const logPath = resolveTelemetryLogPath();
   await mkdir(path.dirname(logPath), { recursive: true });
   await appendFile(logPath, `${JSON.stringify(payload)}\n`, "utf8");
+  try {
+    recordWorkspaceTelemetryEvent({
+      session_id: payload.sessionId ?? null,
+      request_id: payload.requestId ?? null,
+      source: payload.source,
+      event: payload.event,
+      payload,
+      ok: payload.ok ?? null,
+      error: payload.error ?? null,
+    });
+  } catch {
+    // Intentional fail-safe: workspace telemetry is only a bounded mirror; JSONL above remains the source of evidence.
+  }
 }
 
 export function sanitizeAgentTelemetry(event: AgentTelemetryEvent): AgentTelemetryEvent {
   const payload: AgentTelemetryEvent = {
-    ...event,
+    source: event.source,
+    event: event.event,
+    requestId: event.requestId,
+    sessionId: event.sessionId,
+    messageId: event.messageId,
+    toolCallId: event.toolCallId,
+    artifactId: event.artifactId,
+    artifactVersion: event.artifactVersion,
+    documentId: event.documentId,
+    documentVersion: event.documentVersion,
+    title: event.title,
+    root: event.root,
+    elementCount: event.elementCount,
+    reason: event.reason,
+    mode: event.mode,
+    durationMs: event.durationMs,
+    ok: event.ok,
+    error: event.error,
     at: event.at ?? new Date().toISOString(),
   };
 

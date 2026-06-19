@@ -50,6 +50,7 @@ export const POST: RequestHandler = async ({ request }) => {
   const uiMessages: UIMessage[] = body.messages;
   const activeDocument = _resolveActiveDocument(body?.workspace?.activeDocument);
   const requestId = crypto.randomUUID();
+  const telemetrySessionId = activeDocument?.session_id ?? (routeString(body?.id, "chat.id", WORKSPACE_SESSION_ID_MAX_CHARS, "") || undefined);
   const startedAt = Date.now();
 
   if (!uiMessages || !Array.isArray(uiMessages) || uiMessages.length === 0) {
@@ -67,6 +68,7 @@ export const POST: RequestHandler = async ({ request }) => {
     source: "server" as const,
     event: "api.generate.start",
     requestId,
+    sessionId: telemetrySessionId,
     messageId: lastMessage?.id,
     documentId: activeDocument?.id,
     documentVersion: activeDocument?.version_count,
@@ -87,6 +89,7 @@ export const POST: RequestHandler = async ({ request }) => {
     source: "server",
     event: "api.generate.tool_manifest_context",
     requestId,
+    sessionId: telemetrySessionId,
     messageId: lastMessage?.id,
     elementCount: toolManifestSummary.split("\n- ").length - 1,
     ok: true,
@@ -103,6 +106,7 @@ export const POST: RequestHandler = async ({ request }) => {
           source: "server",
           event: "api.generate.stream_attached",
           requestId,
+          sessionId: telemetrySessionId,
           messageId: lastMessage?.id,
           documentId: activeDocument?.id,
           documentVersion: activeDocument?.version_count,
@@ -116,6 +120,7 @@ export const POST: RequestHandler = async ({ request }) => {
           source: "server",
           event: "api.generate.stream_error",
           requestId,
+          sessionId: telemetrySessionId,
           messageId: lastMessage?.id,
           durationMs: Date.now() - startedAt,
           ok: false,
@@ -132,6 +137,7 @@ export const POST: RequestHandler = async ({ request }) => {
       source: "server",
       event: "api.generate.error",
       requestId,
+      sessionId: telemetrySessionId,
       messageId: lastMessage?.id,
       durationMs: Date.now() - startedAt,
       ok: false,
