@@ -2,15 +2,18 @@ import assert from "node:assert/strict";
 import {
   archiveWorkspaceDocument,
   archiveWorkspaceSession,
+  deleteWorkspaceSession,
   createWorkspaceArtifact,
   createWorkspaceDocument,
   createWorkspaceSession,
   getWorkspaceDocument,
+  getWorkspaceSession,
   getWorkspaceArtifact,
   getWorkspaceDocumentVersion,
   listDocumentLibrary,
   listWorkspaceDocumentVersions,
   listWorkspaceDocuments,
+  listWorkspaceLayoutSnapshots,
   listWorkspaceSessions,
   patchWorkspaceSession,
   restoreWorkspaceDocumentVersion,
@@ -22,6 +25,7 @@ import {
   listWorkspaceTelemetryEvents,
   localWorkspaceAuthAdapter,
   recordWorkspaceTelemetryEvent,
+  recordWorkspaceLayoutSnapshot,
   recordWorkspaceToolCall,
   updateWorkspaceArtifact,
   workspaceProcedures,
@@ -155,6 +159,22 @@ assert.equal(listDocumentLibrary({ search: "sheet", archived: true }).documents.
 assert.equal(patchWorkspaceSession(session.id, { is_important: true })?.is_important, true);
 assert.equal(archiveWorkspaceSession(session.id, true)?.archived, true);
 assert.equal(listWorkspaceSessions({ archived: true }).some((entry) => entry.id === session.id), true);
+
+const disposableSession = createWorkspaceSession({ id: "delete-session", name: "Delete Me", mode: "chat" });
+const disposableDocument = createWorkspaceDocument({ session_id: disposableSession.id, title: "Delete Doc", content: "remove doc" });
+const disposableArtifact = createWorkspaceArtifact({ session_id: disposableSession.id, kind: "json-render", title: "Delete Artifact", content: { root: "main", elements: { main: { type: "Text", props: { content: "remove" }, children: [] } }, state: {} } });
+appendWorkspaceMessage({ session_id: disposableSession.id, id: "delete-message", role: "user", content: "remove me" });
+recordWorkspaceToolCall({ session_id: disposableSession.id, tool_name: "delete-test", status: "completed", input: {}, output: {} });
+recordWorkspaceLayoutSnapshot({ session_id: disposableSession.id, layout: { root: "delete" }, source: "user" });
+recordWorkspaceTelemetryEvent({ session_id: disposableSession.id, source: "client", event: "delete-test", ok: true });
+assert.equal(deleteWorkspaceSession(disposableSession.id), true, "session deletion should report a removed session");
+assert.equal(getWorkspaceSession(disposableSession.id), null, "deleted sessions should no longer resolve");
+assert.equal(getWorkspaceDocument(disposableDocument.id), null, "deleted sessions should delete local documents");
+assert.equal(getWorkspaceArtifact(disposableArtifact.id), null, "deleted sessions should delete local artifacts");
+assert.equal(listWorkspaceMessages(disposableSession.id).length, 0, "deleted sessions should drop local message history");
+assert.equal(listWorkspaceToolCalls(disposableSession.id).length, 0, "deleted sessions should drop local tool-call receipts");
+assert.equal(listWorkspaceLayoutSnapshots(disposableSession.id).length, 0, "deleted sessions should drop local layout snapshots");
+assert.equal(listWorkspaceTelemetryEvents(disposableSession.id).length, 0, "deleted sessions should drop local telemetry events");
 
 console.log("workspace-store tests passed");
 

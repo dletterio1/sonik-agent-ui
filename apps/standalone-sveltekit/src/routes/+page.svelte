@@ -7,6 +7,7 @@
   import { JsonArtifactRenderer } from "@sonik-agent-ui/json-ui-runtime";
   import { AgentConversation, getSpec, getText, type AgentChatMessage } from "@sonik-agent-ui/chat-surface";
   import { upsertJsonRenderArtifact, type JsonRenderArtifact } from "@sonik-agent-ui/artifact-model";
+  import { DEFAULT_WORKSPACE_SESSION_NAME, deriveWorkspaceSessionTitle, isDefaultWorkspaceSessionName } from "@sonik-agent-ui/workspace-session";
   import { promoteJsonRenderArtifact } from "$lib/artifacts/json-render-promotion";
   import { findDocumentArtifactToolCandidate, findJsonArtifactToolCandidate, type PreferredDocumentView } from "$lib/artifacts/tool-artifact-extraction";
   import { hasActiveArtifactUpdateIntent, hasExplicitArtifactIntent } from "$lib/artifacts/artifact-promotion";
@@ -423,7 +424,7 @@
       const response = await fetch("/api/session", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: "New chat", mode: "chat" }),
+        body: JSON.stringify({ name: DEFAULT_WORKSPACE_SESSION_NAME, mode: "chat" }),
       });
       if (!response.ok) throw new Error(await response.text());
       const session = (await response.json()) as WorkspaceSessionSummary;
@@ -486,6 +487,71 @@
     } finally {
       sessionRailBusy = false;
     }
+  }
+
+  async function deleteSession(sessionId: string): Promise<void> {
+    if (isStreaming) {
+      sessionRailError = "Stop the current stream before deleting sessions.";
+      return;
+    }
+    const session = sessions.find((entry) => entry.id === sessionId);
+    const sessionName = session?.name?.trim() || "this chat";
+    if (!confirm(`Delete ${sessionName}? This removes its local messages and artifacts from the current in-memory workspace.`)) return;
+    if (sessionRailBusy) return;
+    sessionRailBusy = true;
+    sessionRailError = null;
+    try {
+      await flushPendingDocumentPersistence();
+      const response = await fetch(`/api/session/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
+      if (!response.ok) throw new Error(await response.text());
+      await loadSessions();
+      if (activeSessionId === sessionId) {
+        const nextSession = sessions.find((entry) => entry.id !== sessionId);
+        if (nextSession) {
+          await switchSession(nextSession.id, { force: true });
+        } else {
+          await createSession({ force: true });
+        }
+      }
+    } catch (error) {
+      sessionRailError = error instanceof Error ? error.message : String(error);
+    } finally {
+      sessionRailBusy = false;
+    }
+  }
+
+  async function renameSession(sessionId: string, name: string): Promise<void> {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    try {
+      const response = await fetch(`/api/session/${encodeURIComponent(sessionId)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const session = (await response.json()) as WorkspaceSessionSummary;
+      sessions = upsertSessionSummary(sessions, session);
+    } catch (error) {
+      sessionRailError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  function maybeNameNewChat(message: string): void {
+    const session = currentSession;
+    if (!session || !isUntitledChat(session)) return;
+    if (conversation.messages.length > 0 || session.message_count > 0) return;
+    const title = deriveChatTitle(message);
+    if (!title) return;
+    void renameSession(session.id, title);
+  }
+
+  function isUntitledChat(session: WorkspaceSessionSummary): boolean {
+    return isDefaultWorkspaceSessionName(session.name);
+  }
+
+  function deriveChatTitle(message: string): string {
+    return deriveWorkspaceSessionTitle(message);
   }
 
   function hydrateWorkspaceSession(detail: WorkspaceSessionDetail): void {
@@ -699,6 +765,7 @@
       documentEditorOpen = true;
     }
 
+    maybeNameNewChat(trimmed);
     conversation.sendMessage({ text: trimmed });
   }
 
@@ -777,6 +844,7 @@
       onCreate={() => void createSession()}
       onSwitch={(sessionId) => void switchSession(sessionId)}
       onArchive={(sessionId) => void archiveSession(sessionId)}
+      onDelete={(sessionId) => void deleteSession(sessionId)}
     />
   {/snippet}
 

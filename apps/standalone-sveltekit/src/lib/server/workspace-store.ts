@@ -70,6 +70,10 @@ export function archiveWorkspaceSession(id: string, archived = true): WorkspaceS
   return workspacePersistence.archiveSession(id, archived);
 }
 
+export function deleteWorkspaceSession(id: string): boolean {
+  return workspacePersistence.deleteSession(id);
+}
+
 export function createWorkspaceDocument(input: {
   session_id?: string | null;
   title?: string | null;

@@ -1,13 +1,16 @@
 import { error, json } from "@sveltejs/kit";
 import {
+  deleteOdysseusSession,
   getOdysseusDocument,
   getOdysseusSession,
   listOdysseusDocuments,
+  patchOdysseusSession,
 } from "$lib/server/odysseus-document-store";
 import {
   listWorkspaceMessages,
   listWorkspaceTelemetryEvents,
 } from "$lib/server/workspace-store";
+import { routeString, WORKSPACE_TITLE_MAX_CHARS } from "$lib/server/workspace-route-limits";
 
 export function GET({ params }) {
   const session = getOdysseusSession(params.id);
@@ -25,4 +28,37 @@ export function GET({ params }) {
       note: "JSON-render artifacts are live UI state in v0; durable restore belongs to the artifact warehouse slice.",
     },
   });
+}
+
+export async function PATCH({ params, request }) {
+  const session = getOdysseusSession(params.id);
+  if (!session) error(404, "Session not found");
+
+  let body: Record<string, unknown>;
+  try {
+    const parsed = await request.json();
+    if (!isRecord(parsed)) error(400, "Session patch payload must be a JSON object");
+    body = parsed;
+  } catch (caught) {
+    if (caught && typeof caught === "object" && "status" in caught) throw caught;
+    error(400, "Invalid JSON session patch payload");
+  }
+
+  const name = routeString(body.name, "name", WORKSPACE_TITLE_MAX_CHARS, "").trim();
+  if (!name) error(400, "Session name is required");
+  const updated = patchOdysseusSession(session.id, { name });
+  if (!updated) error(404, "Session not found");
+  return json(updated);
+}
+
+export function DELETE({ params }) {
+  const session = getOdysseusSession(params.id);
+  if (!session) error(404, "Session not found");
+  const deleted = deleteOdysseusSession(session.id);
+  if (!deleted) error(404, "Session not found");
+  return json({ id: session.id, deleted: true });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

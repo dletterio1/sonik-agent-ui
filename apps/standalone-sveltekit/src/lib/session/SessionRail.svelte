@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { DEFAULT_WORKSPACE_SESSION_NAME, isDefaultWorkspaceSessionName } from "@sonik-agent-ui/workspace-session";
+  import { tick } from "svelte";
   interface WorkspaceSessionSummary {
     id: string;
     name: string;
@@ -17,6 +19,7 @@
     onCreate: () => void;
     onSwitch: (sessionId: string) => void;
     onArchive: (sessionId: string) => void;
+    onDelete: (sessionId: string) => void;
   }
 
   let {
@@ -28,13 +31,16 @@
     onCreate,
     onSwitch,
     onArchive,
+    onDelete,
   }: Props = $props();
 
+  let contextMenu = $state<{ sessionId: string; sessionName: string; x: number; y: number } | null>(null);
+  let contextMenuElement = $state<HTMLDivElement | null>(null);
+  let contextMenuTrigger: HTMLElement | null = null;
+
   function displaySessionName(session: WorkspaceSessionSummary | null): string {
-    if (!session) return "New chat";
-    const name = session.name.trim();
-    if (!name || name === "Sonik workspace") return "New chat";
-    return name;
+    if (!session) return DEFAULT_WORKSPACE_SESSION_NAME;
+    return isDefaultWorkspaceSessionName(session.name) ? DEFAULT_WORKSPACE_SESSION_NAME : session.name.trim();
   }
 
   function sessionKind(session: WorkspaceSessionSummary): string {
@@ -42,10 +48,6 @@
     if (session.mode === "document") return "Document";
     if (session.mode === "research") return "Research";
     return "Chat";
-  }
-
-  function messageCountLabel(count: number): string {
-    return count === 1 ? "1 message" : `${count} messages`;
   }
 
   function formatSessionTime(value: string | null): string {
@@ -57,14 +59,63 @@
       minute: "2-digit",
     }).format(new Date(value));
   }
+
+  function openContextMenu(event: MouseEvent, session: WorkspaceSessionSummary): void {
+    event.preventDefault();
+    if (busy) return;
+    contextMenuTrigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    contextMenu = {
+      sessionId: session.id,
+      sessionName: displaySessionName(session),
+      x: event.clientX,
+      y: event.clientY,
+    };
+    void focusContextMenu();
+  }
+
+  function openActionMenu(event: MouseEvent, session: WorkspaceSessionSummary): void {
+    event.preventDefault();
+    event.stopPropagation();
+    if (busy) return;
+    const trigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    const rect = trigger?.getBoundingClientRect();
+    contextMenuTrigger = trigger;
+    contextMenu = {
+      sessionId: session.id,
+      sessionName: displaySessionName(session),
+      x: rect ? rect.right - 190 : event.clientX,
+      y: rect ? rect.bottom + 4 : event.clientY,
+    };
+    void focusContextMenu();
+  }
+
+  async function focusContextMenu(): Promise<void> {
+    await tick();
+    contextMenuElement?.querySelector("button")?.focus();
+  }
+
+  function closeContextMenu(restoreFocus = false): void {
+    contextMenu = null;
+    if (restoreFocus) contextMenuTrigger?.focus();
+    contextMenuTrigger = null;
+  }
+
+  function archiveContextSession(): void {
+    if (!contextMenu) return;
+    const sessionId = contextMenu.sessionId;
+    closeContextMenu(true);
+    onArchive(sessionId);
+  }
+
+  function deleteContextSession(): void {
+    if (!contextMenu) return;
+    const sessionId = contextMenu.sessionId;
+    closeContextMenu(true);
+    onDelete(sessionId);
+  }
 </script>
 
-<div class="session-rail-shell">
-  <div class="mode-switch" aria-label="Workspace mode">
-    <span class="mode-pill mode-pill--active">Chat</span>
-    <span class="mode-pill" title="Live artifact workspaces will graduate into this lane">Workspaces</span>
-  </div>
-
+<div class="session-rail-shell" onclick={() => closeContextMenu()} role="presentation">
   <div class="session-rail-header">
     <div>
       <p class="session-rail-eyebrow">Recents</p>
@@ -79,28 +130,27 @@
 
   <div class="session-rail-list" aria-busy={busy}>
     {#each sessions as session (session.id)}
-      <article class:active-session={session.id === activeSessionId}>
+      <article class:active-session={session.id === activeSessionId} oncontextmenu={(event) => openContextMenu(event, session)}>
         <button
           type="button"
           class="session-select"
           onclick={() => onSwitch(session.id)}
           disabled={busy || session.id === activeSessionId}
+          title={`${displaySessionName(session)} · ${sessionKind(session)}`}
         >
           <span>{displaySessionName(session)}</span>
           <small>{formatSessionTime(session.last_message_at ?? session.updated_at)}</small>
         </button>
-        <div class="session-meta">
-          <span>{sessionKind(session)}</span>
-          <span>{messageCountLabel(session.message_count)}</span>
-        </div>
         <button
           type="button"
-          class="session-archive"
-          onclick={() => onArchive(session.id)}
-          aria-label={`Archive ${displaySessionName(session)}`}
+          class="session-actions-button"
+          aria-haspopup="menu"
+          aria-expanded={contextMenu?.sessionId === session.id}
+          aria-label={`Actions for ${displaySessionName(session)}`}
+          onclick={(event) => openActionMenu(event, session)}
           disabled={busy}
         >
-          Archive
+          ⋯
         </button>
       </article>
     {:else}
@@ -114,46 +164,37 @@
       <strong>{displaySessionName(currentSession)}</strong>
     </footer>
   {/if}
+
+  {#if contextMenu}
+    <div
+      bind:this={contextMenuElement}
+      class="session-context-menu"
+      style={`left: ${contextMenu.x}px; top: ${contextMenu.y}px;`}
+      role="menu"
+      tabindex="-1"
+      aria-label={`Actions for ${contextMenu.sessionName}`}
+      onclick={(event) => event.stopPropagation()}
+      onkeydown={(event) => {
+        if (event.key === "Escape") closeContextMenu(true);
+      }}
+    >
+      <p>{contextMenu.sessionName}</p>
+      <button type="button" role="menuitem" onclick={archiveContextSession} disabled={busy}>Archive chat</button>
+      <button type="button" role="menuitem" class="danger-action" onclick={deleteContextSession} disabled={busy}>Delete chat</button>
+    </div>
+  {/if}
 </div>
 
 <style>
   .session-rail-shell {
+    position: relative;
     display: flex;
     height: 100%;
     min-height: 0;
     flex-direction: column;
-    gap: 0.85rem;
-    padding: 0.8rem;
+    gap: 0.7rem;
+    padding: 0.7rem;
     color: #332f2a;
-  }
-
-  .mode-switch {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.2rem;
-    border: 1px solid #ded6ca;
-    border-radius: 999px;
-    padding: 0.2rem;
-    background: #eee8dd;
-  }
-
-  .mode-pill {
-    display: inline-flex;
-    min-width: 0;
-    align-items: center;
-    justify-content: center;
-    border-radius: 999px;
-    padding: 0.4rem 0.45rem;
-    color: #81776c;
-    font-size: 0.75rem;
-    font-weight: 700;
-    white-space: nowrap;
-  }
-
-  .mode-pill--active {
-    background: #fffdf8;
-    color: #2d2923;
-    box-shadow: 0 1px 4px rgb(45 38 28 / 10%);
   }
 
   .session-rail-header {
@@ -165,48 +206,44 @@
 
   .session-rail-header h2 {
     margin: 0;
-    font-size: 1rem;
+    font-size: 0.96rem;
     line-height: 1.2;
   }
 
   .session-rail-eyebrow {
-    margin: 0 0 0.15rem;
+    margin: 0 0 0.12rem;
     color: #8a8174;
-    font-size: 0.68rem;
+    font-size: 0.66rem;
     font-weight: 800;
     letter-spacing: 0.1em;
     text-transform: uppercase;
   }
 
-  .new-chat-button,
-  .session-archive {
+  .new-chat-button {
     border: 1px solid #ded6ca;
     border-radius: 999px;
     background: #fffdf8;
     color: #332f2a;
     cursor: pointer;
     font: inherit;
+    padding: 0.42rem 0.7rem;
+    font-size: 0.76rem;
+    font-weight: 800;
     transition:
       background 0.15s ease,
       border-color 0.15s ease,
       color 0.15s ease;
   }
 
-  .new-chat-button {
-    padding: 0.42rem 0.7rem;
-    font-size: 0.78rem;
-    font-weight: 800;
-  }
-
-  .new-chat-button:hover,
-  .session-archive:hover {
+  .new-chat-button:hover {
     border-color: #c9bbaa;
     background: #f8f2e9;
   }
 
   .new-chat-button:disabled,
   .session-select:disabled,
-  .session-archive:disabled {
+  .session-actions-button:disabled,
+  .session-context-menu button:disabled {
     cursor: wait;
     opacity: 0.55;
   }
@@ -226,18 +263,16 @@
     min-height: 0;
     flex: 1;
     flex-direction: column;
-    gap: 0.3rem;
+    gap: 0.12rem;
     overflow: auto;
     padding-right: 0.1rem;
   }
 
   .session-rail-list article {
     display: grid;
-    gap: 0.4rem;
-    border: 1px solid transparent;
-    border-radius: 0.85rem;
-    padding: 0.65rem;
-    background: transparent;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    border-radius: 0.6rem;
   }
 
   .session-rail-list article:hover {
@@ -245,51 +280,61 @@
   }
 
   .session-rail-list article.active-session {
-    border-color: #ded6ca;
     background: #fffdf8;
-    box-shadow: 0 1px 8px rgb(45 38 28 / 7%);
+    box-shadow: inset 0 0 0 1px #ded6ca;
   }
 
   .session-select {
     display: grid;
-    gap: 0.24rem;
     width: 100%;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
     border: 0;
+    border-radius: 0.6rem;
     background: transparent;
     color: inherit;
     cursor: pointer;
-    padding: 0;
+    padding: 0.46rem 0.55rem;
     text-align: left;
   }
 
   .session-select span {
     overflow: hidden;
-    font-weight: 800;
+    font-size: 0.83rem;
+    font-weight: 750;
     line-height: 1.2;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
+  .session-actions-button {
+    width: 1.85rem;
+    height: 1.85rem;
+    margin-right: 0.18rem;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: #8a8174;
+    cursor: pointer;
+    font: inherit;
+    font-size: 1.05rem;
+    line-height: 1;
+    opacity: 0.75;
+  }
+
+  .session-actions-button:hover,
+  .session-actions-button:focus-visible {
+    background: #eee8dd;
+    color: #332f2a;
+    opacity: 1;
+  }
+
   .session-select small,
-  .session-meta,
   footer,
   .session-empty {
     color: #8a8174;
-    font-size: 0.73rem;
-  }
-
-  .session-meta {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
-
-  .session-archive {
-    justify-self: start;
-    padding: 0.26rem 0.55rem;
-    color: #746b60;
     font-size: 0.7rem;
-    font-weight: 700;
   }
 
   .session-empty {
@@ -311,5 +356,48 @@
     color: #332f2a;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .session-context-menu {
+    position: fixed;
+    z-index: 80;
+    display: grid;
+    min-width: 12rem;
+    gap: 0.18rem;
+    border: 1px solid #d8d0c4;
+    border-radius: 0.85rem;
+    padding: 0.32rem;
+    background: #fffdf8;
+    box-shadow: 0 18px 50px rgb(45 38 28 / 18%);
+  }
+
+  .session-context-menu p {
+    overflow: hidden;
+    margin: 0;
+    padding: 0.45rem 0.55rem 0.3rem;
+    color: #8a8174;
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .session-context-menu button {
+    border: 0;
+    border-radius: 0.58rem;
+    background: transparent;
+    color: #332f2a;
+    cursor: pointer;
+    font: inherit;
+    padding: 0.48rem 0.55rem;
+    text-align: left;
+  }
+
+  .session-context-menu button:hover {
+    background: #f3ede3;
+  }
+
+  .session-context-menu .danger-action {
+    color: #b42318;
   }
 </style>

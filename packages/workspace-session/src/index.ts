@@ -1,4 +1,32 @@
 export type WorkspaceMode = "chat" | "artifact" | "document" | "research";
+export const DEFAULT_WORKSPACE_SESSION_NAME = "New chat";
+const LEGACY_DEFAULT_WORKSPACE_SESSION_NAMES = new Set(["sonik workspace"]);
+
+export function normalizeWorkspaceSessionName(name?: string | null): string {
+  const trimmed = name?.trim();
+  return trimmed || DEFAULT_WORKSPACE_SESSION_NAME;
+}
+
+export function isDefaultWorkspaceSessionName(name?: string | null): boolean {
+  const normalized = name?.trim().toLowerCase() ?? "";
+  return !normalized || normalized === DEFAULT_WORKSPACE_SESSION_NAME.toLowerCase() || LEGACY_DEFAULT_WORKSPACE_SESSION_NAMES.has(normalized);
+}
+
+export function deriveWorkspaceSessionTitle(message: string, input: { maxWords?: number; maxLength?: number } = {}): string {
+  const maxWords = Math.max(1, input.maxWords ?? 7);
+  const maxLength = Math.max(16, input.maxLength ?? 56);
+  const cleaned = message
+    .replace(/[`*_#>\[\](){}]/g, " ")
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const withoutLeadIn = cleaned.replace(/^(please|can you|could you|would you|will you|i want to|i need to|let'?s|lets)\s+/i, "");
+  const title = withoutLeadIn.split(/\s+/).filter(Boolean).slice(0, maxWords).join(" ").replace(/[?.!,;:]+$/g, "").trim();
+  if (!title) return DEFAULT_WORKSPACE_SESSION_NAME;
+  const sentence = title.charAt(0).toUpperCase() + title.slice(1);
+  return sentence.length > maxLength ? `${sentence.slice(0, maxLength - 3).trim()}...` : sentence;
+}
+
 export type WorkspaceArtifactKind = "json-render" | "document";
 export type WorkspaceDocumentVersionSource = "user" | "ai" | "system";
 
@@ -139,6 +167,7 @@ export interface WorkspaceSessionDocumentStore {
   listSessions(input?: { archived?: boolean }): WorkspaceSessionRecord[];
   patchSession(id: string, input: Partial<Pick<WorkspaceSessionRecord, "name" | "mode" | "folder" | "active_document_id" | "active_artifact_id" | "is_important">>): WorkspaceSessionRecord | null;
   archiveSession(id: string, archived?: boolean): WorkspaceSessionRecord | null;
+  deleteSession(id: string): boolean;
   createDocument(input: { session_id?: string | null; title?: string | null; content?: string | null; language?: string | null; source?: WorkspaceDocumentVersionSource; summary?: string | null }): WorkspaceDocumentRecord;
   getDocument(id: string): WorkspaceDocumentRecord | null;
   listDocuments(sessionId: string): WorkspaceDocumentRecord[];
@@ -242,7 +271,7 @@ class InMemoryWorkspacePersistence implements WorkspacePersistenceAdapter {
     if (existing) return clone(existing);
     const session: WorkspaceSessionRecord = {
       id,
-      name: input.name?.trim() || "Sonik workspace",
+      name: normalizeWorkspaceSessionName(input.name),
       mode: input.mode ?? "chat",
       archived: false,
       is_important: false,
@@ -265,7 +294,7 @@ class InMemoryWorkspacePersistence implements WorkspacePersistenceAdapter {
       if (existing) return clone(existing);
       return this.createSession({ id: sessionId, name: "Odysseus document session", mode: "document" });
     }
-    return this.createSession({ name: "Sonik workspace", mode: "chat" });
+    return this.createSession({ name: DEFAULT_WORKSPACE_SESSION_NAME, mode: "chat" });
   }
 
   getSession(id: string): WorkspaceSessionRecord | null {
@@ -296,6 +325,30 @@ class InMemoryWorkspacePersistence implements WorkspacePersistenceAdapter {
     const updated = { ...existing, archived, updated_at: timestamp, last_accessed: timestamp } satisfies WorkspaceSessionRecord;
     this.#sessions.set(id, updated);
     return clone(updated);
+  }
+
+  deleteSession(id: string): boolean {
+    const existing = this.#sessions.get(id);
+    if (!existing) return false;
+
+    for (const document of [...this.#documents.values()]) {
+      if (document.session_id === id) this.deleteDocument(document.id);
+    }
+
+    for (const artifact of [...this.#artifacts.values()]) {
+      if (artifact.session_id === id) {
+        this.#artifactVersions.delete(artifact.id);
+        this.#artifacts.delete(artifact.id);
+      }
+    }
+
+    this.#messages.delete(id);
+    this.#layoutSnapshots.delete(id);
+    for (const [toolCallId, toolCall] of [...this.#toolCalls.entries()]) {
+      if (toolCall.session_id === id) this.#toolCalls.delete(toolCallId);
+    }
+    this.#telemetryEvents = this.#telemetryEvents.filter((event) => event.session_id !== id);
+    return this.#sessions.delete(id);
   }
 
   createDocument(input: { session_id?: string | null; title?: string | null; content?: string | null; language?: string | null; source?: WorkspaceDocumentVersionSource; summary?: string | null }): WorkspaceDocumentRecord {
