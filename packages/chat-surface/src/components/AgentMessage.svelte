@@ -46,20 +46,22 @@
 <MessagePrimitive.Root {from} class="w-full">
   {#if message.role === "user"}
     {#if text}
-      <MessagePrimitive.Content
-        class="max-w-[85%] rounded-2xl rounded-tr-md bg-primary px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap text-primary-foreground">
-        {text}
-      </MessagePrimitive.Content>
+      <div class="flex justify-end">
+        <MessagePrimitive.Content
+          class="ml-auto w-fit max-w-[78%] rounded-2xl rounded-br-md bg-[#efe8dd] px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap text-[#332f2a] shadow-sm">
+          {text}
+        </MessagePrimitive.Content>
+      </div>
     {/if}
   {:else}
     {@const hasAnything = segments.length > 0 || messageHasSpec}
     {@const showLoader = isLast && isStreaming && !hasAnything}
     {@const showSpecAtEnd = messageHasSpec && !specInserted}
 
-    <div class="w-full flex flex-col gap-3">
+    <div class="w-full max-w-3xl flex flex-col gap-3 text-[#332f2a]">
       {#each segments as seg, i (`${seg.kind}-${i}`)}
         {#if seg.kind === "text"}
-          <MessagePrimitive.Content class="bg-transparent px-0 py-0 shadow-none text-foreground">
+          <MessagePrimitive.Content class="bg-transparent px-0 py-0 shadow-none text-[#332f2a]">
             <div class="text-sm leading-relaxed [&_p+p]:mt-3 [&_ul]:mt-2 [&_ol]:mt-2 [&_pre]:mt-2">
               {seg.text}
             </div>

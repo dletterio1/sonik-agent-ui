@@ -30,8 +30,26 @@
     onArchive,
   }: Props = $props();
 
+  function displaySessionName(session: WorkspaceSessionSummary | null): string {
+    if (!session) return "New chat";
+    const name = session.name.trim();
+    if (!name || name === "Sonik workspace") return "New chat";
+    return name;
+  }
+
+  function sessionKind(session: WorkspaceSessionSummary): string {
+    if (session.mode === "artifact") return "Live artifact";
+    if (session.mode === "document") return "Document";
+    if (session.mode === "research") return "Research";
+    return "Chat";
+  }
+
+  function messageCountLabel(count: number): string {
+    return count === 1 ? "1 message" : `${count} messages`;
+  }
+
   function formatSessionTime(value: string | null): string {
-    if (!value) return "No messages";
+    if (!value) return "No messages yet";
     return new Intl.DateTimeFormat(undefined, {
       month: "short",
       day: "numeric",
@@ -42,12 +60,17 @@
 </script>
 
 <div class="session-rail-shell">
+  <div class="mode-switch" aria-label="Workspace mode">
+    <span class="mode-pill mode-pill--active">Chat</span>
+    <span class="mode-pill" title="Live artifact workspaces will graduate into this lane">Workspaces</span>
+  </div>
+
   <div class="session-rail-header">
     <div>
-      <p class="session-rail-eyebrow">Workspace</p>
-      <h2>Sessions</h2>
+      <p class="session-rail-eyebrow">Recents</p>
+      <h2>Chats</h2>
     </div>
-    <button type="button" onclick={onCreate} disabled={busy}>New</button>
+    <button type="button" class="new-chat-button" onclick={onCreate} disabled={busy}>+ New chat</button>
   </div>
 
   {#if error}
@@ -63,32 +86,32 @@
           onclick={() => onSwitch(session.id)}
           disabled={busy || session.id === activeSessionId}
         >
-          <span>{session.name}</span>
+          <span>{displaySessionName(session)}</span>
           <small>{formatSessionTime(session.last_message_at ?? session.updated_at)}</small>
         </button>
         <div class="session-meta">
-          <span>{session.mode}</span>
-          <span>{session.message_count} msgs</span>
+          <span>{sessionKind(session)}</span>
+          <span>{messageCountLabel(session.message_count)}</span>
         </div>
         <button
           type="button"
           class="session-archive"
           onclick={() => onArchive(session.id)}
-          aria-label={`Archive ${session.name}`}
+          aria-label={`Archive ${displaySessionName(session)}`}
           disabled={busy}
         >
           Archive
         </button>
       </article>
     {:else}
-      <p class="session-empty">No sessions yet.</p>
+      <p class="session-empty">No chats yet. Start one when you are ready.</p>
     {/each}
   </div>
 
   {#if currentSession}
     <footer>
-      <span>Active</span>
-      <strong>{currentSession.name}</strong>
+      <span>Current chat</span>
+      <strong>{displaySessionName(currentSession)}</strong>
     </footer>
   {/if}
 </div>
@@ -99,9 +122,38 @@
     height: 100%;
     min-height: 0;
     flex-direction: column;
-    gap: 0.75rem;
-    padding: 0.75rem;
-    color: var(--foreground);
+    gap: 0.85rem;
+    padding: 0.8rem;
+    color: #332f2a;
+  }
+
+  .mode-switch {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.2rem;
+    border: 1px solid #ded6ca;
+    border-radius: 999px;
+    padding: 0.2rem;
+    background: #eee8dd;
+  }
+
+  .mode-pill {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding: 0.4rem 0.45rem;
+    color: #81776c;
+    font-size: 0.75rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .mode-pill--active {
+    background: #fffdf8;
+    color: #2d2923;
+    box-shadow: 0 1px 4px rgb(45 38 28 / 10%);
   }
 
   .session-rail-header {
@@ -119,29 +171,40 @@
 
   .session-rail-eyebrow {
     margin: 0 0 0.15rem;
-    color: var(--muted-foreground);
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
+    color: #8a8174;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
   }
 
-  .session-rail-header button,
+  .new-chat-button,
   .session-archive {
-    border: 1px solid var(--border);
-    border-radius: 0.55rem;
-    background: var(--background);
-    color: var(--foreground);
+    border: 1px solid #ded6ca;
+    border-radius: 999px;
+    background: #fffdf8;
+    color: #332f2a;
     cursor: pointer;
     font: inherit;
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
   }
 
-  .session-rail-header button {
-    padding: 0.4rem 0.65rem;
-    font-weight: 700;
+  .new-chat-button {
+    padding: 0.42rem 0.7rem;
+    font-size: 0.78rem;
+    font-weight: 800;
   }
 
-  .session-rail-header button:disabled,
+  .new-chat-button:hover,
+  .session-archive:hover {
+    border-color: #c9bbaa;
+    background: #f8f2e9;
+  }
+
+  .new-chat-button:disabled,
   .session-select:disabled,
   .session-archive:disabled {
     cursor: wait;
@@ -150,10 +213,11 @@
 
   .session-rail-error {
     margin: 0;
-    border: 1px solid color-mix(in srgb, #ef4444 55%, var(--border));
-    border-radius: 0.5rem;
-    padding: 0.5rem;
-    color: #ef4444;
+    border: 1px solid color-mix(in srgb, #ef4444 55%, #ded6ca);
+    border-radius: 0.75rem;
+    padding: 0.6rem;
+    background: #fff7f7;
+    color: #b42318;
     font-size: 0.75rem;
   }
 
@@ -162,27 +226,34 @@
     min-height: 0;
     flex: 1;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.3rem;
     overflow: auto;
+    padding-right: 0.1rem;
   }
 
   .session-rail-list article {
     display: grid;
-    gap: 0.45rem;
-    border: 1px solid var(--border);
-    border-radius: 0.75rem;
-    padding: 0.55rem;
-    background: color-mix(in srgb, var(--background) 88%, var(--foreground) 12%);
+    gap: 0.4rem;
+    border: 1px solid transparent;
+    border-radius: 0.85rem;
+    padding: 0.65rem;
+    background: transparent;
+  }
+
+  .session-rail-list article:hover {
+    background: #f3ede3;
   }
 
   .session-rail-list article.active-session {
-    border-color: color-mix(in srgb, var(--primary) 70%, var(--border));
-    background: color-mix(in srgb, var(--primary) 10%, var(--background));
+    border-color: #ded6ca;
+    background: #fffdf8;
+    box-shadow: 0 1px 8px rgb(45 38 28 / 7%);
   }
 
   .session-select {
     display: grid;
-    gap: 0.2rem;
+    gap: 0.24rem;
+    width: 100%;
     border: 0;
     background: transparent;
     color: inherit;
@@ -193,7 +264,8 @@
 
   .session-select span {
     overflow: hidden;
-    font-weight: 700;
+    font-weight: 800;
+    line-height: 1.2;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -202,38 +274,41 @@
   .session-meta,
   footer,
   .session-empty {
-    color: var(--muted-foreground);
-    font-size: 0.75rem;
+    color: #8a8174;
+    font-size: 0.73rem;
   }
 
   .session-meta {
     display: flex;
     justify-content: space-between;
     gap: 0.5rem;
-    text-transform: capitalize;
   }
 
   .session-archive {
     justify-self: start;
-    padding: 0.25rem 0.5rem;
-    color: var(--muted-foreground);
-    font-size: 0.72rem;
+    padding: 0.26rem 0.55rem;
+    color: #746b60;
+    font-size: 0.7rem;
+    font-weight: 700;
   }
 
   .session-empty {
     margin: 0;
+    border: 1px dashed #d8d0c4;
+    border-radius: 0.85rem;
+    padding: 0.8rem;
   }
 
   footer {
     display: grid;
     gap: 0.2rem;
-    border-top: 1px solid var(--border);
-    padding-top: 0.7rem;
+    border-top: 1px solid #ded6ca;
+    padding-top: 0.75rem;
   }
 
   footer strong {
     overflow: hidden;
-    color: var(--foreground);
+    color: #332f2a;
     text-overflow: ellipsis;
     white-space: nowrap;
   }

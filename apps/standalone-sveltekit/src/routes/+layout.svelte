@@ -7,7 +7,7 @@
 
 <svelte:head>
   <link rel="icon" href={favicon} />
-  <title>json-render Svelte Chat</title>
+  <title>Sonik Chat</title>
 </svelte:head>
 
 {@render children()}

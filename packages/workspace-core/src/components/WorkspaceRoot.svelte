@@ -42,7 +42,7 @@
 
   .workspace-root[data-has-rail="true"] {
     display: grid;
-    grid-template-columns: minmax(220px, 17rem) minmax(0, 1fr);
+    grid-template-columns: minmax(230px, 16.75rem) minmax(0, 1fr);
   }
 
   .workspace-rail {
@@ -50,7 +50,7 @@
     min-height: 0;
     overflow: hidden;
     border-right: 1px solid var(--border);
-    background: color-mix(in srgb, var(--background) 94%, var(--foreground) 6%);
+    background: #f7f3ea;
   }
 
   .workspace-grid {
@@ -66,7 +66,7 @@
     min-height: 0;
     overflow: hidden;
     border: 1px solid var(--border);
-    background: var(--background);
+    background: #fbfaf7;
   }
 
   .workspace-pane--chat {

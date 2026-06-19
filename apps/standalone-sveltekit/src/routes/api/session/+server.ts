@@ -5,7 +5,7 @@ export async function POST({ request }) {
   const contentType = request.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     const body = await request.json();
-    return json(createOdysseusSession({ name: typeof body.name === "string" ? body.name : "Sonik workspace", mode: body.mode === "artifact" || body.mode === "document" || body.mode === "research" ? body.mode : "chat" }));
+    return json(createOdysseusSession({ name: typeof body.name === "string" ? body.name : "New chat", mode: body.mode === "artifact" || body.mode === "document" || body.mode === "research" ? body.mode : "chat" }));
   }
 
   const form = await request.formData();

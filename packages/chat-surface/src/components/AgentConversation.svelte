@@ -32,7 +32,7 @@
   import AgentMessage from "./AgentMessage.svelte";
 
   let {
-    title = "json-render Svelte Chat",
+    title = "Sonik Chat",
     messages,
     input = $bindable(""),
     status = "ready",
@@ -61,17 +61,17 @@
   }
 </script>
 
-<Conversation.Root class="bg-background">
-  <header class="border-b px-6 py-3 flex items-center justify-between flex-shrink-0">
+<Conversation.Root class="bg-[#fbfaf7]">
+  <header class="border-b border-[#e5ded3] bg-[#fbfaf7]/95 px-8 py-4 flex items-center justify-between flex-shrink-0">
     <div class="flex items-center gap-3">
-      <h1 class="text-lg font-semibold">{title}</h1>
+      <h1 class="text-lg font-semibold text-[#2d2923]">{title}</h1>
     </div>
     <div class="flex items-center gap-2">
       {@render actions?.()}
       {#if messages.length > 0}
         <button
           onclick={clear}
-          class="px-3 py-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+          class="px-3 py-1.5 rounded-full text-sm text-[#746b60] hover:text-[#2d2923] hover:bg-[#eee8dd] transition-colors">
           Start Over
         </button>
       {/if}
@@ -84,11 +84,11 @@
         <div class="max-w-2xl w-full space-y-8">
           <div class="text-center space-y-2">
             <h2 class="text-2xl font-semibold tracking-tight">
-              What would you like to explore?
+              What are we working on?
             </h2>
             <p class="text-muted-foreground">
-              Ask about weather, GitHub repos, crypto prices, or Hacker News --
-              the agent will fetch real data and build a dashboard.
+              Ask a question, create a JSON-render artifact, or update the active document.
+              The chat stays conversational unless you ask for a canvas artifact.
             </p>
           </div>
 
@@ -96,7 +96,7 @@
             {#each suggestions as suggestion (suggestion.label)}
               <button
                 onclick={() => submit(suggestion.prompt)}
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#ded6ca] bg-[#fffdf8] text-sm text-[#746b60] hover:text-[#2d2923] hover:bg-[#f4eee5] transition-colors">
                 {suggestion.label}
               </button>
             {/each}
@@ -104,7 +104,7 @@
         </div>
       </Conversation.EmptyState>
     {:else}
-      <div class="max-w-4xl mx-auto px-10 py-6 space-y-6">
+      <div class="max-w-3xl mx-auto px-8 py-8 space-y-7">
         {#each messages as message, index (message.id)}
           <AgentMessage
             {message}
@@ -130,7 +130,7 @@
   <AgentComposer
     bind:value={input}
     {status}
-    placeholder={isEmpty ? "e.g., Compare weather in NYC, London, and Tokyo..." : "Ask a follow-up..."}
+    placeholder={isEmpty ? "Start a chat, create an artifact, or update the active document..." : "Ask a follow-up..."}
     onSubmit={submit}
     {onStop}
   />

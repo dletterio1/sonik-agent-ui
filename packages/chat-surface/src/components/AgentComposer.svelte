@@ -32,19 +32,19 @@
   }
 </script>
 
-<div class="px-6 pb-3 flex-shrink-0 bg-background relative">
-  <div class="max-w-4xl mx-auto relative">
-    <PromptInput.Root {status} onSubmit={handleSubmit} class="bg-card shadow-sm">
+<div class="px-6 pb-6 pt-3 flex-shrink-0 bg-[#fbfaf7] relative">
+  <div class="max-w-3xl mx-auto relative">
+    <PromptInput.Root {status} onSubmit={handleSubmit} class="rounded-3xl border border-[#ded6ca] bg-[#fffdf8] shadow-[0_8px_30px_rgb(45_38_28_/_6%)]">
       <PromptInput.Body>
         <PromptInput.Textarea
           bind:value
           {placeholder}
-          rows={2}
-          class="pr-16 text-sm placeholder:text-muted-foreground"
+          rows={3}
+          class="min-h-[76px] pr-16 text-sm placeholder:text-[#8a8174]"
         />
       </PromptInput.Body>
-      <PromptInput.Toolbar class="justify-end border-t-0 px-2 pt-0">
-        <PromptInput.Submit {status} {onStop} class="h-8 min-h-8 px-3">
+      <PromptInput.Toolbar class="justify-end border-t-0 px-3 pb-2 pt-0">
+        <PromptInput.Submit {status} {onStop} class="h-8 min-h-8 rounded-full px-4">
           {isGenerating ? "Stop" : "Send"}
         </PromptInput.Submit>
       </PromptInput.Toolbar>

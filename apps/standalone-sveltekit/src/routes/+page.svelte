@@ -423,7 +423,7 @@
       const response = await fetch("/api/session", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: "Sonik workspace", mode: "chat" }),
+        body: JSON.stringify({ name: "New chat", mode: "chat" }),
       });
       if (!response.ok) throw new Error(await response.text());
       const session = (await response.json()) as WorkspaceSessionSummary;
@@ -766,7 +766,7 @@
   }
 </script>
 
-<WorkspaceRoot title="json-render Svelte Chat" {artifactOpen}>
+<WorkspaceRoot title="Sonik Chat" {artifactOpen}>
   {#snippet rail()}
     <SessionRail
       {sessions}
@@ -782,7 +782,7 @@
 
   {#snippet chat()}
     <AgentConversation
-      title="json-render Svelte Chat"
+      title="Sonik Chat"
       messages={conversation.messages as AgentChatMessage[]}
       status={conversation.status}
       error={conversation.error}
