@@ -88,6 +88,11 @@ export function createStandaloneStartupCommandIndex(context: PlatformAdapterCont
   return createStartupCommandIndex(createStandaloneCommandCatalog(context, generatedAt), {
     registry: createStandaloneCommandFamilyRegistry(generatedAt),
     limit: input.limit,
+    context: {
+      authenticated: context.authenticated,
+      organizationId: context.organizationId,
+      scopes: context.scopes,
+    },
   });
 }
 

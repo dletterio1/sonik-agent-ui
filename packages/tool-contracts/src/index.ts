@@ -540,11 +540,11 @@ export function searchCommandCatalogWithMetadata(catalog: CommandCatalog, query 
   };
 }
 
-export function createStartupCommandIndex(catalog: CommandCatalog, input: { registry?: CommandFamilyRegistry; limit?: number } = {}): CommandIndex {
+export function createStartupCommandIndex(catalog: CommandCatalog, input: { registry?: CommandFamilyRegistry; limit?: number; context?: CommandIndexContext } = {}): CommandIndex {
   const registry = input.registry ?? createDefaultCommandFamilyRegistry(catalog.generatedAt);
   assertCommandFamiliesKnown(catalog, registry);
   assertExplicitVisibilityMetadata(catalog);
-  return createCommandIndex(catalog, registry, catalog.commands.filter((command) => command.loadPolicy.mode === "eager-summary"), input.limit ?? 12);
+  return createCommandIndex(catalog, registry, catalog.commands.filter((command) => command.loadPolicy.mode === "eager-summary" && commandVisibleInIndexContext(command, input.context ?? {})), input.limit ?? 12);
 }
 
 export function createSurfaceCommandIndex(catalog: CommandCatalog, context: CommandIndexContext = {}, input: { registry?: CommandFamilyRegistry; limit?: number } = {}): CommandIndex {
@@ -553,6 +553,7 @@ export function createSurfaceCommandIndex(catalog: CommandCatalog, context: Comm
   assertExplicitVisibilityMetadata(catalog);
   const commands = catalog.commands.filter((command) => {
     if (command.loadPolicy.mode === "hidden") return false;
+    if (!commandVisibleInIndexContext(command, context)) return false;
     if (command.loadPolicy.mode === "eager-summary") return true;
     if (command.loadPolicy.mode !== "surface-eager") return false;
     return commandMatchesIndexContext(command, context);
@@ -693,14 +694,16 @@ function hasExplicitVisibilityMetadata(command: CommandDescriptor): boolean {
     && command.metadata.contextHints !== undefined;
 }
 
-function commandMatchesIndexContext(command: CommandDescriptor, context: CommandIndexContext): boolean {
+function commandVisibleInIndexContext(command: CommandDescriptor, context: CommandIndexContext): boolean {
   if (command.auth.required && context.authenticated !== true) return false;
   if (command.auth.orgScoped && !context.organizationId) return false;
-  const hints = command.contextHints;
   const scopes = new Set(context.scopes ?? []);
-  const requiredScopes = [...new Set([...hints.requiredScopes, ...command.auth.scopes])];
-  const scopeGatePassed = requiredScopes.length === 0 || requiredScopes.every((scope) => scopes.has(scope));
-  if (!scopeGatePassed) return false;
+  const requiredScopes = [...new Set([...command.contextHints.requiredScopes, ...command.auth.scopes])];
+  return requiredScopes.length === 0 || requiredScopes.every((scope) => scopes.has(scope));
+}
+
+function commandMatchesIndexContext(command: CommandDescriptor, context: CommandIndexContext): boolean {
+  const hints = command.contextHints;
   return Boolean(
     (context.surface && hints.surfaces.includes(context.surface)) ||
     (context.route && hints.routes.includes(context.route)) ||

@@ -253,6 +253,46 @@ assert.equal(matchedSurfaceIndex.commands.every((command) => !Object.hasOwn(comm
 const matchedByFamilyIndex = createSurfaceCommandIndex(campaignCatalog, { commandFamilies: ["campaign"], authenticated: true, organizationId: "org1", scopes: ["campaign:send"] }, { registry: hostFamilyRegistry });
 assert.deepEqual(matchedByFamilyIndex.commands.map((command) => command.id), ["campaign.launch"], "surface index should support page-provided command family hints");
 
+const billingEagerCommand = {
+  ...campaignCommand,
+  id: "billing.invoice.list",
+  title: "List invoices",
+  familyId: "billing",
+  effect: "read",
+  approval: "none",
+  loadPolicy: { mode: "eager-summary", priority: 60, profile: "host-billing" },
+  contextHints: {
+    routes: [],
+    surfaces: ["billing-dashboard"],
+    pageTypes: [],
+    artifactTypes: [],
+    skillFamilies: [],
+    commandFamilies: ["billing"],
+    requiredScopes: ["billing:read"],
+  },
+  capabilities: ["billing", "invoice", "read"],
+  auth: { required: true, orgScoped: true, scopes: ["billing:read"] },
+  metadata: {
+    liveExecution: false,
+    familyId: "billing",
+    loadPolicy: { mode: "eager-summary", priority: 60, profile: "host-billing" },
+    contextHints: {
+      surfaces: ["billing-dashboard"],
+      commandFamilies: ["billing"],
+      requiredScopes: ["billing:read"],
+    },
+  },
+};
+const billingFamilyRegistry = createCommandFamilyRegistry("host-billing-test", [
+  ...defaultFamilyRegistry.families,
+  { id: "billing", title: "Billing", aliases: [], source: "host" },
+], "2026-06-20T00:00:00.000Z");
+const billingCatalog = createCommandCatalog("host-billing-test", [billingEagerCommand], "2026-06-20T00:00:00.000Z");
+assert.deepEqual(createStartupCommandIndex(billingCatalog, { registry: billingFamilyRegistry }).commands, [], "startup index should not expose auth/org-scoped eager-summary host commands anonymously");
+assert.deepEqual(createSurfaceCommandIndex(billingCatalog, { surface: "billing-dashboard" }, { registry: billingFamilyRegistry }).commands, [], "surface index should not expose auth/org-scoped eager-summary host commands anonymously");
+assert.deepEqual(createStartupCommandIndex(billingCatalog, { registry: billingFamilyRegistry, context: { authenticated: true, organizationId: "org1", scopes: ["billing:read"] } }).commands.map((command) => command.id), ["billing.invoice.list"], "startup index may expose auth/org-scoped eager summaries only with matching trusted context");
+assert.deepEqual(createSurfaceCommandIndex(billingCatalog, { surface: "billing-dashboard", authenticated: true, organizationId: "org1", scopes: ["billing:read"] }, { registry: billingFamilyRegistry }).commands.map((command) => command.id), ["billing.invoice.list"], "surface index may expose auth/org-scoped eager summaries only with matching trusted context");
+
 const lazySearch = searchCommandCatalog(commandCatalog, "weather");
 assert.equal(lazySearch.some((command) => command.id === "getWeather"), true, "lazy commands should remain discoverable through catalog search");
 const hiddenCatalog = createCommandCatalog("hidden-test", [{
