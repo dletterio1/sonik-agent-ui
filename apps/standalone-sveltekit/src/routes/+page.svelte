@@ -194,10 +194,23 @@
       latestDocumentArtifact.action,
     ].join("::");
     if (promotionKey === lastDocumentPromotionKey) return;
+
+    let nextPreferredView: PreferredDocumentView;
+    try {
+      nextPreferredView = latestDocumentArtifact.preferredView ?? inferPreferredDocumentView(latestDocumentArtifact.document.language);
+    } catch (error) {
+      reportClientEffectError("document_artifact.promote_error", error, {
+        messageId: latestDocumentArtifact.id,
+        documentId: latestDocumentArtifact.document.id,
+        documentVersion: latestDocumentArtifact.document.version_count,
+      });
+      return;
+    }
+
     lastDocumentPromotionKey = promotionKey;
     activeDocument = latestDocumentArtifact.document;
     documentSeed = latestDocumentArtifact.document;
-    documentPreferredView = latestDocumentArtifact.preferredView ?? inferPreferredDocumentView(latestDocumentArtifact.document.language);
+    documentPreferredView = nextPreferredView;
     documentEditorOpen = true;
     pendingArtifactIntent = null;
     logArtifactTelemetry({
@@ -215,14 +228,25 @@
   $effect(() => {
     if (!latestJsonRenderSpec) return;
 
-    const result = promoteJsonRenderArtifact({
-      current: activeArtifact,
-      messageArtifactId: latestJsonRenderSpec.id,
-      spec: latestJsonRenderSpec.spec,
-      userPrompt: latestJsonRenderSpec.userPrompt,
-      title: latestJsonRenderSpec.title,
-      forcePromote: latestJsonRenderSpec.forcePromote,
-    });
+    let result: ReturnType<typeof promoteJsonRenderArtifact>;
+    try {
+      result = promoteJsonRenderArtifact({
+        current: activeArtifact,
+        messageArtifactId: latestJsonRenderSpec.id,
+        spec: latestJsonRenderSpec.spec,
+        userPrompt: latestJsonRenderSpec.userPrompt,
+        title: latestJsonRenderSpec.title,
+        forcePromote: latestJsonRenderSpec.forcePromote,
+      });
+    } catch (error) {
+      reportClientEffectError("json_artifact.promote_error", error, {
+        messageId: latestJsonRenderSpec.id,
+        root: latestJsonRenderSpec.spec.root,
+        elementCount: Object.keys(latestJsonRenderSpec.spec.elements).length,
+      });
+      return;
+    }
+
     const promotionKey = [
       latestJsonRenderSpec.id,
       result.artifact?.id ?? "no-artifact",
@@ -390,7 +414,9 @@
   $effect(() => {
     if (!activeSessionId) return;
     if (isStreaming) return;
-    void persistConversationMessages();
+    void persistConversationMessages().catch((error) => {
+      reportClientEffectError("session.messages.persist_unhandled", error, { sessionId: activeSessionId });
+    });
   });
 
   async function initializeSessions(): Promise<void> {
@@ -437,6 +463,21 @@
       error: input.error,
       reason: input.reason,
       mode: input.mode,
+    });
+  }
+
+  function reportClientEffectError(event: string, error: unknown, input: { sessionId?: string | null; messageId?: string; documentId?: string; documentVersion?: number; root?: string; elementCount?: number } = {}): void {
+    logArtifactTelemetry({
+      source: "client",
+      event,
+      sessionId: input.sessionId ?? activeSessionId ?? undefined,
+      messageId: input.messageId,
+      documentId: input.documentId,
+      documentVersion: input.documentVersion,
+      root: input.root,
+      elementCount: input.elementCount,
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 
@@ -623,6 +664,7 @@
     if (messagesToPersist.length === 0) return;
 
     messagePersistInFlight = true;
+    logSessionTelemetry("session.messages.persist_start", { sessionId, reason: `${messagesToPersist.length} message(s)` });
     try {
       for (const message of messagesToPersist) {
         const parts = message.parts as DataPart[];
@@ -638,11 +680,26 @@
         });
         if (!response.ok) {
           sessionRailError = await response.text();
+          logSessionTelemetry("session.messages.persist_error", {
+            sessionId,
+            ok: false,
+            error: sessionRailError,
+            reason: message.id,
+          });
           return;
         }
         persistedMessageIds.add(message.id);
       }
       await loadSessions();
+      logSessionTelemetry("session.messages.persist_success", { sessionId, reason: `${messagesToPersist.length} message(s)` });
+    } catch (error) {
+      sessionRailError = error instanceof Error ? error.message : String(error);
+      logSessionTelemetry("session.messages.persist_error", {
+        sessionId,
+        ok: false,
+        error: sessionRailError,
+      });
+      throw error;
     } finally {
       messagePersistInFlight = false;
     }

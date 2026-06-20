@@ -10,6 +10,7 @@ import { pipeJsonRender } from "@json-render/core";
 import { pipeArtifactToolOutputsToSpecParts } from "$lib/artifacts/artifact-stream";
 import { logArtifactTelemetry } from "$lib/artifacts/artifact-telemetry";
 import { writeAgentTelemetry } from "$lib/server/agent-telemetry";
+import { instrumentGenerateStream } from "$lib/server/stream-telemetry";
 import { summarizeWorkspaceContext, syncActiveWorkspaceDocumentSnapshot, type WorkspaceDocumentRecord } from "$lib/server/workspace-store";
 import { createStandaloneToolManifestSummary } from "$lib/server/tool-manifest";
 import {
@@ -77,7 +78,7 @@ export const POST: RequestHandler = async ({ request }) => {
     ok: true,
   };
   logArtifactTelemetry(startEvent);
-  await writeAgentTelemetry(startEvent);
+  void writeAgentTelemetry(startEvent).catch(() => undefined);
 
   const modelMessages = await convertToModelMessages(uiMessages);
   const contextSummary = summarizeWorkspaceContext({ activeDocument });
@@ -86,7 +87,7 @@ export const POST: RequestHandler = async ({ request }) => {
   const contextualModelMessages = systemContext
     ? [{ role: "system" as const, content: systemContext }, ...modelMessages]
     : modelMessages;
-  await writeAgentTelemetry({
+  void writeAgentTelemetry({
     source: "server",
     event: "api.generate.tool_manifest_context",
     requestId,
@@ -94,7 +95,7 @@ export const POST: RequestHandler = async ({ request }) => {
     messageId: lastMessage?.id,
     elementCount: toolManifestSummary.split("\n- ").length - 1,
     ok: true,
-  });
+  }).catch(() => undefined);
   const agent = createAgent({ activeDocument, sessionId: telemetrySessionId });
 
   try {
@@ -102,8 +103,16 @@ export const POST: RequestHandler = async ({ request }) => {
 
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
-        writer.merge(pipeArtifactToolOutputsToSpecParts(pipeJsonRender(result.toUIMessageStream())));
-        await writeAgentTelemetry({
+        const aiStream = pipeArtifactToolOutputsToSpecParts(pipeJsonRender(result.toUIMessageStream()));
+        writer.merge(instrumentGenerateStream(aiStream, {
+          requestId,
+          sessionId: telemetrySessionId,
+          messageId: lastMessage?.id,
+          documentId: activeDocument?.id,
+          documentVersion: activeDocument?.version_count,
+          startedAt,
+        }));
+        void writeAgentTelemetry({
           source: "server",
           event: "api.generate.stream_attached",
           requestId,
@@ -113,7 +122,7 @@ export const POST: RequestHandler = async ({ request }) => {
           documentVersion: activeDocument?.version_count,
           durationMs: Date.now() - startedAt,
           ok: true,
-        });
+        }).catch(() => undefined);
       },
       onError: (error) => {
         const message = error instanceof Error ? error.message : String(error);
@@ -126,7 +135,7 @@ export const POST: RequestHandler = async ({ request }) => {
           durationMs: Date.now() - startedAt,
           ok: false,
           error: message,
-        });
+        }).catch(() => undefined);
         return message;
       },
     });
@@ -134,7 +143,7 @@ export const POST: RequestHandler = async ({ request }) => {
     return createUIMessageStreamResponse({ stream });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await writeAgentTelemetry({
+    void writeAgentTelemetry({
       source: "server",
       event: "api.generate.error",
       requestId,
@@ -143,7 +152,7 @@ export const POST: RequestHandler = async ({ request }) => {
       durationMs: Date.now() - startedAt,
       ok: false,
       error: message,
-    });
+    }).catch(() => undefined);
     throw error;
   }
 };
