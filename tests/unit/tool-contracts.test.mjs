@@ -213,7 +213,18 @@ const campaignCommand = {
   capabilities: ["campaign", "launch", "send"],
   transport: { procedure: "campaign.launch", runtimeStatus: "shadow" },
   auth: { required: true, orgScoped: true, scopes: ["campaign:send"] },
-  metadata: { liveExecution: false },
+  metadata: {
+    liveExecution: false,
+    familyId: "campaign",
+    loadPolicy: { mode: "surface-eager", priority: 50, profile: "sonik" },
+    contextHints: {
+      routes: ["/campaigns/new"],
+      surfaces: ["campaign-wizard"],
+      skillFamilies: ["campaign-authoring"],
+      commandFamilies: ["campaign"],
+      requiredScopes: ["campaign:send"],
+    },
+  },
 };
 const campaignCatalog = createCommandCatalog("host-campaign-test", [campaignCommand], "2026-06-20T00:00:00.000Z");
 assert.throws(() => createStartupCommandIndex(campaignCatalog, { registry: defaultFamilyRegistry }), /Unknown command family ids: campaign/, "host-only family drift should be rejected unless the active host registry defines it");
@@ -221,14 +232,25 @@ const hostFamilyRegistry = createCommandFamilyRegistry("host-test", [
   ...defaultFamilyRegistry.families,
   { id: "campaign", title: "Campaigns", aliases: ["marketing"], source: "host" },
 ], "2026-06-20T00:00:00.000Z");
-const unmatchedSurfaceIndex = createSurfaceCommandIndex(campaignCatalog, { surface: "event-create" }, { registry: hostFamilyRegistry });
+const implicitVisibleHostCatalog = createCommandCatalog("implicit-host-test", [{
+  ...campaignCommand,
+  id: "campaign.implicit",
+  metadata: { liveExecution: false },
+}], "2026-06-20T00:00:00.000Z");
+assert.throws(() => createSurfaceCommandIndex(implicitVisibleHostCatalog, { surface: "campaign-wizard" }, { registry: hostFamilyRegistry }), /Visible non-local commands require explicit family\/load\/context metadata: campaign\.implicit/, "visible host commands must not rely on heuristic visibility metadata");
+
+const unmatchedSurfaceIndex = createSurfaceCommandIndex(campaignCatalog, { surface: "event-create", authenticated: true, organizationId: "org1", scopes: ["campaign:send"] }, { registry: hostFamilyRegistry });
 assert.deepEqual(unmatchedSurfaceIndex.commands, [], "surface-eager host command should not load on an unrelated surface");
-const scopedOutSurfaceIndex = createSurfaceCommandIndex(campaignCatalog, { surface: "campaign-wizard" }, { registry: hostFamilyRegistry });
+const unauthenticatedSurfaceIndex = createSurfaceCommandIndex(campaignCatalog, { surface: "campaign-wizard", organizationId: "org1", scopes: ["campaign:send"] }, { registry: hostFamilyRegistry });
+assert.deepEqual(unauthenticatedSurfaceIndex.commands, [], "auth-required surface-eager host command should not load without authenticated context");
+const noOrgSurfaceIndex = createSurfaceCommandIndex(campaignCatalog, { surface: "campaign-wizard", authenticated: true, scopes: ["campaign:send"] }, { registry: hostFamilyRegistry });
+assert.deepEqual(noOrgSurfaceIndex.commands, [], "org-scoped surface-eager host command should not load without organization context");
+const scopedOutSurfaceIndex = createSurfaceCommandIndex(campaignCatalog, { surface: "campaign-wizard", authenticated: true, organizationId: "org1" }, { registry: hostFamilyRegistry });
 assert.deepEqual(scopedOutSurfaceIndex.commands, [], "surface-eager host command should not load until required context scopes are present");
-const matchedSurfaceIndex = createSurfaceCommandIndex(campaignCatalog, { surface: "campaign-wizard", scopes: ["campaign:send"] }, { registry: hostFamilyRegistry });
-assert.deepEqual(matchedSurfaceIndex.commands.map((command) => command.id), ["campaign.launch"], "surface-eager host command should load for matching page/surface context");
+const matchedSurfaceIndex = createSurfaceCommandIndex(campaignCatalog, { surface: "campaign-wizard", authenticated: true, organizationId: "org1", scopes: ["campaign:send"] }, { registry: hostFamilyRegistry });
+assert.deepEqual(matchedSurfaceIndex.commands.map((command) => command.id), ["campaign.launch"], "surface-eager host command should load for matching authenticated org page/surface context");
 assert.equal(matchedSurfaceIndex.commands.every((command) => !Object.hasOwn(command, "input") && !Object.hasOwn(command, "inputSchemaJson")), true, "surface index should also be schema-free");
-const matchedByFamilyIndex = createSurfaceCommandIndex(campaignCatalog, { commandFamilies: ["campaign"], scopes: ["campaign:send"] }, { registry: hostFamilyRegistry });
+const matchedByFamilyIndex = createSurfaceCommandIndex(campaignCatalog, { commandFamilies: ["campaign"], authenticated: true, organizationId: "org1", scopes: ["campaign:send"] }, { registry: hostFamilyRegistry });
 assert.deepEqual(matchedByFamilyIndex.commands.map((command) => command.id), ["campaign.launch"], "surface index should support page-provided command family hints");
 
 const lazySearch = searchCommandCatalog(commandCatalog, "weather");
