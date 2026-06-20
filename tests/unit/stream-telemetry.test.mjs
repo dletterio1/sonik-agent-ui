@@ -1,5 +1,22 @@
 import assert from "node:assert/strict";
+import { sanitizeAgentTelemetry } from "../../apps/standalone-sveltekit/src/lib/server/agent-telemetry.ts";
 import { instrumentGenerateStream } from "../../apps/standalone-sveltekit/src/lib/server/stream-telemetry.ts";
+
+
+{
+  const payload = sanitizeAgentTelemetry({
+    source: "server",
+    event: "api.generate.command_index_context",
+    commandFamilies: ["a".repeat(3_000), "campaign", "", 42, ...Array.from({ length: 12 }, (_, index) => `family-${index}`)],
+    skillFamilies: ["skill", "b".repeat(3_000)],
+    ok: true,
+  });
+
+  assert.equal(payload.commandFamilies?.length, 8, "telemetry command family hints should be bounded and empty/non-string entries dropped");
+  assert.equal(payload.commandFamilies?.[0].length, 2_001, "telemetry command family hints should truncate long entries with ellipsis");
+  assert.equal(payload.commandFamilies?.[1], "campaign");
+  assert.deepEqual(payload.skillFamilies?.map((entry) => entry.length), [5, 2_001], "telemetry skill family hints should be individually truncated");
+}
 
 async function readAll(stream) {
   const reader = stream.getReader();

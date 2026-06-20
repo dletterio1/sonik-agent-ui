@@ -19,6 +19,11 @@ export interface AgentTelemetryEvent {
   title?: string;
   root?: string;
   elementCount?: number;
+  surface?: string;
+  route?: string;
+  commandFamilies?: string[];
+  skillFamilies?: string[];
+  contextSource?: string;
   reason?: string;
   mode?: string;
   durationMs?: number;
@@ -28,6 +33,7 @@ export interface AgentTelemetryEvent {
 }
 
 const MAX_STRING_LENGTH = 2_000;
+const MAX_LIST_ITEMS = 8;
 
 export async function writeAgentTelemetry(event: AgentTelemetryEvent): Promise<void> {
   const payload = sanitizeAgentTelemetry(event);
@@ -64,6 +70,11 @@ export function sanitizeAgentTelemetry(event: AgentTelemetryEvent): AgentTelemet
     title: event.title,
     root: event.root,
     elementCount: event.elementCount,
+    surface: event.surface,
+    route: event.route,
+    commandFamilies: sanitizeTelemetryStringList(event.commandFamilies),
+    skillFamilies: sanitizeTelemetryStringList(event.skillFamilies),
+    contextSource: event.contextSource,
     reason: event.reason,
     mode: event.mode,
     durationMs: event.durationMs,
@@ -80,6 +91,15 @@ export function sanitizeAgentTelemetry(event: AgentTelemetryEvent): AgentTelemet
   }
 
   return payload;
+}
+
+function sanitizeTelemetryStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const entries = value
+    .filter((entry): entry is string => typeof entry === "string" && entry !== "")
+    .slice(0, MAX_LIST_ITEMS)
+    .map((entry) => entry.length > MAX_STRING_LENGTH ? `${entry.slice(0, MAX_STRING_LENGTH)}…` : entry);
+  return entries.length > 0 ? entries : undefined;
 }
 
 function resolveTelemetryLogPath(): string {

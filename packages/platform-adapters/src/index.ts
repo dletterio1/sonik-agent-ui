@@ -1,4 +1,6 @@
 import {
+  createCommandCatalog,
+  createCommandFamilyRegistry,
   createDefaultCommandFamilyRegistry,
   createStartupCommandIndex,
   createSurfaceCommandIndex,
@@ -6,6 +8,9 @@ import {
   createToolManifest,
   inferEffectFromHttpMethod,
   inferEffectFromProcedureId,
+  type AgentPageContext,
+  type CommandDescriptor,
+  type CommandFamilyDefinition,
   type CommandFamilyRegistry,
   type CommandIndex,
   type CommandIndexContext,
@@ -22,6 +27,13 @@ export type PlatformAdapterContext = {
   organizationId?: string | null;
   authenticated?: boolean;
   scopes?: string[];
+};
+
+export type HostCommandAdapter = {
+  provider: string;
+  families?: CommandFamilyDefinition[];
+  commands?: CommandDescriptor[];
+  manifest?: ToolManifest;
 };
 
 export type OpenApiOperationLike = {
@@ -71,13 +83,57 @@ export function createStandaloneToolManifest(context: PlatformAdapterContext = {
       output: { kind: "unknown" },
       auth: { required: true, scopes: ["booking:read"], orgScoped: true },
       transport: { procedure: "booking.contexts.list", runtimeStatus: "shadow" },
-      metadata: { adapter: "standalone-mock", sessionId: context.sessionId ?? null },
+      metadata: {
+        adapter: "standalone-mock",
+        sessionId: context.sessionId ?? null,
+        familyId: "integration",
+        loadPolicy: { mode: "surface-eager", priority: 5, profile: "standalone-shadow" },
+        contextHints: {
+          surfaces: ["artifact"],
+          commandFamilies: ["integration"],
+          requiredScopes: ["booking:read"],
+        },
+      },
     },
   ], generatedAt);
 }
 
 export function createStandaloneCommandCatalog(context: PlatformAdapterContext = {}, generatedAt = new Date().toISOString()): CommandCatalog {
   return createCommandCatalogFromToolManifest(createStandaloneToolManifest(context, generatedAt));
+}
+
+export function createComposedCommandFamilyRegistry(provider: string, adapters: HostCommandAdapter[] = [], generatedAt = new Date().toISOString()): CommandFamilyRegistry {
+  const base = createDefaultCommandFamilyRegistry(generatedAt);
+  const familiesById = new Map(base.families.map((family) => [family.id, family]));
+  for (const adapter of adapters) {
+    for (const family of adapter.families ?? []) {
+      if (familiesById.has(family.id)) throw new Error(`Duplicate command family id in host adapter composition: ${family.id}`);
+      familiesById.set(family.id, family);
+    }
+  }
+  return createCommandFamilyRegistry(provider, [...familiesById.values()], generatedAt);
+}
+
+export function createComposedCommandCatalog(provider: string, baseCatalog: CommandCatalog, adapters: HostCommandAdapter[] = [], generatedAt = baseCatalog.generatedAt): CommandCatalog {
+  const commandIds = new Set(baseCatalog.commands.map((command) => command.id));
+  const hostCommands = adapters.flatMap((adapter) => [
+    ...(adapter.commands ?? []),
+    ...(adapter.manifest ? createCommandCatalogFromToolManifest(adapter.manifest).commands : []),
+  ].map((command) => {
+    if (commandIds.has(command.id)) throw new Error(`Duplicate command id in host adapter composition: ${command.id}`);
+    commandIds.add(command.id);
+    return command;
+  }));
+  return createCommandCatalog(provider, [...baseCatalog.commands, ...hostCommands], generatedAt);
+}
+
+export function createCommandIndexContext(pageContext: AgentPageContext = {}, trustedContext: PlatformAdapterContext = {}): CommandIndexContext {
+  return {
+    ...pageContext,
+    authenticated: trustedContext.authenticated,
+    organizationId: trustedContext.organizationId,
+    scopes: trustedContext.scopes,
+  };
 }
 
 export function createStandaloneCommandFamilyRegistry(generatedAt = new Date().toISOString()): CommandFamilyRegistry {
@@ -97,12 +153,7 @@ export function createStandaloneStartupCommandIndex(context: PlatformAdapterCont
 }
 
 export function createStandaloneSurfaceCommandIndex(context: PlatformAdapterContext = {}, indexContext: CommandIndexContext = {}, generatedAt = new Date().toISOString(), input: { limit?: number } = {}): CommandIndex {
-  return createSurfaceCommandIndex(createStandaloneCommandCatalog(context, generatedAt), {
-    authenticated: context.authenticated,
-    organizationId: context.organizationId,
-    scopes: context.scopes,
-    ...indexContext,
-  }, {
+  return createSurfaceCommandIndex(createStandaloneCommandCatalog(context, generatedAt), createCommandIndexContext(indexContext, context), {
     registry: createStandaloneCommandFamilyRegistry(generatedAt),
     limit: input.limit,
   });

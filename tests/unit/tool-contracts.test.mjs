@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   createCommandCatalog,
   createCommandFamilyRegistry,
+  createCommandIndexContextFromPageContext,
   createDefaultCommandFamilyRegistry,
   createStartupCommandIndex,
   createSurfaceCommandIndex,
@@ -18,6 +19,9 @@ import {
   isValidOrpcProcedureId,
 } from "../../packages/tool-contracts/src/index.ts";
 import {
+  createCommandIndexContext,
+  createComposedCommandCatalog,
+  createComposedCommandFamilyRegistry,
   createManifestFromOpenApiDocument,
   createSonikBookingManifestFromOpenApiDocument,
   createStandaloneCommandFamilyRegistry,
@@ -252,6 +256,18 @@ assert.deepEqual(matchedSurfaceIndex.commands.map((command) => command.id), ["ca
 assert.equal(matchedSurfaceIndex.commands.every((command) => !Object.hasOwn(command, "input") && !Object.hasOwn(command, "inputSchemaJson")), true, "surface index should also be schema-free");
 const matchedByFamilyIndex = createSurfaceCommandIndex(campaignCatalog, { commandFamilies: ["campaign"], authenticated: true, organizationId: "org1", scopes: ["campaign:send"] }, { registry: hostFamilyRegistry });
 assert.deepEqual(matchedByFamilyIndex.commands.map((command) => command.id), ["campaign.launch"], "surface index should support page-provided command family hints");
+const trustedStandaloneSurfaceIndex = createStandaloneSurfaceCommandIndex(
+  { sessionId: "s-index", authenticated: true, organizationId: "org1", scopes: ["booking:read"] },
+  { surface: "artifact", commandFamilies: ["integration"] },
+  "2026-06-20T00:00:00.000Z",
+);
+assert.equal(trustedStandaloneSurfaceIndex.commands.some((command) => command.id === "booking.contexts.list"), true, "trusted standalone auth/org/scope context can surface metadata-only ORPC command summaries");
+const pageContextCannotWidenTrustedAccess = createStandaloneSurfaceCommandIndex(
+  { sessionId: "s-index", authenticated: false, organizationId: null, scopes: [] },
+  { surface: "artifact", authenticated: true, organizationId: "org1", scopes: ["booking:read"], commandFamilies: ["integration"] },
+  "2026-06-20T00:00:00.000Z",
+);
+assert.equal(pageContextCannotWidenTrustedAccess.commands.some((command) => command.id === "booking.contexts.list"), false, "page/surface context must not widen trusted standalone auth/org/scope access for non-local commands");
 
 const billingEagerCommand = {
   ...campaignCommand,
@@ -292,6 +308,113 @@ assert.deepEqual(createStartupCommandIndex(billingCatalog, { registry: billingFa
 assert.deepEqual(createSurfaceCommandIndex(billingCatalog, { surface: "billing-dashboard" }, { registry: billingFamilyRegistry }).commands, [], "surface index should not expose auth/org-scoped eager-summary host commands anonymously");
 assert.deepEqual(createStartupCommandIndex(billingCatalog, { registry: billingFamilyRegistry, context: { authenticated: true, organizationId: "org1", scopes: ["billing:read"] } }).commands.map((command) => command.id), ["billing.invoice.list"], "startup index may expose auth/org-scoped eager summaries only with matching trusted context");
 assert.deepEqual(createSurfaceCommandIndex(billingCatalog, { surface: "billing-dashboard", authenticated: true, organizationId: "org1", scopes: ["billing:read"] }, { registry: billingFamilyRegistry }).commands.map((command) => command.id), ["billing.invoice.list"], "surface index may expose auth/org-scoped eager summaries only with matching trusted context");
+
+const pageContext = createCommandIndexContextFromPageContext({
+  route: "/campaigns/new",
+  surface: "campaign-wizard",
+  pageType: "wizard",
+  activeEntity: { type: "campaign", id: "cmp_1" },
+  activeArtifactId: "artifact_1",
+  activeDocumentId: "doc_1",
+  skillFamilies: ["campaign-authoring"],
+  commandFamilies: ["campaign"],
+}, { authenticated: true, organizationId: "org1", scopes: ["campaign:send"] });
+assert.equal(pageContext.activeEntity?.type, "campaign", "page context bridge should preserve active entity type");
+assert.equal(pageContext.authenticated, true, "page context bridge should carry trusted auth state");
+assert.equal(pageContext.organizationId, "org1", "page context bridge should carry trusted org state");
+
+const eventCommand = {
+  ...campaignCommand,
+  id: "event.create",
+  title: "Create event",
+  familyId: "event",
+  capabilities: ["event", "create"],
+  contextHints: {
+    routes: ["/events/new"],
+    surfaces: ["event-create"],
+    pageTypes: ["wizard"],
+    artifactTypes: [],
+    skillFamilies: ["event-authoring"],
+    commandFamilies: ["event"],
+    requiredScopes: ["event:write"],
+  },
+  auth: { required: true, orgScoped: true, scopes: ["event:write"] },
+  metadata: {
+    liveExecution: false,
+    familyId: "event",
+    loadPolicy: { mode: "surface-eager", priority: 40, profile: "host-event" },
+    contextHints: {
+      routes: ["/events/new"],
+      surfaces: ["event-create"],
+      pageTypes: ["wizard"],
+      skillFamilies: ["event-authoring"],
+      commandFamilies: ["event"],
+      requiredScopes: ["event:write"],
+    },
+  },
+};
+const hiddenEventCommand = {
+  ...eventCommand,
+  id: "event.hidden",
+  title: "Hidden event admin",
+  loadPolicy: { mode: "hidden", priority: 99, profile: "host-event" },
+  metadata: {
+    ...eventCommand.metadata,
+    loadPolicy: { mode: "hidden", priority: 99, profile: "host-event" },
+  },
+};
+const eventHostAdapter = {
+  provider: "event-host-fixture",
+  families: [{ id: "event", title: "Events", aliases: ["eventing"], source: "host" }],
+  commands: [eventCommand, hiddenEventCommand],
+};
+const crmManifestAdapter = {
+  provider: "crm-manifest-fixture",
+  families: [{ id: "crm", title: "CRM", aliases: ["contacts"], source: "host" }],
+  manifest: createToolManifest("crm-manifest-fixture", [{
+    id: "crm.customer.search",
+    source: "orpc",
+    title: "Search customers",
+    description: "Host-provided customer lookup projected from a manifest adapter.",
+    effect: "read",
+    approval: "none",
+    uiTargets: ["chat"],
+    capabilities: ["crm", "customer", "search"],
+    input: { kind: "unknown" },
+    output: { kind: "unknown" },
+    auth: { required: true, scopes: ["crm:read"], orgScoped: true },
+    transport: { procedure: "crm.customer.search", runtimeStatus: "shadow" },
+    metadata: {
+      familyId: "crm",
+      loadPolicy: { mode: "lazy", priority: 10, profile: "host-crm" },
+      contextHints: { commandFamilies: ["crm"], requiredScopes: ["crm:read"] },
+    },
+  }], "2026-06-20T00:00:00.000Z"),
+};
+const composedRegistry = createComposedCommandFamilyRegistry("composed-host-test", [eventHostAdapter], "2026-06-20T00:00:00.000Z");
+const composedCatalog = createComposedCommandCatalog("composed-host-test", commandCatalog, [eventHostAdapter], "2026-06-20T00:00:00.000Z");
+assert.equal(composedRegistry.families.some((family) => family.id === "event" && family.source === "host"), true, "host adapter should extend family registry outside core");
+assert.equal(composedCatalog.commands.some((command) => command.id === "event.create"), true, "host adapter should compose host descriptors into catalog");
+const manifestComposedRegistry = createComposedCommandFamilyRegistry("manifest-composed-host-test", [crmManifestAdapter], "2026-06-20T00:00:00.000Z");
+const manifestComposedCatalog = createComposedCommandCatalog("manifest-composed-host-test", commandCatalog, [crmManifestAdapter], "2026-06-20T00:00:00.000Z");
+assert.equal(manifestComposedRegistry.families.some((family) => family.id === "crm" && family.source === "host"), true, "host manifest adapter should extend family registry");
+assert.equal(manifestComposedCatalog.commands.find((command) => command.id === "crm.customer.search")?.familyId, "crm", "host manifest adapter should project manifest tools into command descriptors");
+assert.throws(
+  () => createComposedCommandFamilyRegistry("duplicate-family-test", [{ provider: "bad-host", families: [{ id: "artifact", title: "Bad override", aliases: [], source: "host" }] }], "2026-06-20T00:00:00.000Z"),
+  /Duplicate command family id/,
+  "host adapters should fail fast instead of silently shadowing command families",
+);
+assert.throws(
+  () => createComposedCommandCatalog("duplicate-command-test", commandCatalog, [{ provider: "bad-host", commands: [{ ...eventCommand, id: "createJsonArtifact" }] }], "2026-06-20T00:00:00.000Z"),
+  /Duplicate command id/,
+  "host adapters should fail fast instead of silently duplicating command descriptors",
+);
+const eventPageContext = createCommandIndexContext({ route: "/events/new", surface: "event-create", pageType: "wizard", commandFamilies: ["event"] }, { authenticated: true, organizationId: "org1", scopes: ["event:write"] });
+const eventSurfaceCommandIds = createSurfaceCommandIndex(composedCatalog, eventPageContext, { registry: composedRegistry }).commands.map((command) => command.id);
+assert.equal(eventSurfaceCommandIds.includes("event.create"), true, "host-composed surface index should include matching host command");
+assert.equal(eventSurfaceCommandIds.includes("event.hidden"), false, "host-composed surface index should hide hidden host commands");
+assert.equal(searchCommandCatalog(composedCatalog, "event").some((command) => command.id === "event.create"), true, "host-composed lazy search should discover visible host commands");
+assert.equal(searchCommandCatalog(composedCatalog, "hidden").some((command) => command.id === "event.hidden"), false, "host-composed hidden commands should stay hidden from search");
 
 const lazySearch = searchCommandCatalog(commandCatalog, "weather");
 assert.equal(lazySearch.some((command) => command.id === "getWeather"), true, "lazy commands should remain discoverable through catalog search");

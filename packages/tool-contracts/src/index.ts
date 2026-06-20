@@ -394,13 +394,19 @@ export type CommandCatalogSearchResult = {
   truncated: boolean;
   limit: number;
 };
-export type CommandIndexContext = {
+export type AgentPageContext = {
   route?: string;
   surface?: string;
   pageType?: string;
+  activeEntity?: { type: string; id: string };
+  activeArtifactId?: string;
+  activeDocumentId?: string;
   artifactType?: string;
   skillFamilies?: string[];
   commandFamilies?: string[];
+};
+
+export type CommandIndexContext = AgentPageContext & {
   authenticated?: boolean;
   organizationId?: string | null;
   scopes?: string[];
@@ -435,6 +441,15 @@ export function validateCommandCatalogFamilies(catalog: CommandCatalog, registry
 
 export function createCommandCatalogFromToolManifest(manifest: ToolManifest): CommandCatalog {
   return createCommandCatalog(manifest.provider, manifest.tools.map(commandDescriptorFromToolEntry), manifest.generatedAt);
+}
+
+export function createCommandIndexContextFromPageContext(pageContext: AgentPageContext = {}, trustedContext: Pick<CommandIndexContext, "authenticated" | "organizationId" | "scopes"> = {}): CommandIndexContext {
+  return {
+    ...pageContext,
+    authenticated: trustedContext.authenticated,
+    organizationId: trustedContext.organizationId,
+    scopes: trustedContext.scopes,
+  };
 }
 
 export function commandDescriptorFromToolEntry(entry: ToolContractEntry): CommandDescriptor {

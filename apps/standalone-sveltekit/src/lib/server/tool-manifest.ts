@@ -6,6 +6,7 @@ import {
 import {
   filterAvailableTools,
   summarizeToolManifest,
+  type AgentPageContext,
   type CommandIndex,
   type CommandIndexContext,
   type ToolAvailabilityContext,
@@ -19,6 +20,7 @@ export type StandaloneToolManifestInput = {
   scopes?: string[];
   sourceMode?: ToolAvailabilityContext["sourceMode"];
   includeApprovalRequired?: boolean;
+  pageContext?: AgentPageContext;
   indexContext?: CommandIndexContext;
   indexLimit?: number;
 };
@@ -51,8 +53,9 @@ export function createStandaloneCommandIndex(input: StandaloneToolManifestInput 
     authenticated: input.authenticated,
     scopes: input.scopes,
   };
-  return input.indexContext
-    ? createStandaloneSurfaceCommandIndex(context, input.indexContext, generatedAt, { limit: input.indexLimit ?? 20 })
+  const indexContext = input.indexContext ?? input.pageContext;
+  return indexContext
+    ? createStandaloneSurfaceCommandIndex(context, indexContext, generatedAt, { limit: input.indexLimit ?? 20 })
     : createStandaloneStartupCommandIndex(context, generatedAt, { limit: input.indexLimit ?? 12 });
 }
 
