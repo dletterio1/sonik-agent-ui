@@ -167,7 +167,7 @@
     min-height: 0;
     flex-direction: column;
     overflow: hidden;
-    border: 1px solid var(--border);
+    border: 1px solid var(--sonik-border-color);
     border-radius: 0.75rem;
     background: var(--card);
     box-shadow: 0 1px 2px color-mix(in oklab, var(--foreground) 12%, transparent);
@@ -204,7 +204,7 @@
     min-height: 100%;
     max-width: 72rem;
     margin: 0 auto;
-    border: 1px solid var(--border);
+    border: 1px solid var(--sonik-border-color);
     border-radius: 0.75rem;
     background: color-mix(in oklab, var(--card) 86%, transparent);
     padding: 1rem;
@@ -248,7 +248,7 @@
 
   .canvas-viewport__apply {
     flex-shrink: 0;
-    border: 1px solid var(--border);
+    border: 1px solid var(--sonik-border-color);
     border-radius: 0.5rem;
     background: var(--primary);
     padding: 0.45rem 0.7rem;
@@ -261,7 +261,7 @@
     min-height: 32rem;
     width: 100%;
     resize: vertical;
-    border: 1px solid var(--border);
+    border: 1px solid var(--sonik-border-color);
     border-radius: 0.75rem;
     background: var(--background);
     padding: 1rem;
@@ -280,7 +280,7 @@
   .canvas-viewport__raw {
     min-height: 100%;
     overflow: auto;
-    border: 1px solid var(--border);
+    border: 1px solid var(--sonik-border-color);
     border-radius: 0.75rem;
     background: color-mix(in oklab, var(--muted) 40%, transparent);
     padding: 1rem;
@@ -301,7 +301,7 @@
 
   .canvas-viewport__empty-card {
     max-width: 36rem;
-    border: 1px dashed var(--border);
+    border: 1px dashed var(--sonik-border-color);
     border-radius: 0.75rem;
     background: color-mix(in oklab, var(--card) 70%, transparent);
     padding: 1.5rem;

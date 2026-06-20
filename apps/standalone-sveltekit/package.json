@@ -18,6 +18,7 @@
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@tailwindcss/vite": "^4.0.0",
     "bits-ui": "^2.14.4",
+    "daisyui": "^5.5.23",
     "svelte": "^5.56.3",
     "svelte-check": "^4.3.6",
     "tailwind-variants": "^3.2.2",
@@ -33,16 +34,16 @@
     "@sonik-agent-ui/artifact-model": "workspace:*",
     "@sonik-agent-ui/chat-surface": "workspace:*",
     "@sonik-agent-ui/json-ui-runtime": "workspace:*",
+    "@sonik-agent-ui/platform-adapters": "workspace:*",
+    "@sonik-agent-ui/tool-contracts": "workspace:*",
     "@sonik-agent-ui/workspace-core": "workspace:*",
+    "@sonik-agent-ui/workspace-session": "workspace:*",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.37.0",
     "ai": "^6.0.86",
     "clsx": "^2.1.1",
     "lucide-svelte": "^0.500.0",
     "tailwind-merge": "^3.2.0",
-    "zod": "4.3.6",
-    "@sonik-agent-ui/tool-contracts": "workspace:*",
-    "@sonik-agent-ui/platform-adapters": "workspace:*",
-    "@sonik-agent-ui/workspace-session": "workspace:*"
+    "zod": "4.3.6"
   }
 }

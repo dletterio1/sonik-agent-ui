@@ -225,7 +225,7 @@
   }
 
   .new-chat-button {
-    border: 1px solid var(--border);
+    border: 1px solid var(--sonik-border-color);
     border-radius: 999px;
     background: var(--app-control-bg, var(--card));
     color: var(--foreground);
@@ -241,7 +241,7 @@
   }
 
   .new-chat-button:hover {
-    border-color: color-mix(in oklab, var(--border) 78%, var(--foreground));
+    border-color: color-mix(in oklab, var(--sonik-border-color) 78%, var(--foreground));
     background: var(--app-control-hover-bg, var(--accent));
   }
 
@@ -255,7 +255,7 @@
 
   .session-rail-error {
     margin: 0;
-    border: 1px solid color-mix(in oklab, var(--destructive) 55%, var(--border));
+    border: 1px solid color-mix(in oklab, var(--destructive) 55%, var(--sonik-border-color));
     border-radius: 0.75rem;
     padding: 0.6rem;
     background: color-mix(in oklab, var(--destructive) 10%, var(--card));
@@ -286,7 +286,7 @@
 
   .session-rail-list article.active-session {
     background: var(--app-control-bg, var(--card));
-    box-shadow: inset 0 0 0 1px var(--border);
+    box-shadow: inset 0 0 0 1px var(--sonik-border-color);
   }
 
   .session-select {
@@ -344,7 +344,7 @@
 
   .session-empty {
     margin: 0;
-    border: 1px dashed var(--border);
+    border: 1px dashed var(--sonik-border-color);
     border-radius: 0.85rem;
     padding: 0.8rem;
   }
@@ -352,7 +352,7 @@
   footer {
     display: grid;
     gap: 0.2rem;
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--sonik-border-color);
     padding-top: 0.75rem;
   }
 
@@ -374,7 +374,7 @@
     display: grid;
     min-width: 12rem;
     gap: 0.18rem;
-    border: 1px solid var(--border);
+    border: 1px solid var(--sonik-border-color);
     border-radius: 0.85rem;
     padding: 0.32rem;
     background: var(--app-control-bg, var(--card));

@@ -50,7 +50,7 @@
     min-width: 0;
     min-height: 0;
     overflow: hidden;
-    border-right: 1px solid var(--border);
+    border-right: 1px solid var(--sonik-border-color);
     background: var(--app-rail-bg, var(--card));
   }
 
@@ -66,7 +66,7 @@
   .workspace-pane {
     min-height: 0;
     overflow: hidden;
-    border: 1px solid var(--border);
+    border: 1px solid var(--sonik-border-color);
     background: var(--app-panel-bg, var(--card));
   }
 
@@ -87,7 +87,7 @@
     .workspace-rail {
       max-height: 12rem;
       border-right: 0;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--sonik-border-color);
     }
   }
 

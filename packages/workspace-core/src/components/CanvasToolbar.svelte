@@ -100,7 +100,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--sonik-border-color);
     background: color-mix(in oklab, var(--card) 95%, transparent);
     padding: 0.5rem 0.75rem;
     backdrop-filter: blur(10px);
@@ -117,7 +117,7 @@
   }
 
   .canvas-toolbar__eyebrow {
-    border: 1px solid var(--border);
+    border: 1px solid var(--sonik-border-color);
     border-radius: 0.375rem;
     background: var(--background);
     padding: 0.125rem 0.5rem;
@@ -159,7 +159,7 @@
 
   .canvas-toolbar__panel-tabs {
     display: flex;
-    border: 1px solid var(--border);
+    border: 1px solid var(--sonik-border-color);
     border-radius: 0.5rem;
     background: var(--background);
     padding: 0.125rem;
@@ -188,7 +188,7 @@
   }
 
   .canvas-toolbar__button {
-    border: 1px solid var(--border);
+    border: 1px solid var(--sonik-border-color);
     background: var(--background);
   }
 </style>

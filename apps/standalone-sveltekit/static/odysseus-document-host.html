@@ -121,15 +121,26 @@
       function applyTheme(payload = {}) {
         const root = document.documentElement;
         const body = document.body;
+        const panel = payload.appPanel || payload.card || payload.background;
+        const control = payload.appControl || payload.card || panel;
+        const accent = payload.primary || payload.accent;
         const vars = {
           '--sonik-background': payload.background,
           '--sonik-foreground': payload.foreground,
-          '--sonik-card': payload.appPanel || payload.card,
-          '--sonik-control': payload.appControl || payload.card,
+          '--sonik-card': panel,
+          '--sonik-control': control,
           '--sonik-border': payload.border,
           '--sonik-muted': payload.muted,
           '--sonik-muted-foreground': payload.mutedForeground,
-          '--sonik-accent': payload.accent
+          '--sonik-accent': accent,
+          '--bg': payload.background,
+          '--fg': payload.foreground,
+          '--panel': panel,
+          '--border': payload.border,
+          '--red': payload.error || accent,
+          '--accent-primary': accent,
+          '--input-bg': control,
+          '--input-border': payload.border
         };
         for (const [name, value] of Object.entries(vars)) {
           if (typeof value === 'string' && value.trim()) root.style.setProperty(name, value.trim());

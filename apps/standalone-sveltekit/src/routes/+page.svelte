@@ -14,6 +14,7 @@
   import { logArtifactTelemetry, summarizeSpec } from "$lib/artifacts/artifact-telemetry";
   import ArtifactInspector from "$lib/artifacts/ArtifactInspector.svelte";
   import SessionRail from "$lib/session/SessionRail.svelte";
+  import ThemePicker from "$lib/theme/ThemePicker.svelte";
   import {
     appendArtifactObservationEvent,
     createArtifactObservationEvent,
@@ -901,6 +902,7 @@
       shouldRenderArtifact={shouldRenderInlineArtifact}
     >
       {#snippet actions()}
+        <ThemePicker />
         <button
           type="button"
           onclick={openDocumentEditor}

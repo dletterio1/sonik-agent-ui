@@ -62,17 +62,19 @@
     const styles = getComputedStyle(document.documentElement);
     const read = (name: string) => styles.getPropertyValue(name).trim();
     return {
-      theme: document.documentElement.dataset.theme ?? "gunmetal-light",
+      theme: document.documentElement.dataset.theme ?? "light",
       colorScheme: document.documentElement.dataset.colorScheme ?? styles.colorScheme ?? "light",
-      background: read("--background"),
-      foreground: read("--foreground"),
-      card: read("--card"),
-      border: read("--border"),
-      muted: read("--muted"),
+      background: read("--background") || read("--color-base-100"),
+      foreground: read("--foreground") || read("--color-base-content"),
+      card: read("--card") || read("--color-base-200"),
+      border: read("--sonik-border-color") || read("--app-card-border") || read("--color-base-300"),
+      muted: read("--muted") || read("--color-base-300"),
       mutedForeground: read("--muted-foreground"),
-      accent: read("--accent"),
-      appPanel: read("--app-panel-bg"),
-      appControl: read("--app-control-bg"),
+      accent: read("--accent") || read("--color-primary"),
+      primary: read("--color-primary"),
+      error: read("--color-error"),
+      appPanel: read("--app-panel-bg") || read("--color-base-200"),
+      appControl: read("--app-control-bg") || read("--color-base-200"),
     };
   }
 
@@ -140,9 +142,11 @@
 
     window.addEventListener("message", handleMessage);
     window.addEventListener("sonik-agent-ui:theme-change", handleThemeChange);
+    window.addEventListener("amplify:document-theme-change", handleThemeChange);
     return () => {
       window.removeEventListener("message", handleMessage);
       window.removeEventListener("sonik-agent-ui:theme-change", handleThemeChange);
+      window.removeEventListener("amplify:document-theme-change", handleThemeChange);
     };
   });
 

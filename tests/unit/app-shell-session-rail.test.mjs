@@ -14,6 +14,10 @@ const appCss = await readFile("apps/standalone-sveltekit/src/app.css", "utf8");
 const layoutSource = await readFile("apps/standalone-sveltekit/src/routes/+layout.svelte", "utf8");
 const odysseusFrameSource = await readFile("packages/workspace-core/src/components/OdysseusDocumentFrame.svelte", "utf8");
 const odysseusHostSource = await readFile("apps/standalone-sveltekit/static/odysseus-document-host.html", "utf8");
+const themeRuntimeSource = await readFile("apps/standalone-sveltekit/src/lib/theme/theme-runtime.ts", "utf8");
+const themePickerSource = await readFile("apps/standalone-sveltekit/src/lib/theme/ThemePicker.svelte", "utf8");
+const themeRegistrySource = await readFile("apps/standalone-sveltekit/src/lib/theme/theme-registry.ts", "utf8");
+const daisyThemeSource = await readFile("apps/standalone-sveltekit/src/lib/theme/foundations/themes/daisy.css", "utf8");
 
 assert.equal(rootSource.includes("rail?: Snippet"), true, "WorkspaceRoot should expose an optional rail snippet");
 assert.equal(rootSource.includes("{@render rail()}"), true, "WorkspaceRoot should render the session rail beside chat/artifacts");
@@ -85,8 +89,20 @@ assert.equal(workspaceSessionSource.includes("this.#messages.delete(id)"), true,
 
 assert.equal(sessionsRoute.includes('url.searchParams.get("archived") === "true"'), true, "session list API should expose archived session records for future archive views");
 assert.equal(appCss.includes('@source "../../../packages/chat-surface/dist"'), true, "Tailwind should scan packaged chat surface Svelte output");
-assert.equal(appCss.includes('html[data-theme="gunmetal-light"]'), true, "standalone app should expose a token-backed default theme");
-assert.equal(layoutSource.includes('root.dataset.theme = "gunmetal-light"'), true, "layout should initialize the standalone app theme");
+assert.equal(appCss.includes('@import "./lib/theme/foundations/themes/daisy.css"'), true, "standalone app should import the copied Amplify/Daisy theme foundation");
+assert.equal(appCss.includes("--color-background: var(--color-base-100)"), true, "standalone app should map copied Daisy theme vars into shadcn-style aliases");
+assert.equal(appCss.includes("--app-control-bg"), true, "standalone app should project canonical theme vars into local app control vars");
+assert.equal(appCss.includes("--sonik-border-color"), true, "standalone app should expose a compatibility border color without shadowing DaisyUI border width");
+assert.equal(appCss.includes("--border: color-mix"), false, "standalone app should not overwrite DaisyUI\'s --border width token as a color");
+assert.equal(daisyThemeSource.includes('themes: all'), true, "DaisyUI should compile the full built-in theme library");
+assert.equal(themeRegistrySource.includes('CUSTOM_DOCUMENT_THEME_IDS'), true, "theme registry should include Amplify custom themes");
+assert.equal(themeRegistrySource.includes('DAISY_BUILTIN_THEME_IDS'), true, "theme registry should expose DaisyUI built-in themes");
+assert.equal(themeRuntimeSource.includes('THEME_STORAGE_KEY = "amplify.documentTheme"'), true, "theme runtime should use the Amplify theme storage key");
+assert.equal(themeRuntimeSource.includes('DEFAULT_THEME_SETTING: ThemeSetting = "system"'), true, "standalone app should not hardcode a gunmetal default and should support system preference");
+assert.equal(themeRuntimeSource.includes('THEME_CHANGE_EVENT = "amplify:document-theme-change"'), true, "theme runtime should emit the Amplify theme change event");
+assert.equal(layoutSource.includes("initializeTheme()"), true, "layout should initialize through the shared theme runtime instead of hand-writing data-theme");
+assert.equal(pageSource.includes("<ThemePicker />"), true, "chat shell should expose a theme picker in the global actions");
+assert.equal(themePickerSource.includes('<option value="system">System</option>'), true, "theme picker should allow system preference");
 assert.equal(odysseusFrameSource.includes("sonik:odysseus-document:theme"), true, "document iframe wrapper should send theme tokens to the Odysseus island");
 assert.equal(odysseusFrameSource.includes("targetOrigin?: string"), true, "document iframe theme bridge should make its postMessage target origin explicit for host adapters");
 assert.equal(odysseusFrameSource.includes("allowedOrigin?: string"), true, "document iframe wrapper should make inbound message origin explicit for host adapters");
@@ -94,5 +110,7 @@ assert.equal(odysseusHostSource.includes("parentTargetOrigin = event.origin"), t
 assert.equal(odysseusHostSource.includes("const allowedParentOrigin = window.location.origin"), true, "bundled Odysseus document host should reject arbitrary cross-origin embedding parents");
 assert.equal(odysseusHostSource.includes("if (event.origin !== allowedParentOrigin) return"), true, "Odysseus document host should validate parent origin before processing commands");
 assert.equal(odysseusHostSource.includes("document_host.theme_applied"), true, "Odysseus document host should apply and log theme bridge events");
+assert.equal(odysseusHostSource.includes("'--bg': payload.background"), true, "Odysseus document host should bridge canonical app theme vars into Odysseus native vars");
+assert.equal(odysseusHostSource.includes("'--panel': panel"), true, "Odysseus document host should bridge panel colors into Odysseus native vars");
 
 console.log("app-shell-session-rail tests passed");

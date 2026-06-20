@@ -86,6 +86,9 @@ importers:
       bits-ui:
         specifier: ^2.14.4
         version: 2.16.3(@internationalized/date@3.12.0)(@sveltejs/kit@2.53.2(@opentelemetry/api@1.9.0)(@sveltejs/vite-plugin-svelte@6.2.4(svelte@5.56.3)(vite@7.3.1(jiti@2.7.0)(lightningcss@1.31.1)))(svelte@5.56.3)(typescript@5.9.3)(vite@7.3.1(jiti@2.7.0)(lightningcss@1.31.1)))(svelte@5.56.3)
+      daisyui:
+        specifier: ^5.5.23
+        version: 5.5.23
       svelte:
         specifier: ^5.56.3
         version: 5.56.3
@@ -916,6 +919,9 @@ packages:
   cookie@0.6.0:
     resolution: {integrity: sha512-U71cyTamuh1CRNCfpGY6to28lxvNwPG4Guz/EVjgf3Jmzv0vlDp1atT9eS5dDjMYHucpHbWns6Lwf3BKz6svdw==}
     engines: {node: '>= 0.6'}
+
+  daisyui@5.5.23:
+    resolution: {integrity: sha512-xuheNUSL4T6ZVtWXoioqcNkjoyGX85QTDz4HTw2aBPfqk4fuMjax5HDo8qCmpV6M1YN8bGvfx5BpYCoDeRlt+A==}
 
   debug@4.4.3:
     resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
@@ -1872,6 +1878,8 @@ snapshots:
   consola@3.4.2: {}
 
   cookie@0.6.0: {}
+
+  daisyui@5.5.23: {}
 
   debug@4.4.3:
     dependencies:
