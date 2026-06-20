@@ -22,6 +22,7 @@ import {
   createCommandIndexContext,
   createComposedCommandCatalog,
   createComposedCommandFamilyRegistry,
+  executeHostCatalogCommand,
   createManifestFromOpenApiDocument,
   createSonikBookingManifestFromOpenApiDocument,
   createStandaloneCommandFamilyRegistry,
@@ -487,6 +488,234 @@ const authenticatedLiveOrpc = executeCatalogCommand(liveOrpcCatalog, "booking.co
   scopes: ["booking:read"],
 });
 assert.equal(authenticatedLiveOrpc.ok, true, "mounted live ORPC read can execute only after auth/org/scope context passes");
+
+const bookingHostReadCommand = {
+  ...liveOrpcCommand,
+  id: "booking.host.contexts.list",
+  title: "Host list booking contexts",
+  description: "Host-provided read-only booking context command.",
+  familyId: "booking",
+  loadPolicy: { mode: "surface-eager", priority: 55, profile: "host-booking" },
+  contextHints: {
+    routes: ["/booking"],
+    surfaces: ["booking-console"],
+    pageTypes: [],
+    artifactTypes: [],
+    skillFamilies: ["booking-ops"],
+    commandFamilies: ["booking"],
+    requiredScopes: ["booking:read"],
+  },
+  capabilities: ["booking", "context", "read"],
+  transport: { procedure: "booking.contexts.list", runtimeStatus: "shadow" },
+  metadata: {
+    liveExecution: false,
+    familyId: "booking",
+    loadPolicy: { mode: "surface-eager", priority: 55, profile: "host-booking" },
+    contextHints: {
+      routes: ["/booking"],
+      surfaces: ["booking-console"],
+      skillFamilies: ["booking-ops"],
+      commandFamilies: ["booking"],
+      requiredScopes: ["booking:read"],
+    },
+  },
+};
+const bookingHostWriteCommand = {
+  ...campaignCommand,
+  id: "booking.host.contexts.create",
+  title: "Host create booking context",
+  description: "Host-provided write booking command.",
+  familyId: "booking",
+  source: "orpc",
+  effect: "write",
+  approval: "required",
+  loadPolicy: { mode: "surface-eager", priority: 45, profile: "host-booking" },
+  contextHints: {
+    routes: ["/booking"],
+    surfaces: ["booking-console"],
+    pageTypes: [],
+    artifactTypes: [],
+    skillFamilies: ["booking-ops"],
+    commandFamilies: ["booking"],
+    requiredScopes: ["booking:write"],
+  },
+  capabilities: ["booking", "context", "write"],
+  transport: { procedure: "booking.contexts.create", runtimeStatus: "shadow" },
+  auth: { required: true, orgScoped: true, scopes: ["booking:write"] },
+  policy: { ...campaignCommand.policy, readOnly: false },
+  metadata: {
+    liveExecution: false,
+    familyId: "booking",
+    loadPolicy: { mode: "surface-eager", priority: 45, profile: "host-booking" },
+    contextHints: {
+      routes: ["/booking"],
+      surfaces: ["booking-console"],
+      skillFamilies: ["booking-ops"],
+      commandFamilies: ["booking"],
+      requiredScopes: ["booking:write"],
+    },
+  },
+};
+const bookingHostAdapter = {
+  provider: "booking-host-fixture",
+  families: [{ id: "booking", title: "Bookings", aliases: ["reservations"], source: "host" }],
+  commands: [bookingHostReadCommand, bookingHostWriteCommand],
+};
+const bookingRuntimeCatalog = createComposedCommandCatalog("booking-runtime-test", commandCatalog, [bookingHostAdapter], "2026-06-20T00:00:00.000Z");
+const bookingRuntimeRegistry = createComposedCommandFamilyRegistry("booking-runtime-test", [bookingHostAdapter], "2026-06-20T00:00:00.000Z");
+const bookingSurfaceIndex = createSurfaceCommandIndex(bookingRuntimeCatalog, { surface: "booking-console", authenticated: true, organizationId: "org1", scopes: ["booking:read", "booking:write"] }, { registry: bookingRuntimeRegistry });
+assert.equal(bookingSurfaceIndex.commands.some((command) => command.id === "booking.host.contexts.list"), true, "host runtime commands should still surface through page-aware indexes before execution is mounted");
+assert.equal(searchCommandCatalog(bookingRuntimeCatalog, "host booking").some((command) => command.id === "booking.host.contexts.list"), true, "shadow host runtime commands remain searchable");
+assert.equal(learnCommandDescriptor(bookingRuntimeCatalog, "booking.host.contexts.list", ["transport"]).transport.runtimeStatus, "shadow", "learn keeps shadow transport metadata until runtime binding executes");
+const unavailableHostReceipt = await executeHostCatalogCommand({
+  catalog: bookingRuntimeCatalog,
+  commandId: "booking.host.contexts.list",
+  commandInput: {},
+  execution: { source: "agent-ui", requestId: "req_shadow_host", authenticated: true, organizationId: "org1", scopes: ["booking:read"] },
+});
+assert.equal(unavailableHostReceipt.ok, false, "non-local host commands without a runtime binding should return explicit runtime unavailable receipts");
+assert.equal(unavailableHostReceipt.policy.reasons.includes("runtime_unavailable"), true);
+const mountedLiveWithoutBindingCatalog = createCommandCatalog("mounted-live-without-runtime-test", [{
+  ...bookingHostReadCommand,
+  transport: { procedure: "booking.contexts.list", runtimeStatus: "mounted" },
+  metadata: { ...bookingHostReadCommand.metadata, liveExecution: true },
+}], "2026-06-20T00:00:00.000Z");
+const mountedLiveWithoutBindingReceipt = await executeHostCatalogCommand({
+  catalog: mountedLiveWithoutBindingCatalog,
+  commandId: "booking.host.contexts.list",
+  commandInput: {},
+  execution: { source: "agent-ui", requestId: "req_mounted_live_no_binding", authenticated: true, organizationId: "org1", scopes: ["booking:read"] },
+});
+assert.equal(mountedLiveWithoutBindingReceipt.ok, false, "mounted/live non-local descriptors still require an explicit host runtime binding");
+assert.equal(mountedLiveWithoutBindingReceipt.policy.reasons.includes("runtime_unavailable"), true);
+const localFallbackReceipt = await executeHostCatalogCommand({
+  catalog: bookingRuntimeCatalog,
+  commandId: "getWeather",
+  commandInput: { city: "Bogota" },
+  execution: { source: "agent-ui", requestId: "req_local_fallback" },
+});
+assert.equal(localFallbackReceipt.ok, true, "local UI/demo reads should still use the core catalog executor when no host runtime binding exists");
+const shadowHostReceipt = await executeHostCatalogCommand({
+  catalog: bookingRuntimeCatalog,
+  commandId: "booking.host.contexts.list",
+  commandInput: {},
+  runtimeAdapters: [{ provider: "shadow-runtime", bindings: [{ commandId: "booking.host.contexts.list", status: "shadow" }] }],
+  execution: { source: "agent-ui", requestId: "req_shadow_host", authenticated: true, organizationId: "org1", scopes: ["booking:read"] },
+});
+assert.equal(shadowHostReceipt.ok, false, "shadow host commands should not execute without a mounted runtime binding");
+assert.equal(shadowHostReceipt.policy.reasons.includes("runtime_shadow"), true);
+const mountedLiveShadowBindingReceipt = await executeHostCatalogCommand({
+  catalog: mountedLiveWithoutBindingCatalog,
+  commandId: "booking.host.contexts.list",
+  commandInput: {},
+  runtimeAdapters: [{ provider: "shadow-runtime", bindings: [{ commandId: "booking.host.contexts.list", status: "shadow" }] }],
+  execution: { source: "agent-ui", requestId: "req_mounted_live_shadow", authenticated: true, organizationId: "org1", scopes: ["booking:read"] },
+});
+assert.equal(mountedLiveShadowBindingReceipt.ok, false, "shadow runtime binding remains authoritative even when descriptor metadata claims mounted/live");
+assert.equal(mountedLiveShadowBindingReceipt.policy.reasons.includes("runtime_shadow"), true);
+
+const readRuntimeAdapter = {
+  provider: "booking-runtime-fixture",
+  bindings: [{
+    commandId: "booking.host.contexts.list",
+    status: "mounted-read",
+    execute: (input, context) => ({
+      summary: {
+        contexts: [{ id: "ctx_1", name: "Main Room" }],
+        input,
+        action: context.action,
+        procedure: context.command.transport.procedure,
+      },
+      nextActions: ["learnCommand"],
+    }),
+  }],
+};
+const unauthenticatedRuntimeReceipt = await executeHostCatalogCommand({
+  catalog: bookingRuntimeCatalog,
+  commandId: "booking.host.contexts.list",
+  commandInput: { limit: 1 },
+  runtimeAdapters: [readRuntimeAdapter],
+  execution: { source: "agent-ui", requestId: "req_host_no_auth" },
+});
+assert.equal(unauthenticatedRuntimeReceipt.ok, false, "mounted host runtime still obeys auth/org/scope policy");
+assert.equal(unauthenticatedRuntimeReceipt.policy.reasons.includes("auth_required"), true);
+const readRuntimeReceipt = await executeHostCatalogCommand({
+  catalog: bookingRuntimeCatalog,
+  commandId: "booking.host.contexts.list",
+  commandInput: { limit: 1 },
+  runtimeAdapters: [readRuntimeAdapter],
+  execution: { source: "agent-ui", requestId: "req_host_read", authenticated: true, organizationId: "org1", scopes: ["booking:read"] },
+});
+assert.equal(readRuntimeReceipt.ok, true, "mounted-read host runtime can execute read ORPC commands after policy passes");
+assert.deepEqual(readRuntimeReceipt.summary.contexts.map((context) => context.id), ["ctx_1"]);
+assert.equal(readRuntimeReceipt.summary.procedure, "booking.contexts.list");
+assert.equal(readRuntimeReceipt.trace.provider, "booking-runtime-fixture");
+
+const disabledRuntimeReceipt = await executeHostCatalogCommand({
+  catalog: bookingRuntimeCatalog,
+  commandId: "booking.host.contexts.list",
+  runtimeAdapters: [{ provider: "disabled-runtime", bindings: [{ commandId: "booking.host.contexts.list", status: "disabled" }] }],
+  execution: { source: "agent-ui", requestId: "req_host_disabled", authenticated: true, organizationId: "org1", scopes: ["booking:read"] },
+});
+assert.equal(disabledRuntimeReceipt.ok, false, "disabled host runtime returns a typed deny receipt");
+assert.equal(disabledRuntimeReceipt.policy.reasons.includes("runtime_disabled"), true);
+const explicitUnavailableRuntimeReceipt = await executeHostCatalogCommand({
+  catalog: bookingRuntimeCatalog,
+  commandId: "booking.host.contexts.list",
+  runtimeAdapters: [{ provider: "unavailable-runtime", bindings: [{ commandId: "booking.host.contexts.list", status: "unavailable" }] }],
+  execution: { source: "agent-ui", requestId: "req_host_unavailable", authenticated: true, organizationId: "org1", scopes: ["booking:read"] },
+});
+assert.equal(explicitUnavailableRuntimeReceipt.ok, false, "unavailable host runtime returns a typed deny receipt distinct from disabled");
+assert.equal(explicitUnavailableRuntimeReceipt.policy.reasons.includes("runtime_unavailable"), true);
+
+const writeRuntimeAdapter = {
+  provider: "booking-write-runtime-fixture",
+  bindings: [{
+    commandId: "booking.host.contexts.create",
+    status: "mounted-write",
+    commit: (input) => ({ summary: { created: true, input }, nextActions: ["learnCommand"] }),
+  }],
+};
+const writeExecuteReceipt = await executeHostCatalogCommand({
+  catalog: bookingRuntimeCatalog,
+  commandId: "booking.host.contexts.create",
+  commandInput: { name: "VIP" },
+  runtimeAdapters: [writeRuntimeAdapter],
+  execution: { source: "agent-ui", requestId: "req_write_execute", authenticated: true, organizationId: "org1", scopes: ["booking:write"] },
+});
+assert.equal(writeExecuteReceipt.ok, false, "write host commands must not run through execute even when mounted-write");
+assert.equal(writeExecuteReceipt.policy.reasons.includes("runtime_not_mounted_for_execute"), true);
+const writeCommitWithoutApproval = await executeHostCatalogCommand({
+  catalog: bookingRuntimeCatalog,
+  commandId: "booking.host.contexts.create",
+  commandInput: { name: "VIP" },
+  runtimeAdapters: [writeRuntimeAdapter],
+  execution: { action: "commit", source: "agent-ui", requestId: "req_write_no_approval", authenticated: true, organizationId: "org1", scopes: ["booking:write"] },
+});
+assert.equal(writeCommitWithoutApproval.ok, false, "write host commits require trusted approval");
+assert.equal(writeCommitWithoutApproval.policy.reasons.includes("approval_required"), true);
+const writeCommitReceipt = await executeHostCatalogCommand({
+  catalog: bookingRuntimeCatalog,
+  commandId: "booking.host.contexts.create",
+  commandInput: { name: "VIP" },
+  runtimeAdapters: [writeRuntimeAdapter],
+  execution: { action: "commit", approved: true, source: "agent-ui", requestId: "req_write_approved", authenticated: true, organizationId: "org1", scopes: ["booking:write"] },
+});
+assert.equal(writeCommitReceipt.ok, true, "approved mounted-write host command can commit through runtime adapter");
+assert.equal(writeCommitReceipt.summary.created, true);
+await assert.rejects(
+  () => executeHostCatalogCommand({
+    catalog: bookingRuntimeCatalog,
+    commandId: "booking.host.contexts.list",
+    runtimeAdapters: [
+      readRuntimeAdapter,
+      { provider: "duplicate-runtime", bindings: [{ commandId: "booking.host.contexts.list", status: "mounted-read", execute: () => ({ summary: {} }) }] },
+    ],
+    execution: { source: "agent-ui", requestId: "req_duplicate_runtime" },
+  }),
+  /Duplicate runtime binding/,
+  "runtime adapters should fail fast on duplicate command bindings",
+);
 
 const sandboxTool = mixedManifest.tools.find((tool) => tool.id === "sandbox.shell.run");
 assert.ok(sandboxTool);
