@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
 import {
+  createCommandCatalog,
+  createCommandCatalogFromToolManifest,
+  executeCatalogCommand,
+  learnCommandDescriptor,
+  searchCommandCatalog,
+  searchCommandCatalogWithMetadata,
   createToolManifest,
   evaluateToolPolicy,
   filterAvailableTools,
@@ -10,6 +16,7 @@ import {
 import {
   createManifestFromOpenApiDocument,
   createSonikBookingManifestFromOpenApiDocument,
+  createStandaloneCommandCatalog,
   createStandaloneToolManifest,
 } from "../../packages/platform-adapters/src/index.ts";
 import { createStandaloneAvailableToolManifest } from "../../apps/standalone-sveltekit/src/lib/server/tool-manifest.ts";
@@ -146,4 +153,81 @@ assert.deepEqual(standaloneOrpc.tools, [], "standalone ORPC mock does not expose
 const standaloneLocal = createStandaloneAvailableToolManifest({ sourceMode: "local-ui", includeApprovalRequired: true });
 assert.equal(standaloneLocal.tools.some((tool) => tool.id === "createDocumentArtifact" && tool.approval === "required"), true);
 
+const commandCatalog = createCommandCatalogFromToolManifest(standalone);
+assert.equal(commandCatalog.version, "sonik-agent-ui.command-catalog.v1");
+assert.equal(commandCatalog.commands.some((command) => command.id === "createJsonArtifact" && command.source === "local-ui"), true, "local UI artifact command should project into command catalog");
+assert.equal(commandCatalog.commands.find((command) => command.id === "booking.contexts.list")?.transport.runtimeStatus, "shadow", "ORPC mock remains metadata/shadow in command catalog");
+
+const catalogSearch = searchCommandCatalog(commandCatalog, "document");
+assert.equal(catalogSearch.some((command) => command.id === "createDocumentArtifact"), true, "catalog search should find commands by user-language/capability terms");
+assert.equal(catalogSearch.every((command) => command.id && command.title && !Object.hasOwn(command, "inputSchemaJson")), true, "catalog search should stay compact and not return full schema detail");
+const cappedCatalogSearch = searchCommandCatalogWithMetadata(commandCatalog, "", 3);
+assert.equal(cappedCatalogSearch.commands.length, 3, "catalog search should cap broad searches by defaultable limit");
+assert.equal(cappedCatalogSearch.truncated, true, "catalog search should report truncation for broad catalogs");
+assert.equal(cappedCatalogSearch.totalMatches, commandCatalog.commands.length, "catalog search should report total matches separately from returned commands");
+
+const learnedDocument = learnCommandDescriptor(commandCatalog, "createDocumentArtifact", ["schema", "examples", "policy", "output", "surfaces", "transport", "auth"]);
+assert.equal(learnedDocument.ok, true);
+assert.equal(learnedDocument.commandId, "createDocumentArtifact");
+assert.equal(learnedDocument.policy.readOnly, false, "write-like document command should not be read-only");
+assert.deepEqual(learnedDocument.surfaces, ["document", "canvas"]);
+assert.equal(learnedDocument.transport.runtimeStatus, "mounted");
+
+const executeReadReceipt = executeCatalogCommand(commandCatalog, "getWeather", { city: "Bogota" }, { source: "agent-ui", requestId: "req_read" });
+assert.equal(executeReadReceipt.ok, true, "mounted local read commands can execute through catalog bridge");
+assert.equal(executeReadReceipt.commandId, "getWeather");
+assert.equal(executeReadReceipt.policy.decision, "allow");
+assert.equal(executeReadReceipt.trace.requestId, "req_read");
+
+const executeWriteReceipt = executeCatalogCommand(commandCatalog, "createJsonArtifact", { title: "Demo" }, { source: "agent-ui", requestId: "req_write" });
+assert.equal(executeWriteReceipt.ok, false, "write commands must not execute through read execute path");
+assert.equal(executeWriteReceipt.policy.decision, "needs_approval");
+assert.equal(executeWriteReceipt.policy.reasons.includes("use_commit_for_mutation_command"), true);
+
+const commitWithoutApproval = executeCatalogCommand(commandCatalog, "createJsonArtifact", { title: "Demo" }, { action: "commit", source: "agent-ui", requestId: "req_commit_no" });
+assert.equal(commitWithoutApproval.ok, false, "approval-gated command cannot commit without approval");
+assert.equal(commitWithoutApproval.policy.decision, "needs_approval");
+
+const commitWithApproval = executeCatalogCommand(commandCatalog, "createJsonArtifact", { title: "Demo" }, { action: "commit", source: "agent-ui", approved: true, requestId: "req_commit_yes" });
+assert.equal(commitWithApproval.ok, true, "approved mounted local UI command can commit through catalog bridge dry-run receipt");
+assert.equal(commitWithApproval.summary.dryRun, true, "catalog commit is a dry-run receipt until a live local executor is bound");
+
+const orpcExecutionReceipt = executeCatalogCommand(commandCatalog, "booking.contexts.list", {}, { source: "agent-ui", requestId: "req_orpc" });
+assert.equal(orpcExecutionReceipt.ok, false, "ORPC command remains non-executable until live adapter is mounted");
+assert.equal(orpcExecutionReceipt.policy.reasons.includes("orpc_execution_adapter_not_mounted"), true);
+
+const liveOrpcCommand = commandCatalog.commands.find((command) => command.id === "booking.contexts.list");
+assert.ok(liveOrpcCommand);
+const liveOrpcCatalog = createCommandCatalog("live-orpc-test", [{
+  ...liveOrpcCommand,
+  transport: { procedure: "booking.contexts.list", runtimeStatus: "mounted" },
+  metadata: { liveExecution: true },
+}]);
+const unauthenticatedLiveOrpc = executeCatalogCommand(liveOrpcCatalog, "booking.contexts.list", {}, { source: "agent-ui", requestId: "req_live_orpc_no_auth" });
+assert.equal(unauthenticatedLiveOrpc.ok, false, "live ORPC execution still requires auth/org/scope context");
+assert.equal(unauthenticatedLiveOrpc.policy.reasons.includes("auth_required"), true);
+assert.equal(unauthenticatedLiveOrpc.policy.reasons.includes("organization_required"), true);
+assert.equal(unauthenticatedLiveOrpc.policy.reasons.includes("missing_scopes:booking:read"), true);
+const authenticatedLiveOrpc = executeCatalogCommand(liveOrpcCatalog, "booking.contexts.list", {}, {
+  source: "agent-ui",
+  requestId: "req_live_orpc_auth",
+  authenticated: true,
+  organizationId: "org_1",
+  scopes: ["booking:read"],
+});
+assert.equal(authenticatedLiveOrpc.ok, true, "mounted live ORPC read can execute only after auth/org/scope context passes");
+
+const sandboxTool = mixedManifest.tools.find((tool) => tool.id === "sandbox.shell.run");
+assert.ok(sandboxTool);
+const sandboxCatalog = createCommandCatalogFromToolManifest(createToolManifest("sandbox-test", [sandboxTool]));
+const sandboxExecutionReceipt = executeCatalogCommand(sandboxCatalog, "sandbox.shell.run", { command: "pwd" }, { source: "agent-ui", requestId: "req_sandbox" });
+assert.equal(sandboxExecutionReceipt.ok, false, "sandbox commands are denied unless sandbox execution is explicitly enabled by trusted host context");
+assert.equal(sandboxExecutionReceipt.policy.reasons.includes("sandbox_execution_not_enabled"), true);
+const sandboxCommitReceipt = executeCatalogCommand(sandboxCatalog, "sandbox.shell.run", { command: "pwd" }, { action: "commit", source: "agent-ui", requestId: "req_sandbox_commit" });
+assert.equal(sandboxCommitReceipt.ok, false, "sandbox commit remains denied without sandbox enablement and approval");
+assert.equal(sandboxCommitReceipt.policy.reasons.includes("sandbox_execution_not_enabled"), true);
+assert.equal(sandboxCommitReceipt.policy.reasons.includes("approval_required"), true);
+
+const standaloneCommandCatalog = createStandaloneCommandCatalog({ sessionId: "s-command" });
+assert.equal(standaloneCommandCatalog.commands.some((command) => command.metadata.sessionId === "s-command"), true, "standalone command catalog preserves adapter context metadata");
 console.log("tool-contracts tests passed");

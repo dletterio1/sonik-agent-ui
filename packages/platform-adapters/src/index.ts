@@ -1,9 +1,11 @@
 import {
+  createCommandCatalogFromToolManifest,
   createToolManifest,
   inferEffectFromHttpMethod,
   inferEffectFromProcedureId,
   type ToolContractEntry,
   type ToolEffect,
+  type CommandCatalog,
   type ToolManifest,
   type ToolSource,
   type ToolUiTarget,
@@ -66,6 +68,10 @@ export function createStandaloneToolManifest(context: PlatformAdapterContext = {
       metadata: { adapter: "standalone-mock", sessionId: context.sessionId ?? null },
     },
   ], generatedAt);
+}
+
+export function createStandaloneCommandCatalog(context: PlatformAdapterContext = {}, generatedAt = new Date().toISOString()): CommandCatalog {
+  return createCommandCatalogFromToolManifest(createStandaloneToolManifest(context, generatedAt));
 }
 
 export function createManifestFromOpenApiDocument(input: {
