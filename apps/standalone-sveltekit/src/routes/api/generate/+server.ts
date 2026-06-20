@@ -12,7 +12,7 @@ import { logArtifactTelemetry } from "$lib/artifacts/artifact-telemetry";
 import { writeAgentTelemetry } from "$lib/server/agent-telemetry";
 import { instrumentGenerateStream } from "$lib/server/stream-telemetry";
 import { summarizeWorkspaceContext, syncActiveWorkspaceDocumentSnapshot, type WorkspaceDocumentRecord } from "$lib/server/workspace-store";
-import { createStandaloneToolManifestSummary } from "$lib/server/tool-manifest";
+import { createStandaloneCommandIndexSummary } from "$lib/server/tool-manifest";
 import {
   routeString,
   WORKSPACE_CONTENT_MAX_CHARS,
@@ -82,18 +82,18 @@ export const POST: RequestHandler = async ({ request }) => {
 
   const modelMessages = await convertToModelMessages(uiMessages);
   const contextSummary = summarizeWorkspaceContext({ activeDocument });
-  const toolManifestSummary = createStandaloneToolManifestSummary({ includeApprovalRequired: true });
-  const systemContext = [contextSummary, `CONTRACT-DERIVED TOOL MANIFEST:\n${toolManifestSummary}`].filter(Boolean).join("\n\n");
+  const commandIndexSummary = createStandaloneCommandIndexSummary({ includeApprovalRequired: true });
+  const systemContext = [contextSummary, `CONTRACT-DERIVED COMMAND STARTUP INDEX:\n${commandIndexSummary}`].filter(Boolean).join("\n\n");
   const contextualModelMessages = systemContext
     ? [{ role: "system" as const, content: systemContext }, ...modelMessages]
     : modelMessages;
   void writeAgentTelemetry({
     source: "server",
-    event: "api.generate.tool_manifest_context",
+    event: "api.generate.command_index_context",
     requestId,
     sessionId: telemetrySessionId,
     messageId: lastMessage?.id,
-    elementCount: toolManifestSummary.split("\n- ").length - 1,
+    elementCount: commandIndexSummary.split("\n- ").length - 1,
     ok: true,
   }).catch(() => undefined);
   const agent = createAgent({ activeDocument, sessionId: telemetrySessionId });

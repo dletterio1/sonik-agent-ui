@@ -1,8 +1,14 @@
 import {
+  createDefaultCommandFamilyRegistry,
+  createStartupCommandIndex,
+  createSurfaceCommandIndex,
   createCommandCatalogFromToolManifest,
   createToolManifest,
   inferEffectFromHttpMethod,
   inferEffectFromProcedureId,
+  type CommandFamilyRegistry,
+  type CommandIndex,
+  type CommandIndexContext,
   type ToolContractEntry,
   type ToolEffect,
   type CommandCatalog,
@@ -72,6 +78,22 @@ export function createStandaloneToolManifest(context: PlatformAdapterContext = {
 
 export function createStandaloneCommandCatalog(context: PlatformAdapterContext = {}, generatedAt = new Date().toISOString()): CommandCatalog {
   return createCommandCatalogFromToolManifest(createStandaloneToolManifest(context, generatedAt));
+}
+
+export function createStandaloneCommandFamilyRegistry(generatedAt = new Date().toISOString()): CommandFamilyRegistry {
+  return createDefaultCommandFamilyRegistry(generatedAt);
+}
+
+export function createStandaloneStartupCommandIndex(context: PlatformAdapterContext = {}, generatedAt = new Date().toISOString()): CommandIndex {
+  return createStartupCommandIndex(createStandaloneCommandCatalog(context, generatedAt), {
+    registry: createStandaloneCommandFamilyRegistry(generatedAt),
+  });
+}
+
+export function createStandaloneSurfaceCommandIndex(context: PlatformAdapterContext = {}, indexContext: CommandIndexContext = {}, generatedAt = new Date().toISOString()): CommandIndex {
+  return createSurfaceCommandIndex(createStandaloneCommandCatalog(context, generatedAt), indexContext, {
+    registry: createStandaloneCommandFamilyRegistry(generatedAt),
+  });
 }
 
 export function createManifestFromOpenApiDocument(input: {

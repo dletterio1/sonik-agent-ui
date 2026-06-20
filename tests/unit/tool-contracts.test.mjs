@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import {
   createCommandCatalog,
+  createCommandFamilyRegistry,
+  createDefaultCommandFamilyRegistry,
+  createStartupCommandIndex,
+  createSurfaceCommandIndex,
   createCommandCatalogFromToolManifest,
   executeCatalogCommand,
   learnCommandDescriptor,
@@ -16,10 +20,16 @@ import {
 import {
   createManifestFromOpenApiDocument,
   createSonikBookingManifestFromOpenApiDocument,
+  createStandaloneCommandFamilyRegistry,
   createStandaloneCommandCatalog,
+  createStandaloneStartupCommandIndex,
+  createStandaloneSurfaceCommandIndex,
   createStandaloneToolManifest,
 } from "../../packages/platform-adapters/src/index.ts";
-import { createStandaloneAvailableToolManifest } from "../../apps/standalone-sveltekit/src/lib/server/tool-manifest.ts";
+import {
+  createStandaloneAvailableToolManifest,
+  createStandaloneCommandIndexSummary,
+} from "../../apps/standalone-sveltekit/src/lib/server/tool-manifest.ts";
 
 assert.equal(inferEffectFromHttpMethod("GET"), "read");
 assert.equal(inferEffectFromHttpMethod("POST"), "write");
@@ -157,6 +167,80 @@ const commandCatalog = createCommandCatalogFromToolManifest(standalone);
 assert.equal(commandCatalog.version, "sonik-agent-ui.command-catalog.v1");
 assert.equal(commandCatalog.commands.some((command) => command.id === "createJsonArtifact" && command.source === "local-ui"), true, "local UI artifact command should project into command catalog");
 assert.equal(commandCatalog.commands.find((command) => command.id === "booking.contexts.list")?.transport.runtimeStatus, "shadow", "ORPC mock remains metadata/shadow in command catalog");
+assert.equal(commandCatalog.commands.find((command) => command.id === "createJsonArtifact")?.familyId, "artifact", "artifact tools infer a product-neutral core family");
+assert.equal(commandCatalog.commands.find((command) => command.id === "createDocumentArtifact")?.familyId, "document", "document tools infer a product-neutral core family");
+assert.equal(commandCatalog.commands.find((command) => command.id === "booking.contexts.list")?.familyId, "integration", "mock ORPC booking remains generic integration in the standalone core");
+
+const defaultFamilyRegistry = createDefaultCommandFamilyRegistry("2026-06-20T00:00:00.000Z");
+assert.equal(defaultFamilyRegistry.families.some((family) => family.id === "campaign"), false, "core family registry must not hardcode Sonik or client families");
+assert.equal(createStandaloneCommandFamilyRegistry("2026-06-20T00:00:00.000Z").families.some((family) => family.id === "artifact"), true, "standalone adapter exposes the core family registry");
+
+const startupIndex = createStartupCommandIndex(commandCatalog, { registry: defaultFamilyRegistry, limit: 3 });
+assert.equal(startupIndex.commands.length, 3, "startup index should honor a bounded limit");
+assert.equal(startupIndex.truncated, true, "startup index should report truncation");
+assert.equal(startupIndex.commands.every((command) => command.loadPolicy.mode === "eager-summary"), true, "startup index should only include eager summaries");
+assert.equal(startupIndex.commands.every((command) => !Object.hasOwn(command, "input") && !Object.hasOwn(command, "inputSchemaJson")), true, "startup index should be schema-free");
+assert.equal(startupIndex.families.every((family) => ["artifact", "document", "ui", "integration", "data", "sandbox"].includes(family.id)), true, "startup index should only reference registered core families");
+
+const standaloneStartupIndex = createStandaloneStartupCommandIndex({ sessionId: "s-index" }, "2026-06-20T00:00:00.000Z");
+assert.equal(standaloneStartupIndex.commands.some((command) => command.id === "createJsonArtifact"), true, "standalone startup index includes core artifact creation summary");
+const standaloneCommandIndexSummary = createStandaloneCommandIndexSummary({ sessionId: "s-index", indexLimit: 4 });
+assert.equal(standaloneCommandIndexSummary.includes("Command index standalone-local"), true, "standalone command index summary should be available for server prompt context");
+assert.equal(standaloneCommandIndexSummary.includes("Use searchCommandCatalog"), true, "standalone command index summary should direct lazy discovery");
+assert.equal(standaloneCommandIndexSummary.includes("inputSchema"), false, "standalone command index summary should stay schema-free");
+
+const campaignCommand = {
+  ...commandCatalog.commands.find((command) => command.id === "createJsonArtifact"),
+  id: "campaign.launch",
+  title: "Launch campaign",
+  description: "Host-provided campaign launch command.",
+  familyId: "campaign",
+  source: "orpc",
+  effect: "write",
+  approval: "required",
+  loadPolicy: { mode: "surface-eager", priority: 50, profile: "sonik" },
+  contextHints: {
+    routes: ["/campaigns/new"],
+    surfaces: ["campaign-wizard"],
+    pageTypes: [],
+    artifactTypes: [],
+    skillFamilies: ["campaign-authoring"],
+    commandFamilies: ["campaign"],
+    requiredScopes: ["campaign:send"],
+  },
+  capabilities: ["campaign", "launch", "send"],
+  transport: { procedure: "campaign.launch", runtimeStatus: "shadow" },
+  auth: { required: true, orgScoped: true, scopes: ["campaign:send"] },
+  metadata: { liveExecution: false },
+};
+const campaignCatalog = createCommandCatalog("host-campaign-test", [campaignCommand], "2026-06-20T00:00:00.000Z");
+assert.throws(() => createStartupCommandIndex(campaignCatalog, { registry: defaultFamilyRegistry }), /Unknown command family ids: campaign/, "host-only family drift should be rejected unless the active host registry defines it");
+const hostFamilyRegistry = createCommandFamilyRegistry("host-test", [
+  ...defaultFamilyRegistry.families,
+  { id: "campaign", title: "Campaigns", aliases: ["marketing"], source: "host" },
+], "2026-06-20T00:00:00.000Z");
+const unmatchedSurfaceIndex = createSurfaceCommandIndex(campaignCatalog, { surface: "event-create" }, { registry: hostFamilyRegistry });
+assert.deepEqual(unmatchedSurfaceIndex.commands, [], "surface-eager host command should not load on an unrelated surface");
+const scopedOutSurfaceIndex = createSurfaceCommandIndex(campaignCatalog, { surface: "campaign-wizard" }, { registry: hostFamilyRegistry });
+assert.deepEqual(scopedOutSurfaceIndex.commands, [], "surface-eager host command should not load until required context scopes are present");
+const matchedSurfaceIndex = createSurfaceCommandIndex(campaignCatalog, { surface: "campaign-wizard", scopes: ["campaign:send"] }, { registry: hostFamilyRegistry });
+assert.deepEqual(matchedSurfaceIndex.commands.map((command) => command.id), ["campaign.launch"], "surface-eager host command should load for matching page/surface context");
+assert.equal(matchedSurfaceIndex.commands.every((command) => !Object.hasOwn(command, "input") && !Object.hasOwn(command, "inputSchemaJson")), true, "surface index should also be schema-free");
+const matchedByFamilyIndex = createSurfaceCommandIndex(campaignCatalog, { commandFamilies: ["campaign"], scopes: ["campaign:send"] }, { registry: hostFamilyRegistry });
+assert.deepEqual(matchedByFamilyIndex.commands.map((command) => command.id), ["campaign.launch"], "surface index should support page-provided command family hints");
+
+const lazySearch = searchCommandCatalog(commandCatalog, "weather");
+assert.equal(lazySearch.some((command) => command.id === "getWeather"), true, "lazy commands should remain discoverable through catalog search");
+const hiddenCatalog = createCommandCatalog("hidden-test", [{
+  ...commandCatalog.commands.find((command) => command.id === "getWeather"),
+  id: "hidden.secret",
+  title: "Hidden secret",
+  loadPolicy: { mode: "hidden", priority: 100 },
+}]);
+assert.equal(searchCommandCatalog(hiddenCatalog, "secret").length, 0, "hidden commands should not appear in standard catalog search");
+
+const standaloneSurfaceIndex = createStandaloneSurfaceCommandIndex({ sessionId: "s-index" }, { surface: "canvas" }, "2026-06-20T00:00:00.000Z");
+assert.equal(standaloneSurfaceIndex.commands.some((command) => command.familyId === "artifact"), true, "standalone surface index composes catalog and core family registry");
 
 const catalogSearch = searchCommandCatalog(commandCatalog, "document");
 assert.equal(catalogSearch.some((command) => command.id === "createDocumentArtifact"), true, "catalog search should find commands by user-language/capability terms");
