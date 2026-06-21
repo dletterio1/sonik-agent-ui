@@ -1244,6 +1244,154 @@ export function createJsonRenderTransform(): TransformStream<
   });
 }
 
+
+// =============================================================================
+// UI Message Stream Safety Transform
+// =============================================================================
+
+export interface StreamSafetyStats {
+  /** Number of reasoning chunks removed from the UI stream. */
+  reasoningChunksDropped: number;
+  /** Number of incoming text-delta chunks observed. */
+  textDeltaChunksIn: number;
+  /** Number of outgoing text-delta chunks emitted after coalescing. */
+  textDeltaChunksOut: number;
+  /** Total text characters emitted after coalescing. */
+  textDeltaCharsOut: number;
+  /** Number of non-text chunks passed through unchanged. */
+  passthroughChunks: number;
+}
+
+export interface StreamSafetyOptions {
+  /**
+   * Maximum characters per emitted text-delta. Keep deliberately small while
+   * Svelte chat rendering is hardened; this avoids the browser crash reproduced
+   * by captured grouped-25 streams while still reducing one-char transport spam.
+   */
+  maxTextDeltaChars?: number;
+  /** Drop reasoning-start/reasoning-delta/reasoning-end chunks from browser UI. */
+  dropReasoning?: boolean;
+  /** Called exactly once when the transform closes. Callback failures never affect stream delivery. */
+  onStats?: (stats: StreamSafetyStats) => void;
+}
+
+const DEFAULT_STREAM_SAFETY_MAX_TEXT_DELTA_CHARS = 12;
+
+type TypedStreamChunk = { type: string };
+type TextDeltaChunkLike = { type: "text-delta"; id: string; delta: string };
+
+function isReasoningChunk(chunk: TypedStreamChunk): boolean {
+  return chunk.type === "reasoning-start" || chunk.type === "reasoning-delta" || chunk.type === "reasoning-end";
+}
+
+function isTextDeltaChunk(chunk: TypedStreamChunk): chunk is TextDeltaChunkLike {
+  return chunk.type === "text-delta" && "id" in chunk && "delta" in chunk && typeof chunk.id === "string" && typeof chunk.delta === "string";
+}
+
+function cloneStats(stats: StreamSafetyStats): StreamSafetyStats {
+  return { ...stats };
+}
+
+/**
+ * Creates a browser-safety transform for AI SDK UI message streams.
+ *
+ * The json-render transform may split prose into very small text deltas while
+ * it looks for JSONL artifact patches. That is correct for parsing, but unsafe
+ * as a browser rendering contract: captured real-model streams reproduced a
+ * Chromium page crash when many tiny deltas reached the Svelte chat surface.
+ *
+ * This transform keeps the wire protocol typed and conservative:
+ * - reasoning chunks are removed from the browser lane by default;
+ * - consecutive text-delta chunks with the same text id are batched into small,
+ *   bounded chunks;
+ * - all non-text/tool/spec/finish chunks pass through in order after flushing
+ *   pending text;
+ * - telemetry receives aggregate counts, not raw reasoning content.
+ */
+export function createUiMessageStreamSafetyTransform<T extends TypedStreamChunk = StreamChunk>(
+  options: StreamSafetyOptions = {},
+): TransformStream<T, T> {
+  const maxTextDeltaChars = Math.max(1, Math.min(options.maxTextDeltaChars ?? DEFAULT_STREAM_SAFETY_MAX_TEXT_DELTA_CHARS, 256));
+  const dropReasoning = options.dropReasoning ?? true;
+  const stats: StreamSafetyStats = {
+    reasoningChunksDropped: 0,
+    textDeltaChunksIn: 0,
+    textDeltaChunksOut: 0,
+    textDeltaCharsOut: 0,
+    passthroughChunks: 0,
+  };
+  let pendingTextId: string | null = null;
+  let pendingText = "";
+  let pendingTextTemplate: TextDeltaChunkLike | null = null;
+  let reported = false;
+
+  function report(): void {
+    if (reported) return;
+    reported = true;
+    try {
+      options.onStats?.(cloneStats(stats));
+    } catch {
+      // Stats are observability-only. A callback failure must never turn a successful stream into a failed UI response.
+    }
+  }
+
+  function emitText(
+    controller: TransformStreamDefaultController<T>,
+    force = false,
+  ): void {
+    if (!pendingTextId || pendingText.length === 0) return;
+    while (pendingText.length >= maxTextDeltaChars || (force && pendingText.length > 0)) {
+      const delta = pendingText.slice(0, maxTextDeltaChars);
+      pendingText = pendingText.slice(delta.length);
+      controller.enqueue({ ...(pendingTextTemplate ?? { type: "text-delta", id: pendingTextId }), delta } as unknown as T);
+      stats.textDeltaChunksOut += 1;
+      stats.textDeltaCharsOut += delta.length;
+      if (!force && pendingText.length < maxTextDeltaChars) break;
+    }
+  }
+
+  function flushText(controller: TransformStreamDefaultController<T>): void {
+    emitText(controller, true);
+    pendingTextId = null;
+    pendingTextTemplate = null;
+  }
+
+  return new TransformStream<T, T>({
+    transform(chunk, controller) {
+      if (dropReasoning && isReasoningChunk(chunk)) {
+        stats.reasoningChunksDropped += 1;
+        return;
+      }
+
+      if (isTextDeltaChunk(chunk)) {
+        stats.textDeltaChunksIn += 1;
+        if (pendingTextId && pendingTextId !== chunk.id) flushText(controller);
+        pendingTextId = chunk.id;
+        pendingTextTemplate = chunk;
+        pendingText += chunk.delta;
+        emitText(controller);
+        return;
+      }
+
+      flushText(controller);
+      stats.passthroughChunks += 1;
+      controller.enqueue(chunk);
+    },
+    flush(controller) {
+      flushText(controller);
+      report();
+    },
+  });
+}
+
+/** Pipe a stream through {@link createUiMessageStreamSafetyTransform}. */
+export function pipeUiMessageStreamSafety<T extends TypedStreamChunk>(
+  stream: ReadableStream<T>,
+  options: StreamSafetyOptions = {},
+): ReadableStream<T> {
+  return stream.pipeThrough(createUiMessageStreamSafetyTransform<T>(options));
+}
+
 /**
  * The key registered in `AppDataParts` for json-render specs.
  * The AI SDK automatically prefixes this with `"data-"` on the wire,

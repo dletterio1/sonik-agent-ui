@@ -28,6 +28,8 @@ export type {
   MixedStreamParser,
   // AI SDK stream transform
   StreamChunk,
+  StreamSafetyOptions,
+  StreamSafetyStats,
   SpecDataPart,
 } from "./types";
 
@@ -53,7 +55,9 @@ export {
   createMixedStreamParser,
   // AI SDK stream transform
   createJsonRenderTransform,
+  createUiMessageStreamSafetyTransform,
   pipeJsonRender,
+  pipeUiMessageStreamSafety,
   SPEC_DATA_PART,
   SPEC_DATA_PART_TYPE,
 } from "./types";

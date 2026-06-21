@@ -1,5 +1,7 @@
 import { dev } from "$app/environment";
 import { createUIMessageStream } from "ai";
+import type { UIMessageChunk } from "ai";
+import { pipeUiMessageStreamSafety } from "@json-render/core";
 import { instrumentGenerateStream } from "$lib/server/stream-telemetry";
 import { writeAgentTelemetry } from "$lib/server/agent-telemetry";
 
@@ -39,7 +41,7 @@ export async function writeDevSmokeStreamTelemetry(input: DevSmokeStreamInput): 
   });
 }
 
-export function createDevSmokeStream(input: DevSmokeStreamInput) {
+export function createDevSmokeStream(input: DevSmokeStreamInput): ReadableStream<UIMessageChunk> {
   const stream = createUIMessageStream({
     execute: async ({ writer }) => {
       const id = "smoke-text";
@@ -57,7 +59,25 @@ export function createDevSmokeStream(input: DevSmokeStreamInput) {
     onError: (error) => error instanceof Error ? error.message : String(error),
   });
 
-  return instrumentGenerateStream(stream, {
+  const safeStream = pipeUiMessageStreamSafety(stream, {
+    onStats: (stats) => {
+      void writeAgentTelemetry({
+        source: "server",
+        event: "api.generate.stream_safety",
+        requestId: input.requestId,
+        traceId: input.traceId,
+        traceparent: input.traceparent,
+        sessionId: input.sessionId,
+        messageId: input.messageId,
+        runId: input.runId,
+        durationMs: Date.now() - input.startedAt,
+        ok: true,
+        reason: `dropped_reasoning=${stats.reasoningChunksDropped}; text_in=${stats.textDeltaChunksIn}; text_out=${stats.textDeltaChunksOut}; chars=${stats.textDeltaCharsOut}`,
+      }).catch(() => undefined);
+    },
+  });
+
+  return instrumentGenerateStream(safeStream, {
     requestId: input.requestId,
     traceId: input.traceId,
     traceparent: input.traceparent,

@@ -5,8 +5,9 @@ import {
   createUIMessageStream,
   createUIMessageStreamResponse,
   type UIMessage,
+  type UIMessageChunk,
 } from "ai";
-import { pipeJsonRender } from "@json-render/core";
+import { pipeJsonRender, pipeUiMessageStreamSafety } from "@json-render/core";
 import { pipeArtifactToolOutputsToSpecParts } from "$lib/artifacts/artifact-stream";
 import { logArtifactTelemetry } from "$lib/artifacts/artifact-telemetry";
 import { writeAgentTelemetry } from "$lib/server/agent-telemetry";
@@ -217,7 +218,27 @@ export const POST: RequestHandler = async ({ request }) => {
 
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
-        const aiStream = pipeArtifactToolOutputsToSpecParts(pipeJsonRender(result.toUIMessageStream()));
+        const parsedStream = pipeJsonRender<UIMessageChunk>(result.toUIMessageStream());
+        const aiStream = pipeUiMessageStreamSafety(
+          pipeArtifactToolOutputsToSpecParts(parsedStream),
+          {
+            onStats: (stats) => {
+              void writeAgentTelemetry({
+                source: "server",
+                event: "api.generate.stream_safety",
+                requestId,
+                traceId,
+                traceparent,
+                runId: smokeRunId,
+                sessionId: telemetrySessionId,
+                messageId: lastMessage?.id,
+                durationMs: Date.now() - startedAt,
+                ok: true,
+                reason: `dropped_reasoning=${stats.reasoningChunksDropped}; text_in=${stats.textDeltaChunksIn}; text_out=${stats.textDeltaChunksOut}; chars=${stats.textDeltaCharsOut}`,
+              }).catch(() => undefined);
+            },
+          },
+        );
         writer.merge(instrumentGenerateStream(aiStream, {
           requestId,
           traceId,
