@@ -155,6 +155,19 @@ importers:
         specifier: ^5.4.5
         version: 5.9.3
 
+  packages/command-generator:
+    dependencies:
+      '@sonik-agent-ui/tool-contracts':
+        specifier: workspace:*
+        version: link:../tool-contracts
+    devDependencies:
+      '@internal/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      typescript:
+        specifier: ^5.4.5
+        version: 5.9.3
+
   packages/core:
     dependencies:
       zod:
