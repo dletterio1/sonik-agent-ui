@@ -1,10 +1,16 @@
 import {
   createCommandIndexContext,
+  createAnonymousHostSessionEnvelope,
   createComposedCommandCatalog,
   createComposedCommandFamilyRegistry,
+  createEmbeddedHostSessionEnvelope,
   createStandaloneCommandCatalog,
+  createTrustedHostSessionEnvelope,
+  filterEligibleHostCommandAdapters,
+  platformAdapterContextFromHostSession,
   type HostCommandAdapter,
   type HostCommandRuntimeAdapter,
+  type HostSessionEnvelope,
   type PlatformAdapterContext,
 } from "@sonik-agent-ui/platform-adapters";
 import {
@@ -25,21 +31,30 @@ export const STANDALONE_DEMO_BOOKING_READ_SCOPE = "booking:read";
 export const STANDALONE_DEMO_BOOKING_CONTEXTS_COMMAND_ID = "booking.demo.contexts.list";
 export const STANDALONE_DEMO_BOOKING_WRITE_COMMAND_ID = "booking.demo.contexts.create";
 
+const STANDALONE_BOOKING_COMMAND_FAMILY = {
+  id: "booking",
+  title: "Booking",
+  description: "Host-provided booking operations exposed through the command adapter seam.",
+  aliases: ["reservations", "contexts"],
+  source: "host" as const,
+};
+
+export type StandaloneHostSessionMode = "anonymous" | "standalone-demo" | "amplify-embedded";
+
 export type StandaloneHostRuntimeInput = PlatformAdapterContext & {
+  hostSession?: HostSessionEnvelope | null;
+  hostSessionMode?: StandaloneHostSessionMode;
+  hostCommandAdapters?: HostCommandAdapter[];
+  hostRuntimeAdapters?: HostCommandRuntimeAdapter[];
   pageContext?: AgentPageContext;
   indexContext?: CommandIndexContext;
   indexLimit?: number;
 };
 
-const bookingHostAdapter: HostCommandAdapter = {
+const bookingReadHostAdapter: HostCommandAdapter = {
   provider: STANDALONE_HOST_PROVIDER,
-  families: [{
-    id: "booking",
-    title: "Booking",
-    description: "Host-provided booking operations exposed through the command adapter seam.",
-    aliases: ["reservations", "contexts"],
-    source: "host",
-  }],
+  isEligible: (context) => context.authenticated === true && Boolean(context.organizationId) && (context.scopes ?? []).includes(STANDALONE_DEMO_BOOKING_READ_SCOPE),
+  families: [STANDALONE_BOOKING_COMMAND_FAMILY],
   commands: [
     {
       id: STANDALONE_DEMO_BOOKING_CONTEXTS_COMMAND_ID,
@@ -102,6 +117,14 @@ const bookingHostAdapter: HostCommandAdapter = {
         fixtureOnly: true,
       },
     },
+  ],
+};
+
+const bookingWriteHostAdapter: HostCommandAdapter = {
+  provider: STANDALONE_HOST_PROVIDER,
+  isEligible: (context) => context.authenticated === true && Boolean(context.organizationId) && (context.scopes ?? []).includes("booking:write"),
+  families: [STANDALONE_BOOKING_COMMAND_FAMILY],
+  commands: [
     {
       id: STANDALONE_DEMO_BOOKING_WRITE_COMMAND_ID,
       title: "Create demo booking context",
@@ -180,40 +203,115 @@ const bookingRuntimeAdapter: HostCommandRuntimeAdapter = {
 };
 
 export function createStandaloneHostCommandAdapters(): HostCommandAdapter[] {
-  return [bookingHostAdapter];
+  return [bookingReadHostAdapter, bookingWriteHostAdapter];
 }
 
 export function createStandaloneHostRuntimeAdapters(): HostCommandRuntimeAdapter[] {
   return [bookingRuntimeAdapter];
 }
 
-export function createStandaloneHostTrustedContext(input: PlatformAdapterContext = {}): Required<Pick<PlatformAdapterContext, "authenticated" | "organizationId" | "scopes">> & Pick<PlatformAdapterContext, "sessionId"> {
-  return {
+export function createStandaloneDemoHostSession(input: PlatformAdapterContext = {}): HostSessionEnvelope {
+  return createTrustedHostSessionEnvelope({
+    source: "standalone-demo",
     sessionId: input.sessionId ?? null,
-    authenticated: input.authenticated ?? true,
     organizationId: input.organizationId ?? STANDALONE_DEMO_ORG_ID,
     scopes: input.scopes ?? [STANDALONE_DEMO_BOOKING_READ_SCOPE],
+    metadata: { fixtureOnly: true },
+  });
+}
+
+export function resolveStandaloneHostSession(input: StandaloneHostRuntimeInput = {}): HostSessionEnvelope {
+  if ("hostSession" in input) return input.hostSession ?? createAnonymousHostSessionEnvelope({ sessionId: input.sessionId });
+  if (input.hostSessionMode === "standalone-demo") return createStandaloneDemoHostSession(input);
+  if (input.hostSessionMode === "amplify-embedded") {
+    return createEmbeddedHostSessionEnvelope({
+      source: "amplify-embedded",
+      sessionId: input.sessionId,
+      organizationId: input.organizationId,
+      authenticated: input.authenticated,
+      scopes: input.scopes,
+      metadata: { authAuthority: "server-resolved-amplify-context" },
+    });
+  }
+  return createAnonymousHostSessionEnvelope({ sessionId: input.sessionId });
+}
+
+export function createStandaloneHostTrustedContext(input: StandaloneHostRuntimeInput = {}): Required<Pick<PlatformAdapterContext, "authenticated" | "organizationId" | "scopes">> & Pick<PlatformAdapterContext, "sessionId"> {
+  const context = platformAdapterContextFromHostSession(resolveStandaloneHostSession(input));
+  return {
+    sessionId: context.sessionId ?? null,
+    authenticated: context.authenticated === true,
+    organizationId: context.organizationId ?? null,
+    scopes: context.scopes ?? [],
   };
 }
 
-export function createStandaloneHostCommandCatalog(input: PlatformAdapterContext = {}, generatedAt = new Date().toISOString()): CommandCatalog {
+export function createStandaloneHostCommandCatalog(input: StandaloneHostRuntimeInput = {}, generatedAt = new Date().toISOString()): CommandCatalog {
   const trusted = createStandaloneHostTrustedContext(input);
+  const hostAdapters = filterEligibleHostCommandAdapters(resolveStandaloneHostCommandAdapters(input), trusted);
   return createComposedCommandCatalog(
     STANDALONE_HOST_PROVIDER,
     createStandaloneCommandCatalog(trusted, generatedAt),
-    createStandaloneHostCommandAdapters(),
+    hostAdapters,
     generatedAt,
   );
 }
 
 export function createStandaloneHostCommandFamilyRegistry(generatedAt = new Date().toISOString()): CommandFamilyRegistry {
-  return createComposedCommandFamilyRegistry(STANDALONE_HOST_PROVIDER, createStandaloneHostCommandAdapters(), generatedAt);
+  return createStandaloneHostCommandFamilyRegistryForAdapters(createStandaloneHostCommandAdapters(), generatedAt);
+}
+
+function createStandaloneHostCommandFamilyRegistryForAdapters(adapters: HostCommandAdapter[], generatedAt = new Date().toISOString()): CommandFamilyRegistry {
+  const seenFamilies = new Map<string, NonNullable<HostCommandAdapter["families"]>[number]>();
+  return createComposedCommandFamilyRegistry(STANDALONE_HOST_PROVIDER, adapters.map((adapter) => ({
+    ...adapter,
+    families: (adapter.families ?? []).filter((family) => {
+      const existing = seenFamilies.get(family.id);
+      if (!existing) {
+        seenFamilies.set(family.id, family);
+        return true;
+      }
+      if (canonicalCommandFamily(existing) !== canonicalCommandFamily(family)) {
+        throw new Error(`Conflicting command family id in host adapter composition: ${family.id}`);
+      }
+      return false;
+    }),
+  })), generatedAt);
+}
+
+function canonicalCommandFamily(family: NonNullable<HostCommandAdapter["families"]>[number]): string {
+  return JSON.stringify({
+    id: family.id,
+    title: family.title,
+    description: family.description ?? null,
+    parentId: family.parentId ?? null,
+    aliases: [...(family.aliases ?? [])].sort(),
+    source: family.source,
+  });
+}
+
+function resolveStandaloneHostCommandAdapters(input: StandaloneHostRuntimeInput): HostCommandAdapter[] {
+  return input.hostCommandAdapters ?? createStandaloneHostCommandAdapters();
+}
+
+function resolveStandaloneHostRuntimeAdapters(input: StandaloneHostRuntimeInput): HostCommandRuntimeAdapter[] {
+  return input.hostRuntimeAdapters ?? createStandaloneHostRuntimeAdapters();
+}
+
+function selectRuntimeAdaptersForCatalog(adapters: HostCommandRuntimeAdapter[], catalog: CommandCatalog): HostCommandRuntimeAdapter[] {
+  const commandIds = new Set(catalog.commands.map((command) => command.id));
+  return adapters
+    .map((adapter) => ({ ...adapter, bindings: adapter.bindings.filter((binding) => commandIds.has(binding.commandId)) }))
+    .filter((adapter) => adapter.bindings.length > 0);
 }
 
 export function createStandaloneHostCommandIndex(input: StandaloneHostRuntimeInput = {}, generatedAt = new Date().toISOString()): CommandIndex {
   const trusted = createStandaloneHostTrustedContext(input);
-  const catalog = createStandaloneHostCommandCatalog(trusted, generatedAt);
-  const registry = createStandaloneHostCommandFamilyRegistry(generatedAt);
+  const hostAdapters = filterEligibleHostCommandAdapters(resolveStandaloneHostCommandAdapters(input), trusted);
+  const catalog = createStandaloneHostCommandCatalog(input, generatedAt);
+  const registry = hostAdapters.length > 0
+    ? createStandaloneHostCommandFamilyRegistryForAdapters(hostAdapters, generatedAt)
+    : createComposedCommandFamilyRegistry(STANDALONE_HOST_PROVIDER, [], generatedAt);
   const indexContext = input.indexContext ?? input.pageContext;
   if (!indexContext) {
     return createStartupCommandIndex(catalog, { registry, limit: input.indexLimit ?? 12, context: trusted });
@@ -229,13 +327,21 @@ export function createStandaloneHostCommandRuntimeBundle(input: StandaloneHostRu
   indexContext: CommandIndexContext;
 } {
   const trusted = createStandaloneHostTrustedContext(input);
+  const hostSession = resolveStandaloneHostSession(input);
+  const hostAdapters = filterEligibleHostCommandAdapters(resolveStandaloneHostCommandAdapters(input), trusted);
+  const catalog = createStandaloneHostCommandCatalog(input, generatedAt);
   return {
-    catalog: createStandaloneHostCommandCatalog(trusted, generatedAt),
-    registry: createStandaloneHostCommandFamilyRegistry(generatedAt),
-    runtimeAdapters: createStandaloneHostRuntimeAdapters(),
+    catalog,
+    registry: hostAdapters.length > 0
+      ? createStandaloneHostCommandFamilyRegistryForAdapters(hostAdapters, generatedAt)
+      : createComposedCommandFamilyRegistry(STANDALONE_HOST_PROVIDER, [], generatedAt),
+    runtimeAdapters: hostAdapters.length > 0 ? selectRuntimeAdaptersForCatalog(resolveStandaloneHostRuntimeAdapters(input), catalog) : [],
     executionContext: {
       source: "agent-ui",
       sessionId: trusted.sessionId,
+      principalId: hostSession.principalId ?? null,
+      hostSessionSource: hostSession.source,
+      hostSessionExpiresAt: hostSession.expiresAt ?? null,
       authenticated: trusted.authenticated,
       organizationId: trusted.organizationId,
       scopes: trusted.scopes,

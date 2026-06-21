@@ -34,11 +34,109 @@ export type PlatformAdapterContext = {
   scopes?: string[];
 };
 
+export type HostSessionSource = "anonymous" | "standalone-demo" | "embedded-host" | "amplify-embedded";
+
+export type HostSessionEnvelope = {
+  source: HostSessionSource;
+  sessionId?: string | null;
+  userId?: string | null;
+  principalId?: string | null;
+  organizationId?: string | null;
+  authenticated: boolean;
+  scopes: string[];
+  expiresAt?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type HostSessionResolver<TInput = unknown> = (input: TInput) => HostSessionEnvelope | Promise<HostSessionEnvelope>;
+
+export function createAnonymousHostSessionEnvelope(input: Partial<HostSessionEnvelope> = {}): HostSessionEnvelope {
+  return {
+    source: input.source ?? "anonymous",
+    sessionId: input.sessionId ?? null,
+    userId: input.userId ?? null,
+    principalId: input.principalId ?? null,
+    organizationId: null,
+    authenticated: false,
+    scopes: [],
+    expiresAt: input.expiresAt ?? null,
+    metadata: input.metadata,
+  };
+}
+
+export function createTrustedHostSessionEnvelope(input: {
+  source: Exclude<HostSessionSource, "anonymous">;
+  sessionId?: string | null;
+  userId?: string | null;
+  principalId?: string | null;
+  organizationId: string;
+  scopes: string[];
+  expiresAt?: string | null;
+  metadata?: Record<string, unknown>;
+}): HostSessionEnvelope {
+  return {
+    source: input.source,
+    sessionId: input.sessionId ?? null,
+    userId: input.userId ?? null,
+    principalId: input.principalId ?? null,
+    organizationId: input.organizationId,
+    authenticated: true,
+    scopes: [...new Set(input.scopes)].sort(),
+    expiresAt: input.expiresAt ?? null,
+    metadata: input.metadata,
+  };
+}
+
+export function createEmbeddedHostSessionEnvelope(input: {
+  sessionId?: string | null;
+  userId?: string | null;
+  principalId?: string | null;
+  organizationId?: string | null;
+  authenticated?: boolean;
+  scopes?: string[];
+  expiresAt?: string | null;
+  source?: "embedded-host" | "amplify-embedded";
+  metadata?: Record<string, unknown>;
+}): HostSessionEnvelope {
+  if (input.authenticated !== true || !input.organizationId) {
+    return createAnonymousHostSessionEnvelope({
+      source: input.source ?? "embedded-host",
+      sessionId: input.sessionId,
+      userId: input.userId,
+      principalId: input.principalId,
+      expiresAt: input.expiresAt,
+      metadata: input.metadata,
+    });
+  }
+
+  return createTrustedHostSessionEnvelope({
+    source: input.source ?? "embedded-host",
+    sessionId: input.sessionId,
+    userId: input.userId,
+    principalId: input.principalId,
+    organizationId: input.organizationId,
+    scopes: input.scopes ?? [],
+    expiresAt: input.expiresAt,
+    metadata: input.metadata,
+  });
+}
+
+export function platformAdapterContextFromHostSession(session: HostSessionEnvelope | null | undefined): PlatformAdapterContext {
+  if (!session) return { authenticated: false, organizationId: null, scopes: [] };
+  return {
+    sessionId: session.sessionId ?? null,
+    authenticated: session.authenticated,
+    organizationId: session.authenticated ? session.organizationId ?? null : null,
+    scopes: session.authenticated ? session.scopes : [],
+  };
+}
+
 export type HostCommandAdapter = {
   provider: string;
   families?: CommandFamilyDefinition[];
   commands?: CommandDescriptor[];
   manifest?: ToolManifest;
+  isEligible?: (context: PlatformAdapterContext) => boolean;
 };
 
 export type HostCommandRuntimeStatus = "shadow" | "mounted-read" | "mounted-write" | "disabled" | "unavailable";
@@ -157,6 +255,10 @@ export function createComposedCommandCatalog(provider: string, baseCatalog: Comm
     return command;
   }));
   return createCommandCatalog(provider, [...baseCatalog.commands, ...hostCommands], generatedAt);
+}
+
+export function filterEligibleHostCommandAdapters(adapters: HostCommandAdapter[] = [], context: PlatformAdapterContext = {}): HostCommandAdapter[] {
+  return adapters.filter((adapter) => adapter.isEligible ? adapter.isEligible(context) : true);
 }
 
 export function createCommandIndexContext(pageContext: AgentPageContext = {}, trustedContext: PlatformAdapterContext = {}): CommandIndexContext {

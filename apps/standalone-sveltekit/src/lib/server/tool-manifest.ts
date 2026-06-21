@@ -2,6 +2,9 @@ import {
   createStandaloneStartupCommandIndex,
   createStandaloneSurfaceCommandIndex,
   createStandaloneToolManifest,
+  platformAdapterContextFromHostSession,
+  type HostSessionEnvelope,
+  type PlatformAdapterContext,
 } from "@sonik-agent-ui/platform-adapters";
 import {
   filterAvailableTools,
@@ -13,6 +16,7 @@ import {
   type ToolManifest,
 } from "@sonik-agent-ui/tool-contracts";
 import { createStandaloneHostCommandIndex } from "./host-command-runtime.ts";
+import { resolveStandaloneHostSession } from "./host-command-runtime.ts";
 
 export type StandaloneToolManifestInput = {
   sessionId?: string | null;
@@ -25,19 +29,17 @@ export type StandaloneToolManifestInput = {
   indexContext?: CommandIndexContext;
   indexLimit?: number;
   includeHostRuntime?: boolean;
+  hostSession?: HostSessionEnvelope | null;
+  hostSessionMode?: "anonymous" | "standalone-demo" | "amplify-embedded";
 };
 
 export function createStandaloneAvailableToolManifest(input: StandaloneToolManifestInput = {}): ToolManifest {
-  const baseManifest = createStandaloneToolManifest({
-    sessionId: input.sessionId,
-    organizationId: input.organizationId,
-    authenticated: input.authenticated,
-    scopes: input.scopes,
-  });
+  const trustedContext = resolveStandaloneToolManifestContext(input);
+  const baseManifest = createStandaloneToolManifest(trustedContext);
   return filterAvailableTools(baseManifest, {
-    authenticated: input.authenticated ?? false,
-    organizationId: input.organizationId ?? null,
-    scopes: input.scopes ?? [],
+    authenticated: trustedContext.authenticated ?? false,
+    organizationId: trustedContext.organizationId ?? null,
+    scopes: trustedContext.scopes ?? [],
     sourceMode: input.sourceMode ?? "all",
     includeApprovalRequired: input.includeApprovalRequired ?? true,
   });
@@ -50,16 +52,23 @@ export function createStandaloneToolManifestSummary(input: StandaloneToolManifes
 export function createStandaloneCommandIndex(input: StandaloneToolManifestInput = {}): CommandIndex {
   if (input.includeHostRuntime === true) return createStandaloneHostCommandIndex(input);
   const generatedAt = new Date().toISOString();
-  const context = {
+  const context = resolveStandaloneToolManifestContext(input);
+  const indexContext = input.indexContext ?? input.pageContext;
+  return indexContext
+    ? createStandaloneSurfaceCommandIndex(context, indexContext, generatedAt, { limit: input.indexLimit ?? 20 })
+    : createStandaloneStartupCommandIndex(context, generatedAt, { limit: input.indexLimit ?? 12 });
+}
+
+function resolveStandaloneToolManifestContext(input: StandaloneToolManifestInput = {}): PlatformAdapterContext {
+  if ("hostSession" in input || input.hostSessionMode) {
+    return platformAdapterContextFromHostSession(resolveStandaloneHostSession(input));
+  }
+  return {
     sessionId: input.sessionId,
     organizationId: input.organizationId,
     authenticated: input.authenticated,
     scopes: input.scopes,
   };
-  const indexContext = input.indexContext ?? input.pageContext;
-  return indexContext
-    ? createStandaloneSurfaceCommandIndex(context, indexContext, generatedAt, { limit: input.indexLimit ?? 20 })
-    : createStandaloneStartupCommandIndex(context, generatedAt, { limit: input.indexLimit ?? 12 });
 }
 
 export function createStandaloneCommandIndexSummary(input: StandaloneToolManifestInput = {}): string {

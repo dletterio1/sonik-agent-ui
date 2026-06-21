@@ -14,8 +14,8 @@ import { writeAgentTelemetry } from "$lib/server/agent-telemetry";
 const commandAspectSchema = z.enum(["description", "schema", "examples", "policy", "output", "surfaces", "transport", "auth"]);
 
 export function createCommandCatalogTools(context: { sessionId?: string | null; approvedCommandIds?: string[]; pageContext?: AgentPageContext } = {}) {
-  const createBundle = () => createStandaloneHostCommandRuntimeBundle({ sessionId: context.sessionId, pageContext: context.pageContext });
-  const createContextCommandIds = () => new Set(createStandaloneHostCommandIndex({ sessionId: context.sessionId, pageContext: context.pageContext }).commands.map((command) => command.id));
+  const createBundle = () => createStandaloneHostCommandRuntimeBundle({ sessionId: context.sessionId, pageContext: context.pageContext, hostSessionMode: "standalone-demo" });
+  const createContextCommandIds = () => new Set(createStandaloneHostCommandIndex({ sessionId: context.sessionId, pageContext: context.pageContext, hostSessionMode: "standalone-demo" }).commands.map((command) => command.id));
   const summarizeCommandTelemetry = (command: CommandDescriptor | undefined, contextCommandIds = createContextCommandIds()) => ({
     commandFamily: command?.familyId,
     commandSource: command?.source,
@@ -107,6 +107,7 @@ export function createCommandCatalogTools(context: { sessionId?: string | null; 
           mode: receipt.policy.decision,
           policyReasons: receipt.policy.reasons,
           runtimeProvider: receipt.trace.provider,
+          hostSessionSource: executionContext.hostSessionSource,
           ...summarizeCommandTelemetry(command, contextCommandIds),
         });
         return { kind: "command-receipt" as const, receipt };
@@ -144,6 +145,7 @@ export function createCommandCatalogTools(context: { sessionId?: string | null; 
           mode: receipt.policy.decision,
           policyReasons: receipt.policy.reasons,
           runtimeProvider: receipt.trace.provider,
+          hostSessionSource: executionContext.hostSessionSource,
           ...summarizeCommandTelemetry(command, contextCommandIds),
         });
         return { kind: "command-receipt" as const, receipt };

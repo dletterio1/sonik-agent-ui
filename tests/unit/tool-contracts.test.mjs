@@ -39,7 +39,9 @@ import {
   STANDALONE_DEMO_BOOKING_CONTEXTS_COMMAND_ID,
   STANDALONE_DEMO_BOOKING_WRITE_COMMAND_ID,
   STANDALONE_HOST_RUNTIME_PROVIDER,
+  createStandaloneHostCommandIndex,
   createStandaloneHostCommandRuntimeBundle,
+  resolveStandaloneHostSession,
 } from "../../apps/standalone-sveltekit/src/lib/server/host-command-runtime.ts";
 
 assert.equal(inferEffectFromHttpMethod("GET"), "read");
@@ -171,6 +173,34 @@ assert.equal(standalone.tools.some((tool) => tool.id === "booking.contexts.list"
 
 const standaloneOrpc = createStandaloneAvailableToolManifest({ sourceMode: "orpc-app-state", includeApprovalRequired: true });
 assert.deepEqual(standaloneOrpc.tools, [], "standalone ORPC mock does not expose org-scoped tools before host auth/org context is injected");
+const standaloneHostSessionOrpc = createStandaloneAvailableToolManifest({
+  sourceMode: "orpc-app-state",
+  includeApprovalRequired: true,
+  hostSessionMode: "amplify-embedded",
+  authenticated: true,
+  organizationId: "org-manifest",
+  scopes: ["booking:read"],
+});
+assert.deepEqual(standaloneHostSessionOrpc.tools.map((tool) => tool.id), ["booking.contexts.list"], "tool manifest filtering should consume the host-session envelope instead of parallel primitive-only auth state");
+const explicitNullHostSessionOrpc = createStandaloneAvailableToolManifest({
+  sourceMode: "orpc-app-state",
+  includeApprovalRequired: true,
+  hostSession: null,
+  authenticated: true,
+  organizationId: "org-stale",
+  scopes: ["booking:read"],
+});
+assert.deepEqual(explicitNullHostSessionOrpc.tools, [], "explicit null host session must not fall back to stale primitive auth fields");
+const explicitNullWithModeHostSessionOrpc = createStandaloneAvailableToolManifest({
+  sourceMode: "orpc-app-state",
+  includeApprovalRequired: true,
+  hostSession: null,
+  hostSessionMode: "amplify-embedded",
+  authenticated: true,
+  organizationId: "org-stale",
+  scopes: ["booking:read"],
+});
+assert.deepEqual(explicitNullWithModeHostSessionOrpc.tools, [], "explicit null host session must stay authoritative even when a host session mode is also present");
 const standaloneLocal = createStandaloneAvailableToolManifest({ sourceMode: "local-ui", includeApprovalRequired: true });
 assert.equal(standaloneLocal.tools.some((tool) => tool.id === "createDocumentArtifact" && tool.approval === "required"), true);
 
@@ -724,15 +754,54 @@ await assert.rejects(
 );
 
 
-const hostRuntimeBundle = createStandaloneHostCommandRuntimeBundle({
-  sessionId: "s-host-runtime",
+const anonymousHostSession = resolveStandaloneHostSession({ sessionId: "s-anon" });
+assert.equal(anonymousHostSession.authenticated, false, "default host session resolution should be anonymous");
+const explicitNullRuntimeHostSession = resolveStandaloneHostSession({
+  sessionId: "s-null-runtime",
+  hostSession: null,
+  hostSessionMode: "standalone-demo",
+  organizationId: "org-stale",
+  scopes: ["booking:read"],
+});
+assert.equal(explicitNullRuntimeHostSession.authenticated, false, "explicit null runtime host session must not fall through to standalone demo mode");
+const anonymousHostRuntimeBundle = createStandaloneHostCommandRuntimeBundle({
+  sessionId: "s-anon",
   pageContext: { surface: "booking-console", commandFamilies: ["booking"], skillFamilies: ["booking-ops"] },
 }, "2026-06-20T00:00:00.000Z");
+assert.equal(anonymousHostRuntimeBundle.catalog.commands.some((command) => command.id === STANDALONE_DEMO_BOOKING_CONTEXTS_COMMAND_ID), false, "anonymous host runtime bundle should not compose host-scoped booking commands");
+assert.equal(anonymousHostRuntimeBundle.runtimeAdapters.length, 0, "anonymous host runtime bundle should not mount host runtime adapters");
+assert.equal(createStandaloneHostCommandIndex({
+  sessionId: "s-anon",
+  pageContext: { surface: "booking-console", commandFamilies: ["booking"], skillFamilies: ["booking-ops"] },
+}, "2026-06-20T00:00:00.000Z").commands.some((command) => command.id === STANDALONE_DEMO_BOOKING_CONTEXTS_COMMAND_ID), false, "page context hints cannot grant anonymous booking visibility");
+assert.equal(createStandaloneHostCommandRuntimeBundle({
+  sessionId: "s-embedded-no-org",
+  hostSessionMode: "amplify-embedded",
+  authenticated: true,
+  scopes: ["booking:read"],
+  pageContext: { surface: "booking-console", commandFamilies: ["booking"] },
+}, "2026-06-20T00:00:00.000Z").catalog.commands.some((command) => command.id === STANDALONE_DEMO_BOOKING_CONTEXTS_COMMAND_ID), false, "Amplify-shaped embedded sessions need server-resolved organization authority before host commands compose");
+assert.equal(createStandaloneHostCommandRuntimeBundle({
+  sessionId: "s-embedded",
+  hostSessionMode: "amplify-embedded",
+  authenticated: true,
+  organizationId: "org-embedded",
+  scopes: ["booking:read"],
+  pageContext: { surface: "booking-console", commandFamilies: ["booking"] },
+}, "2026-06-20T00:00:00.000Z").catalog.commands.some((command) => command.id === STANDALONE_DEMO_BOOKING_CONTEXTS_COMMAND_ID), true, "server-resolved Amplify-style org/scopes should enable host booking command composition");
+
+const hostRuntimeBundle = createStandaloneHostCommandRuntimeBundle({
+  sessionId: "s-host-runtime",
+  hostSessionMode: "standalone-demo",
+  pageContext: { surface: "booking-console", commandFamilies: ["booking"], skillFamilies: ["booking-ops"] },
+}, "2026-06-20T00:00:00.000Z");
+assert.equal(hostRuntimeBundle.executionContext.hostSessionSource, "standalone-demo", "standalone demo runtime should record host session source for telemetry");
 assert.equal(hostRuntimeBundle.registry.families.some((family) => family.id === "booking" && family.source === "host"), true, "standalone host runtime bundle should inject booking as a host family, not a core family");
 assert.equal(createStandaloneCommandCatalog({ sessionId: "s-host-runtime" }).commands.some((command) => command.id === STANDALONE_DEMO_BOOKING_CONTEXTS_COMMAND_ID), false, "base standalone catalog should not include host-only runtime commands");
 assert.equal(hostRuntimeBundle.catalog.commands.some((command) => command.id === STANDALONE_DEMO_BOOKING_CONTEXTS_COMMAND_ID && command.familyId === "booking"), true, "host runtime catalog should include the read-only booking command through adapter composition");
 const hostRuntimeSearch = searchCommandCatalog(hostRuntimeBundle.catalog, "booking contexts");
 assert.equal(hostRuntimeSearch.some((command) => command.id === STANDALONE_DEMO_BOOKING_CONTEXTS_COMMAND_ID), true, "host runtime commands should be discoverable through catalog search");
+assert.equal(hostRuntimeSearch.some((command) => command.id === STANDALONE_DEMO_BOOKING_WRITE_COMMAND_ID), false, "read-scoped host sessions should not discover write-only booking command metadata");
 const hostRuntimeLearn = learnCommandDescriptor(hostRuntimeBundle.catalog, STANDALONE_DEMO_BOOKING_CONTEXTS_COMMAND_ID, ["transport", "auth", "policy", "schema"]);
 assert.equal(hostRuntimeLearn.transport.runtimeStatus, "mounted", "read-only host runtime command should expose mounted transport in the command catalog path");
 assert.deepEqual(hostRuntimeLearn.auth.scopes, ["booking:read"], "learned host runtime command should expose required auth scopes");
@@ -754,11 +823,96 @@ const hostRuntimeWriteExecute = await executeHostCatalogCommand({
   runtimeAdapters: hostRuntimeBundle.runtimeAdapters,
   execution: { ...hostRuntimeBundle.executionContext, requestId: "req_standalone_host_write_execute" },
 });
-assert.equal(hostRuntimeWriteExecute.ok, false, "standalone host write command should remain non-executable without a write runtime binding");
-assert.equal(hostRuntimeWriteExecute.policy.reasons.includes("runtime_unavailable"), true);
+assert.equal(hostRuntimeWriteExecute.ok, false, "read-scoped standalone host session should not include the write command");
+assert.equal(hostRuntimeWriteExecute.policy.reasons.includes("unknown_command"), true);
+const writeScopedHostRuntimeBundle = createStandaloneHostCommandRuntimeBundle({
+  sessionId: "s-host-runtime-write",
+  hostSessionMode: "standalone-demo",
+  scopes: ["booking:read", "booking:write"],
+  pageContext: { surface: "booking-console", commandFamilies: ["booking"], skillFamilies: ["booking-ops"] },
+}, "2026-06-20T00:00:00.000Z");
+assert.equal(writeScopedHostRuntimeBundle.catalog.commands.some((command) => command.id === STANDALONE_DEMO_BOOKING_WRITE_COMMAND_ID), true, "write-scoped host session can discover write-only booking command metadata");
+assert.deepEqual(writeScopedHostRuntimeBundle.runtimeAdapters.flatMap((adapter) => adapter.bindings.map((binding) => binding.commandId)), [STANDALONE_DEMO_BOOKING_CONTEXTS_COMMAND_ID], "runtime mounting should select only bindings that correspond to visible catalog commands");
+const writeOnlyHostRuntimeIndex = createStandaloneHostCommandIndex({
+  sessionId: "s-host-runtime-write-only",
+  hostSessionMode: "standalone-demo",
+  scopes: ["booking:write"],
+  pageContext: { surface: "booking-console", commandFamilies: ["booking"], skillFamilies: ["booking-ops"] },
+}, "2026-06-20T00:00:00.000Z");
+assert.equal(Array.isArray(writeOnlyHostRuntimeIndex.commands), true, "write-only host sessions should build an index without missing booking-family drift");
+const writeOnlyHostRuntimeBundle = createStandaloneHostCommandRuntimeBundle({
+  sessionId: "s-host-runtime-write-only",
+  hostSessionMode: "standalone-demo",
+  scopes: ["booking:write"],
+  pageContext: { surface: "booking-console", commandFamilies: ["booking"], skillFamilies: ["booking-ops"] },
+}, "2026-06-20T00:00:00.000Z");
+assert.equal(writeOnlyHostRuntimeBundle.catalog.commands.some((command) => command.id === STANDALONE_DEMO_BOOKING_WRITE_COMMAND_ID), true, "write-only host sessions should compose write-only booking command metadata");
+assert.equal(writeOnlyHostRuntimeBundle.runtimeAdapters.length, 0, "write-only host sessions should not mount unrelated read runtime bindings");
+const injectedHostReadCommand = {
+  ...bookingHostReadCommand,
+  id: "injected.demo.read",
+  title: "Injected demo read",
+  description: "Injected host adapter command used to verify embedder-owned runtime seams.",
+  familyId: "injected",
+  auth: { required: false, orgScoped: false, scopes: [] },
+  policy: { tags: ["orpc", "read", "injected"], hostProfiles: ["test"], readOnly: true, proofTier: "fixture" },
+  transport: { procedure: "injected.demo.read", runtimeStatus: "mounted" },
+  metadata: {
+    ...bookingHostReadCommand.metadata,
+    familyId: "injected",
+    contextHints: { commandFamilies: ["injected"], surfaces: ["injected-surface"], requiredScopes: [] },
+    liveExecution: true,
+  },
+};
+const injectedAdapter = {
+  provider: "injected-host-fixture",
+  families: [{ id: "injected", title: "Injected", aliases: ["custom"], source: "host" }],
+  commands: [injectedHostReadCommand],
+  isEligible: () => true,
+};
+const injectedRuntimeBundle = createStandaloneHostCommandRuntimeBundle({
+  sessionId: "s-injected-runtime",
+  hostSessionMode: "standalone-demo",
+  hostCommandAdapters: [injectedAdapter],
+  hostRuntimeAdapters: [{
+    provider: "injected-runtime-fixture",
+    bindings: [
+      { commandId: "injected.demo.read", status: "mounted-read", execute: (input) => ({ summary: { injected: true, input } }) },
+      { commandId: STANDALONE_DEMO_BOOKING_CONTEXTS_COMMAND_ID, status: "mounted-read", execute: () => ({ summary: { unrelated: true } }) },
+    ],
+  }],
+}, "2026-06-20T00:00:00.000Z");
+assert.deepEqual(injectedRuntimeBundle.runtimeAdapters.flatMap((adapter) => adapter.bindings.map((binding) => binding.commandId)), ["injected.demo.read"], "injected runtime adapters should be trimmed to visible injected catalog command bindings");
+const injectedRuntimeReceipt = await executeHostCatalogCommand({
+  catalog: injectedRuntimeBundle.catalog,
+  commandId: "injected.demo.read",
+  commandInput: { ok: true },
+  runtimeAdapters: injectedRuntimeBundle.runtimeAdapters,
+  execution: { ...injectedRuntimeBundle.executionContext, requestId: "req_injected_runtime" },
+});
+assert.equal(injectedRuntimeReceipt.ok, true, "injected mounted-read runtime binding should execute through the public host runtime bundle seam");
+assert.equal(injectedRuntimeReceipt.summary.injected, true);
+assert.throws(() => createStandaloneHostCommandIndex({
+  sessionId: "s-conflicting-family",
+  hostSessionMode: "standalone-demo",
+  hostCommandAdapters: [
+    { provider: "family-a", families: [{ id: "injected", title: "Injected", parentId: "alpha", aliases: [], source: "host" }], commands: [injectedHostReadCommand], isEligible: () => true },
+    { provider: "family-b", families: [{ id: "injected", title: "Injected", parentId: "beta", aliases: [], source: "host" }], commands: [], isEligible: () => true },
+  ],
+}, "2026-06-20T00:00:00.000Z"), /Conflicting command family id/, "injected adapters with different parent family hierarchy should fail conflict detection");
+const writeScopedHostRuntimeWriteExecute = await executeHostCatalogCommand({
+  catalog: writeScopedHostRuntimeBundle.catalog,
+  commandId: STANDALONE_DEMO_BOOKING_WRITE_COMMAND_ID,
+  commandInput: { name: "VIP" },
+  runtimeAdapters: writeScopedHostRuntimeBundle.runtimeAdapters,
+  execution: { ...writeScopedHostRuntimeBundle.executionContext, requestId: "req_standalone_host_write_scoped_execute" },
+});
+assert.equal(writeScopedHostRuntimeWriteExecute.ok, false, "write-scoped standalone host write command remains non-executable without a mounted write runtime binding");
+assert.equal(writeScopedHostRuntimeWriteExecute.policy.reasons.includes("runtime_unavailable"), true);
 const hostRuntimeIndexSummary = createStandaloneCommandIndexSummary({
   sessionId: "s-host-runtime",
   includeHostRuntime: true,
+  hostSessionMode: "standalone-demo",
   pageContext: { surface: "booking-console", commandFamilies: ["booking"], skillFamilies: ["booking-ops"] },
 });
 assert.equal(hostRuntimeIndexSummary.includes("Command index standalone-demo-host"), true, "host runtime command index summary should opt into the host-composed provider");

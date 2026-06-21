@@ -30,6 +30,7 @@ export interface AgentTelemetryEvent {
   commandEffect?: string;
   runtimeStatus?: string;
   runtimeProvider?: string;
+  hostSessionSource?: string;
   loadMode?: string;
   policyReasons?: string[];
   contextSource?: string;
@@ -90,6 +91,7 @@ export function sanitizeAgentTelemetry(event: AgentTelemetryEvent): AgentTelemet
     commandEffect: event.commandEffect,
     runtimeStatus: event.runtimeStatus,
     runtimeProvider: event.runtimeProvider,
+    hostSessionSource: event.hostSessionSource,
     loadMode: event.loadMode,
     policyReasons: sanitizeTelemetryStringList(event.policyReasons),
     contextSource: event.contextSource,

@@ -380,6 +380,9 @@ export type CommandExecutionContext = {
   source?: CommandExecutionSource;
   requestId?: string;
   sessionId?: string | null;
+  principalId?: string | null;
+  hostSessionSource?: string;
+  hostSessionExpiresAt?: string | null;
   approved?: boolean;
   allowSandbox?: boolean;
   authenticated?: boolean;
