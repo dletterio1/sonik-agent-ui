@@ -6,6 +6,7 @@ import { getCryptoPrice, getCryptoPriceHistory } from "./tools/crypto";
 import { getHackerNewsTop } from "./tools/hackernews";
 import { webSearch } from "./tools/search";
 import { createJsonArtifact } from "./tools/artifact";
+import { JSON_ARTIFACT_TOOL_OBJECT_GUIDANCE } from "./artifacts/artifact-generation-guidance";
 import { createDocumentTools, type DocumentToolContext } from "./tools/document";
 import { createToolManifestTools } from "./tools/tool-manifest";
 import { createCommandCatalogTools } from "./tools/command-catalog";
@@ -24,11 +25,11 @@ RULES:
 - If the user asks to create a visual artifact, canvas, dashboard, report, page, or workspace, you MUST call createJsonArtifact exactly once after any needed data tools. Do not stop after data tool calls. The createJsonArtifact tool is the JSON-render artifact creation trigger.
 - If the user asks to create or edit a Markdown/HTML/code/text document in the document editor, use createDocumentArtifact or updateDocumentArtifact instead of forcing JSON-render. Use readActiveDocument before editing the active document, or readDocumentArtifact when you need a specific document id. After creating a document, subsequent document reads/updates in the same turn target that created document unless the user names another document.
 - For document tools, set preferredView to "preview" for rendered Markdown/HTML/SVG/XML the user should visually inspect, "edit" for source/code-first work, and "auto" only when indifferent.
-- createJsonArtifact requires a valid flat spec: spec.root MUST be the key of an element in spec.elements. Minimal valid shape: { "root": "main", "elements": { "main": { "type": "Card", "props": { "title": "Hello" }, "children": [] } }, "state": {} }.
+- createJsonArtifact requires a valid flat spec: spec.root MUST be "main" and spec.elements.main MUST exist. For simple artifacts, use one root Card with children: [] and put body text in the Card description. For createJsonArtifact tool input, use catalog-valid inline prop values rather than $state bindings unless the tool schema explicitly allows them. Use the object-form guidance below; do not use inline JSONL patch fences as tool input.
 - Do not repeat the same tool call with the same arguments in a single response. Do not call createJsonArtifact more than once for a single user turn. Use the first result you already have.
 - For questions about your own tool capabilities or this app, do not call external data tools, including webSearch. Call searchCommandCatalog first for user-language command discovery, learnCommand for one command's schema/policy/examples, executeCommand for mounted read-only commands, and commitCommand only when a mutation has explicit approval. Call listAvailableTools when the user asks for the compact ORPC/MCP/sandbox/local-ui manifest, approval gates, UI targets, or contract-derived source inventory. Call createJsonArtifact if a JSON-render artifact/canvas was requested; call createDocumentArtifact if a document/editor artifact was requested.
 - The command catalog is CLI-first and context-efficient: search, learn, then execute/commit. A standalone fixture-backed read-only booking host command may be mounted for local testing; other ORPC business commands remain metadata-only unless a live adapter explicitly marks them mounted and executable.
-- Embed the fetched data directly in /state paths so components can reference it.
+- For inline JSON-render responses outside createJsonArtifact, embed fetched data directly in /state paths so components can reference it.
 - Use Card components to group related information.
 - NEVER nest a Card inside another Card. If you need sub-sections inside a Card, use Stack, Separator, Heading, or Accordion instead.
 - Use Grid for multi-column layouts.
@@ -43,14 +44,19 @@ RULES:
 - Use Timeline for historical events, processes, step-by-step explanations, or milestones.
 - When teaching about a topic, combine multiple component types to create a rich, engaging experience.
 
-DATA BINDING:
-- The state model is the single source of truth. Put fetched data in /state, then reference it with { "$state": "/json/pointer" } in any prop.
-- $state works on ANY prop at ANY nesting level. The renderer resolves expressions before components receive props.
+
+ARTIFACT TOOL OBJECT EXAMPLES:
+${JSON_ARTIFACT_TOOL_OBJECT_GUIDANCE}
+
+DATA BINDING FOR INLINE SPEC FENCES AND NON-TOOL UI SPECS:
+- This section applies to inline spec fences and renderer patches, not to createJsonArtifact tool input unless that tool schema explicitly allows the binding.
+- The state model is the single source of truth for inline/patch UI specs. Put fetched data in /state, then reference it with { "$state": "/json/pointer" } in any prop.
+- In inline/patch specs, $state works on ANY prop at ANY nesting level. The renderer resolves expressions before components receive props.
 - Scalar binding: "title": { "$state": "/quiz/title" }
 - Array binding: "items": { "$state": "/quiz/questions" } (for Accordion, Timeline, etc.)
-- For Table, BarChart, LineChart, and PieChart, use { "$state": "/path" } on the data prop to bind read-only data from state.
-- Always emit /state patches BEFORE the elements that reference them, so data is available when the UI renders.
-- Always use the { "$state": "/foo" } object syntax for data binding.
+- For inline/patch Table, BarChart, LineChart, and PieChart specs, use { "$state": "/path" } on the data prop to bind read-only data from state.
+- Always emit /state patches BEFORE the inline/patch elements that reference them, so data is available when the UI renders.
+- Always use the { "$state": "/foo" } object syntax for inline/patch data binding.
 
 INTERACTIVITY:
 - You can use visible, repeat, on.press, and $cond/$then/$else freely.

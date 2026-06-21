@@ -242,12 +242,32 @@ assert.equal(smokeHarnessSource.includes("AGENT_UI_SMOKE_START_SERVER"), true, "
 assert.equal(packageSource.includes("smoke:agent-ui:real-model"), true, "package scripts should expose an explicit real-model smoke lane separate from deterministic crash gating");
 
 const artifactToolSource = await readFile("apps/standalone-sveltekit/src/lib/tools/artifact.ts", "utf8");
+const jsonArtifactSpecSource = await readFile("apps/standalone-sveltekit/src/lib/artifacts/json-artifact-spec.ts", "utf8");
+const artifactGuidanceSource = await readFile("apps/standalone-sveltekit/src/lib/artifacts/artifact-generation-guidance.ts", "utf8");
+const agentSource = await readFile("apps/standalone-sveltekit/src/lib/agent.ts", "utf8");
 assert.equal(artifactToolSource.includes("validateSpec"), true, "artifact tool should use shared json-render structural validation");
 assert.equal(artifactToolSource.includes("explorerCatalog.validate"), true, "artifact tool should validate against the component catalog");
 assert.equal(artifactToolSource.includes("Object.keys(elements).length > 0"), true, "artifact tool schema should reject empty elements maps");
+assert.equal(artifactToolSource.includes("root: z.literal(\"main\")"), true, "artifact tool schema should require the stable main root value");
+assert.equal(artifactToolSource.includes("z.discriminatedUnion(\"type\""), true, "artifact tool should use a catalog-derived discriminated union instead of untyped props records");
+assert.equal(artifactToolSource.includes("main: uiElementSchema"), true, "artifact tool JSON schema should require elements.main instead of relying only on superRefine");
+assert.equal(artifactToolSource.includes("Use [] for simple artifacts"), true, "artifact tool child schema should discourage dangling child ids");
 assert.equal(artifactToolSource.includes("spec.elements must include the root key"), true, "artifact tool schema should require root to exist in elements");
 assert.equal(artifactToolSource.includes("tool.createJsonArtifact.rejected_invalid_spec"), true, "invalid artifact specs should be rejected as tool errors, not promoted as recovered successes");
+assert.equal(jsonArtifactSpecSource.includes("Recovery-only normalization"), true, "normalizer should document that fallback recovery is not the strict tool contract");
 assert.equal(artifactToolSource.includes("recovered_invalid_spec"), false, "artifact tool should not report recovered invalid specs as successful artifact outputs");
-assert.equal(artifactToolSource.includes("Never call this with { \"elements\": {} }"), true, "artifact tool description should explicitly forbid empty spec elements");
+assert.equal(artifactGuidanceSource.includes("JSON_ARTIFACT_STARTER_SPEC"), true, "artifact generation should ship a starter spec example");
+assert.equal(artifactGuidanceSource.includes("JSON_ARTIFACT_DASHBOARD_SPEC"), true, "artifact generation should ship a dashboard spec example");
+assert.equal(artifactGuidanceSource.includes("assertJsonArtifactGuidanceExamplesValid"), true, "artifact generation examples should expose a reusable validation gate");
+assert.equal(artifactGuidanceSource.includes("JSON_ARTIFACT_TOOL_OBJECT_GUIDANCE"), true, "artifact generation should centralize object-form tool guidance");
+assert.equal(artifactGuidanceSource.includes("getJsonArtifactToolDescription"), true, "artifact generation should centralize the tool description");
+assert.equal(artifactGuidanceSource.includes("JSON.stringify(starterToolInput"), true, "artifact guidance should derive the minimal prompt example from the validated starter object");
+assert.equal(artifactGuidanceSource.includes("JSON.stringify(dashboardToolInput"), true, "artifact guidance should derive the dashboard prompt example from the validated dashboard object");
+assert.equal(artifactToolSource.includes("getJsonArtifactToolDescription()"), true, "artifact tool should consume centralized generation guidance instead of duplicating examples");
+assert.equal(agentSource.includes("JSON_ARTIFACT_TOOL_OBJECT_GUIDANCE"), true, "agent instructions should include object-form artifact examples for live model generation quality");
+assert.equal(agentSource.includes("ARTIFACT TOOL OBJECT EXAMPLES"), true, "agent instructions should have a dedicated artifact tool object section");
+assert.equal(agentSource.includes("DATA BINDING FOR INLINE SPEC FENCES AND NON-TOOL UI SPECS"), true, "agent instructions should scope broad $state guidance away from strict tool input");
+assert.equal(agentSource.includes("For inline JSON-render responses outside createJsonArtifact"), true, "agent instructions should keep generic $state data guidance outside strict createJsonArtifact input");
+assert.equal(artifactToolSource.includes("Intentional contract mirror"), true, "artifact tool should document catalog-to-tool schema coupling as an intentional contract");
 
 console.log("app-shell-session-rail tests passed");

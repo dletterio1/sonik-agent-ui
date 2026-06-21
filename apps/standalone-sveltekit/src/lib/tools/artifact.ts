@@ -4,32 +4,50 @@ import { z } from "zod";
 import { logArtifactTelemetry, summarizeSpec } from "../artifacts/artifact-telemetry";
 import { normalizeJsonArtifactSpec } from "../artifacts/json-artifact-spec";
 import { explorerCatalog } from "../render/catalog";
+import { getJsonArtifactToolDescription, JSON_ARTIFACT_ALLOWED_COMPONENTS } from "../artifacts/artifact-generation-guidance";
 
-const catalogComponentNames = explorerCatalog.componentNames as [string, ...string[]];
-const componentCatalogHint = catalogComponentNames.join(", ");
+const catalogComponentNames = JSON_ARTIFACT_ALLOWED_COMPONENTS;
+type CatalogComponentDefinition = {
+  props?: z.ZodTypeAny;
+  slots?: string[];
+};
 
-const uiElementSchema = z.object({
-  type: z.enum(catalogComponentNames).describe(`Component type from the json-render catalog. Allowed values: ${componentCatalogHint}.`),
-  props: z.record(z.string(), z.unknown()).default({}),
-  children: z.array(z.string()).optional(),
+// Intentional contract mirror: createJsonArtifact uses the same catalog prop schemas that the renderer uses, so catalog edits are agent tool-contract edits too.
+const catalogComponents = (explorerCatalog.data as { components: Record<string, CatalogComponentDefinition> }).components;
+const elementControlSchema = {
+  children: z.array(z.string()).optional().describe("Child element ids. Use [] for simple artifacts; if an id is listed here, it must also exist in spec.elements."),
   visible: z.unknown().optional(),
   on: z.record(z.string(), z.unknown()).optional(),
   repeat: z.object({ statePath: z.string(), key: z.string().optional() }).optional(),
   watch: z.record(z.string(), z.unknown()).optional(),
-}).passthrough();
+};
+
+const catalogElementSchemas = catalogComponentNames.map((name) => {
+  const propsSchema = catalogComponents[name]?.props ?? z.record(z.string(), z.unknown());
+  return z.object({
+    type: z.literal(name),
+    props: propsSchema.describe(`Required props for ${name}. Use the catalog example when uncertain.`),
+    ...elementControlSchema,
+  }).passthrough();
+});
+
+const uiElementSchema = z.discriminatedUnion("type", catalogElementSchemas as [typeof catalogElementSchemas[number], typeof catalogElementSchemas[number], ...Array<typeof catalogElementSchemas[number]>]);
 
 const specSchema = z.object({
-  root: z.string().min(1).describe("Element key for the root node. This exact key must exist in elements."),
-  elements: z.record(z.string(), uiElementSchema)
+  root: z.literal("main").describe("Root element key. Use the stable value \"main\" for all createJsonArtifact tool calls."),
+  elements: z.object({
+    main: uiElementSchema.describe("Required root element. This makes empty element maps impossible."),
+  })
+    .catchall(uiElementSchema)
     .refine((elements) => Object.keys(elements).length > 0, "spec.elements must contain at least the root element; empty element maps are invalid.")
-    .describe("Non-empty flat json-render element map keyed by element id. Must include the root key."),
+    .describe("Non-empty flat json-render element map keyed by element id. Must include the required main root element."),
   state: z.record(z.string(), z.unknown()).optional().describe("Initial state object used by $state bindings."),
 }).superRefine((spec, ctx) => {
   if (!spec.elements[spec.root]) {
     ctx.addIssue({
       code: "custom",
       path: ["elements", spec.root],
-      message: `spec.elements must include the root key "${spec.root}".`,
+      message: `spec.elements must include the root key "${spec.root}". Use root: "main" and elements.main for createJsonArtifact.`,
     });
     return;
   }
@@ -64,8 +82,7 @@ const specSchema = z.object({
  * artifact pane. Long-term persistence belongs behind the artifact warehouse.
  */
 export const createJsonArtifact = tool({
-  description:
-    `Create or replace the live canvas artifact with a COMPLETE json-render flat spec. Use this whenever the user explicitly asks to create an artifact, canvas, dashboard, report, page, or workspace. The spec must be renderable on the first call: elements cannot be empty; spec.root must exist in spec.elements; child ids must exist; component types must be one of: ${componentCatalogHint}. Minimal valid example: { "title": "Hello", "spec": { "root": "main", "elements": { "main": { "type": "Card", "props": { "title": "Hello", "description": "A starter artifact." }, "children": ["body"] }, "body": { "type": "Text", "props": { "content": "Hello world" }, "children": [] } }, "state": {} } }. Never call this with { "elements": {} }.`,
+  description: getJsonArtifactToolDescription(),
   inputSchema: z.object({
     title: z.string().describe("Short human-readable title for the artifact."),
     spec: specSchema.describe("Complete json-render flat spec to render in the artifact canvas."),
@@ -82,7 +99,7 @@ export const createJsonArtifact = tool({
         ok: false,
         error: `Invalid JSON-render artifact spec: ${normalized.reason ?? "invalid_spec"}`,
       });
-      throw new Error(`Invalid JSON-render artifact spec: ${normalized.reason ?? "invalid_spec"}. createJsonArtifact requires a non-empty elements map containing spec.root.`);
+      throw new Error(`Invalid JSON-render artifact spec: ${normalized.reason ?? "invalid_spec"}. createJsonArtifact requires root: "main" and a non-empty elements map containing elements.main.`);
     }
 
     const structural = validateSpec(normalized.spec);

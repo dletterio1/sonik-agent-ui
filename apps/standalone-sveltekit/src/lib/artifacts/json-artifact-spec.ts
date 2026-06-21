@@ -52,6 +52,12 @@ export function createRecoveredJsonArtifactSpec(title: string, reason = "invalid
   } as Spec;
 }
 
+/**
+ * Recovery-only normalization used by artifact extraction/promotion paths that
+ * need a renderable fallback instead of a hard failure. Agent-facing tool calls
+ * must validate against the stricter createJsonArtifact schema first and treat
+ * `recovered: true` as rejection evidence, not as a successful artifact.
+ */
 export function normalizeJsonArtifactSpec(input: unknown, title: string): NormalizedJsonArtifactSpec {
   if (!isRecord(input)) {
     return { spec: createRecoveredJsonArtifactSpec(title, "spec_not_object"), recovered: true, reason: "spec_not_object" };
