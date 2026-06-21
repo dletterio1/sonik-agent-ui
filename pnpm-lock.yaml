@@ -22,6 +22,9 @@ importers:
       '@json-render/svelte':
         specifier: workspace:*
         version: link:../../packages/svelte
+      '@sonik-agent-ui/agent-observability':
+        specifier: workspace:*
+        version: link:../../packages/agent-observability
       '@sonik-agent-ui/artifact-model':
         specifier: workspace:*
         version: link:../../packages/artifact-model
@@ -107,6 +110,15 @@ importers:
       vite:
         specifier: ^7.3.1
         version: 7.3.1(jiti@2.7.0)(lightningcss@1.31.1)
+
+  packages/agent-observability:
+    devDependencies:
+      '@internal/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      typescript:
+        specifier: ^5.4.5
+        version: 5.9.3
 
   packages/artifact-model:
     dependencies:
@@ -294,6 +306,10 @@ importers:
         version: 5.9.3
 
   packages/workspace-session:
+    dependencies:
+      '@sonik-agent-ui/agent-observability':
+        specifier: workspace:*
+        version: link:../agent-observability
     devDependencies:
       '@internal/typescript-config':
         specifier: workspace:*

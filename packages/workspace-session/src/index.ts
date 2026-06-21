@@ -1,6 +1,7 @@
+import type { AgentTelemetrySource } from "@sonik-agent-ui/agent-observability";
 export type WorkspaceMode = "chat" | "artifact" | "document" | "research";
 export const DEFAULT_WORKSPACE_SESSION_NAME = "New chat";
-const LEGACY_DEFAULT_WORKSPACE_SESSION_NAMES = new Set(["sonik workspace"]);
+const LEGACY_DEFAULT_WORKSPACE_SESSION_NAMES = new Set(["sonik workspace", "workspace document session"]);
 
 export function normalizeWorkspaceSessionName(name?: string | null): string {
   const trimmed = name?.trim();
@@ -131,7 +132,7 @@ export interface WorkspaceTelemetryEventRecord<TPayload = unknown> {
   id: string;
   session_id: string | null;
   request_id: string | null;
-  source: "server" | "client" | "odysseus-host" | "system";
+  source: AgentTelemetrySource;
   event: string;
   payload: TPayload;
   ok: boolean | null;
@@ -292,7 +293,7 @@ class InMemoryWorkspacePersistence implements WorkspacePersistenceAdapter {
     if (sessionId) {
       const existing = this.#sessions.get(sessionId);
       if (existing) return clone(existing);
-      return this.createSession({ id: sessionId, name: "Odysseus document session", mode: "document" });
+      return this.createSession({ id: sessionId, name: "workspace document session", mode: "document" });
     }
     return this.createSession({ name: DEFAULT_WORKSPACE_SESSION_NAME, mode: "chat" });
   }

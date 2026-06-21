@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export interface OdysseusDocumentSnapshot {
+  export interface WorkspaceDocumentSnapshot {
     id: string;
     session_id?: string | null;
     title: string;
@@ -10,15 +10,15 @@
     updated_at?: string;
   }
 
-  export interface OdysseusDocumentEvent {
+  export interface WorkspaceDocumentEvent {
     type: "ready" | "opened" | "active" | "changed" | "saved" | "view" | "error";
-    document?: OdysseusDocumentSnapshot;
+    document?: WorkspaceDocumentSnapshot;
     message?: string;
   }
 
   export type PreferredDocumentView = "auto" | "edit" | "preview";
 
-  export interface OdysseusDocumentFrameProps {
+  export interface WorkspaceDocumentFrameProps {
     src?: string;
     documentId?: string;
     title?: string;
@@ -27,7 +27,7 @@
     preferredView?: PreferredDocumentView;
     targetOrigin?: string;
     allowedOrigin?: string;
-    onDocumentEvent?: (event: OdysseusDocumentEvent) => void;
+    onDocumentEvent?: (event: WorkspaceDocumentEvent) => void;
   }
 </script>
 
@@ -35,16 +35,16 @@
   import { onMount } from "svelte";
 
   let {
-    src = "/odysseus-document-host.html",
+    src = "/workspace-document-host.html",
     documentId,
-    title = "Odysseus Document",
+    title = "Workspace Document",
     language = "markdown",
-    content = "# Odysseus document editor\n\nUse the language selector to switch Markdown, HTML, JSON, code, CSV, or other render modes.",
+    content = "# Workspace document editor\n\nUse the language selector to switch Markdown, HTML, JSON, code, CSV, or other render modes.",
     preferredView = "auto",
     targetOrigin,
     allowedOrigin,
     onDocumentEvent,
-  }: OdysseusDocumentFrameProps = $props();
+  }: WorkspaceDocumentFrameProps = $props();
 
   let frame: HTMLIFrameElement | null = $state(null);
   let status = $state<"loading" | "ready" | "opened" | "error">("loading");
@@ -53,7 +53,7 @@
 
   const payload = $derived({ documentId, title, language, content, preferredView });
   const openSignature = $derived(JSON.stringify(payload));
-  // The bundled Odysseus host is same-origin for safety. Host adapters may pass
+  // The bundled workspace host is same-origin for safety. Host adapters may pass
   // explicit origins only when their iframe host enforces the matching allowlist.
   const messageTargetOrigin = $derived(targetOrigin ?? (typeof window !== "undefined" ? window.location.origin : "*"));
   const messageAllowedOrigin = $derived(allowedOrigin ?? (messageTargetOrigin === "*" ? (typeof window !== "undefined" ? window.location.origin : "") : messageTargetOrigin));
@@ -82,7 +82,7 @@
     if (!frame?.contentWindow) return;
     frame.contentWindow.postMessage(
       {
-        type: "sonik:odysseus-document:theme",
+        type: "sonik:workspace-document:theme",
         source: "sonik-agent-ui-parent",
         payload: createThemePayload(),
       },
@@ -98,7 +98,7 @@
     postTheme();
     frame.contentWindow.postMessage(
       {
-        type: "sonik:odysseus-document:open",
+        type: "sonik:workspace-document:open",
         source: "sonik-agent-ui-parent",
         payload,
       },
@@ -114,11 +114,11 @@
     function handleMessage(event: MessageEvent): void {
       if (messageAllowedOrigin && event.origin !== messageAllowedOrigin) return;
       if (event.source !== frame?.contentWindow) return;
-      const message = event.data as { source?: string; type?: string; payload?: { message?: string; document?: OdysseusDocumentSnapshot } & Partial<OdysseusDocumentSnapshot> };
-      if (message?.source !== "sonik-odysseus-document-host") return;
-      if (!message.type?.startsWith("sonik:odysseus-document:")) return;
+      const message = event.data as { source?: string; type?: string; payload?: { message?: string; document?: WorkspaceDocumentSnapshot } & Partial<WorkspaceDocumentSnapshot> };
+      if (message?.source !== "sonik-workspace-document-host") return;
+      if (!message.type?.startsWith("sonik:workspace-document:")) return;
 
-      const type = message.type.replace("sonik:odysseus-document:", "") as OdysseusDocumentEvent["type"];
+      const type = message.type.replace("sonik:workspace-document:", "") as WorkspaceDocumentEvent["type"];
       const document = message.payload?.document ?? coerceDocumentSnapshot(message.payload);
       onDocumentEvent?.({ type, document, message: message.payload?.message });
 
@@ -132,7 +132,7 @@
         errorMessage = null;
       } else if (type === "error") {
         status = "error";
-        errorMessage = message.payload?.message ?? "Odysseus document editor failed to load.";
+        errorMessage = message.payload?.message ?? "Workspace document editor failed to load.";
       }
     }
 
@@ -150,7 +150,7 @@
     };
   });
 
-  function coerceDocumentSnapshot(value: unknown): OdysseusDocumentSnapshot | undefined {
+  function coerceDocumentSnapshot(value: unknown): WorkspaceDocumentSnapshot | undefined {
     if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
     const record = value as Record<string, unknown>;
     if (typeof record.id !== "string") return undefined;
@@ -167,17 +167,17 @@
   }
 </script>
 
-<div class="odysseus-document-frame" data-status={status}>
+<div class="workspace-document-frame" data-status={status}>
   {#if status === "loading" || status === "ready"}
-    <div class="odysseus-document-frame__status">Loading Odysseus document editor…</div>
+    <div class="workspace-document-frame__status">Loading workspace document editor…</div>
   {:else if status === "error"}
-    <div class="odysseus-document-frame__status odysseus-document-frame__status--error">{errorMessage}</div>
+    <div class="workspace-document-frame__status workspace-document-frame__status--error">{errorMessage}</div>
   {/if}
 
   <iframe
     bind:this={frame}
     {src}
-    title="Odysseus document editor"
+    title="Workspace document editor"
     onload={() => {
       postTheme();
       if (status === "ready" || status === "opened") postOpen();
@@ -186,7 +186,7 @@
 </div>
 
 <style>
-  .odysseus-document-frame {
+  .workspace-document-frame {
     position: relative;
     height: 100%;
     min-height: 0;
@@ -203,7 +203,7 @@
     background: var(--background);
   }
 
-  .odysseus-document-frame__status {
+  .workspace-document-frame__status {
     position: absolute;
     inset: 0;
     z-index: 1;
@@ -215,11 +215,11 @@
     pointer-events: none;
   }
 
-  .odysseus-document-frame__status--error {
+  .workspace-document-frame__status--error {
     color: var(--destructive);
   }
 
-  .odysseus-document-frame[data-status="opened"] .odysseus-document-frame__status {
+  .workspace-document-frame[data-status="opened"] .workspace-document-frame__status {
     display: none;
   }
 </style>

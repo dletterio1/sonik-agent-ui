@@ -38,7 +38,7 @@ async function readAll(stream) {
     },
   });
 
-  const values = await readAll(instrumentGenerateStream(stream, { requestId: "req-ok", startedAt: Date.now() }, async (event) => {
+  const values = await readAll(instrumentGenerateStream(stream, { requestId: "req-ok", traceId: "0123456789abcdef0123456789abcdef", traceparent: "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01", startedAt: Date.now() }, async (event) => {
     events.push(event);
   }));
 
@@ -46,6 +46,7 @@ async function readAll(stream) {
   assert.equal(events.length, 1);
   assert.equal(events[0].event, "api.generate.stream_finished");
   assert.equal(events[0].ok, true);
+  assert.equal(events[0].traceId, "0123456789abcdef0123456789abcdef");
 }
 
 {

@@ -1,8 +1,8 @@
 import { error, json } from "@sveltejs/kit";
-import { restoreOdysseusDocumentVersion } from "$lib/server/odysseus-document-store";
+import { restoreWorkspaceDocumentVersion } from "$lib/server/workspace-document-store";
 
 export function POST({ params }) {
-  const document = restoreOdysseusDocumentVersion(params.id, Number(params.num));
+  const document = restoreWorkspaceDocumentVersion(params.id, Number(params.num));
   if (!document) error(404, "Document version not found");
   return json(document);
 }

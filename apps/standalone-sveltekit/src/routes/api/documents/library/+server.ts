@@ -1,8 +1,8 @@
 import { json } from "@sveltejs/kit";
-import { listOdysseusDocumentLibrary } from "$lib/server/odysseus-document-store";
+import { listWorkspaceDocumentLibrary } from "$lib/server/workspace-document-store";
 
 export function GET({ url }) {
-  return json(listOdysseusDocumentLibrary({
+  return json(listWorkspaceDocumentLibrary({
     search: url.searchParams.get("search") ?? url.searchParams.get("q"),
     language: url.searchParams.get("language"),
     sort: url.searchParams.get("sort"),

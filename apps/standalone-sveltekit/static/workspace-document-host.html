@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Odysseus Document Editor Island</title>
-    <link rel="stylesheet" href="/vendor/odysseus/static/style.css" />
+    <title>Workspace Document Editor Island</title>
+    <link rel="stylesheet" href="/vendor/workspace/static/style.css" />
     <script src="/static/lib/highlight.min.js"></script>
     <style>
       html,
@@ -56,7 +56,7 @@
         right: 0 !important;
       }
 
-      .odysseus-host-loading {
+      .workspace-host-loading {
         align-items: center;
         color: var(--sonik-foreground, var(--fg, #d6e7ef));
         display: flex;
@@ -88,12 +88,12 @@
     <button id="mode-chat-btn" type="button">Chat</button>
     <button id="overflow-doc-btn" type="button">Docs</button>
     <button id="doc-indicator-btn" type="button">Doc</button>
-    <div id="current-meta">Odysseus Document Island</div>
+    <div id="current-meta">Workspace Document Island</div>
     <div id="chat-history"></div>
-    <div id="odysseus-host-loading" class="odysseus-host-loading">Loading Odysseus document editor…</div>
+    <div id="workspace-host-loading" class="workspace-host-loading">Loading Workspace document editor…</div>
 
     <script type="module">
-      const loading = document.getElementById('odysseus-host-loading');
+      const loading = document.getElementById('workspace-host-loading');
       let documentModule;
       let ready = false;
       let lastSnapshotSignature = '';
@@ -105,11 +105,11 @@
       const pending = [];
 
       function post(type, payload = {}) {
-        window.parent?.postMessage({ type, source: 'sonik-odysseus-document-host', payload }, parentTargetOrigin);
+        window.parent?.postMessage({ type, source: 'sonik-workspace-document-host', payload }, parentTargetOrigin);
       }
 
       function logHostTelemetry(event) {
-        const body = JSON.stringify({ event: { source: 'odysseus-host', at: new Date().toISOString(), ...event } });
+        const body = JSON.stringify({ event: { source: 'workspace-host', at: new Date().toISOString(), ...event } });
         try {
           if (navigator.sendBeacon?.('/api/telemetry', new Blob([body], { type: 'application/json' }))) return;
           fetch('/api/telemetry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => undefined);
@@ -159,9 +159,9 @@
       function normalizePayload(payload = {}) {
         return {
           documentId: typeof payload.documentId === 'string' && payload.documentId.trim() ? payload.documentId.trim() : null,
-          title: typeof payload.title === 'string' && payload.title.trim() ? payload.title.trim() : 'Odysseus Document',
+          title: typeof payload.title === 'string' && payload.title.trim() ? payload.title.trim() : 'Workspace Document',
           language: typeof payload.language === 'string' && payload.language.trim() ? payload.language.trim() : 'markdown',
-          content: typeof payload.content === 'string' ? payload.content : '# Odysseus document editor\n\nUse the language selector to switch Markdown, HTML, JSON, code, or CSV render modes.',
+          content: typeof payload.content === 'string' ? payload.content : '# Workspace document editor\n\nUse the language selector to switch Markdown, HTML, JSON, code, or CSV render modes.',
           preferredView: normalizePreferredView(payload.preferredView)
         };
       }
@@ -211,7 +211,7 @@
               applied = clickViewToggle(`#doc-render-view-toggle [data-renderview="${preferredView === 'preview' ? 'run' : 'code'}"]`, true);
             }
             if (applied) {
-              post('sonik:odysseus-document:view', { preferredView, language });
+              post('sonik:workspace-document:view', { preferredView, language });
               logHostTelemetry({ event: 'document_host.preferred_view_applied', mode: preferredView, ok: true });
             }
           });
@@ -291,7 +291,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            session_id: 'odysseus-document-island',
+            session_id: 'workspace-document-island',
             title: doc.title,
             language: doc.language,
             content: doc.content,
@@ -327,20 +327,20 @@
           });
           stabilizeOpenedDocument(documentRecord, payload);
           loading?.remove();
-          post('sonik:odysseus-document:opened', { document: documentRecord, preferredView: normalizePreferredView(payload?.preferredView) });
+          post('sonik:workspace-document:opened', { document: documentRecord, preferredView: normalizePreferredView(payload?.preferredView) });
           logHostTelemetry({ event: 'document_host.opened', documentId: documentRecord.id, documentVersion: documentRecord.version_count, title: documentRecord.title, mode: resolvePreferredView({ ...payload, language: documentRecord.language }), ok: true });
         } catch (error) {
-          console.error('[sonik-agent-ui] Odysseus document open failed', error);
-          if (loading) loading.textContent = `Odysseus document open failed: ${error?.message || error}`;
-          post('sonik:odysseus-document:error', { message: error?.message || String(error) });
+          console.error('[sonik-agent-ui] Workspace document open failed', error);
+          if (loading) loading.textContent = `Workspace document open failed: ${error?.message || error}`;
+          post('sonik:workspace-document:error', { message: error?.message || String(error) });
           logHostTelemetry({ event: 'document_host.error', ok: false, error: error?.message || String(error) });
         }
       }
 
       function toDocumentRecord(input = {}) {
         return {
-          id: String(input.id || input.doc_id || `odysseus-local-${Date.now()}`),
-          session_id: typeof input.session_id === 'string' ? input.session_id : 'odysseus-document-island',
+          id: String(input.id || input.doc_id || `workspace-local-${Date.now()}`),
+          session_id: typeof input.session_id === 'string' ? input.session_id : 'workspace-document-island',
           title: String(input.title || document.getElementById('doc-title-input')?.value || 'Untitled'),
           language: String(input.language || document.getElementById('doc-language-select')?.value || 'markdown'),
           current_content: String(input.current_content ?? input.content ?? document.getElementById('doc-editor-textarea')?.value ?? ''),
@@ -361,7 +361,7 @@
         const version_count = Number(versionText.replace(/[^0-9]/g, '')) || 1;
         return {
           id,
-          session_id: 'odysseus-document-island',
+          session_id: 'workspace-document-island',
           title,
           language,
           current_content,
@@ -405,7 +405,7 @@ ${snapshot.version_count}
 ${snapshot.current_content}`;
           if (!options.force && type === 'changed' && signature === lastSnapshotSignature) return;
           lastSnapshotSignature = signature;
-          post(`sonik:odysseus-document:${type}`, { document: snapshot });
+          post(`sonik:workspace-document:${type}`, { document: snapshot });
           if (options.clearStabilization) openStabilization = null;
         });
       }
@@ -427,16 +427,16 @@ ${snapshot.current_content}`;
         parentTargetOrigin = event.origin || window.location.origin;
         const message = event.data || {};
         if (message.source !== 'sonik-agent-ui-parent') return;
-        if (message.type === 'sonik:odysseus-document:theme') applyTheme(message.payload);
-        if (message.type === 'sonik:odysseus-document:open') openDocument(message.payload);
+        if (message.type === 'sonik:workspace-document:theme') applyTheme(message.payload);
+        if (message.type === 'sonik:workspace-document:open') openDocument(message.payload);
       });
 
       try {
-        documentModule = await import('/vendor/odysseus/static/js/document.js');
+        documentModule = await import('/vendor/workspace/static/js/document.js');
         documentModule.init('');
         ready = true;
         wireSnapshotEvents();
-        post('sonik:odysseus-document:ready');
+        post('sonik:workspace-document:ready');
         logHostTelemetry({ event: 'document_host.ready', ok: true });
         const hadPending = pending.length > 0;
         while (pending.length) await openDocument(pending.shift());
@@ -447,9 +447,9 @@ ${snapshot.current_content}`;
           }, 250);
         }
       } catch (error) {
-        console.error('[sonik-agent-ui] Failed to boot Odysseus document island', error);
-        if (loading) loading.textContent = `Odysseus document editor failed to load: ${error?.message || error}`;
-        post('sonik:odysseus-document:error', { message: error?.message || String(error) });
+        console.error('[sonik-agent-ui] Failed to boot Workspace document island', error);
+        if (loading) loading.textContent = `Workspace document editor failed to load: ${error?.message || error}`;
+        post('sonik:workspace-document:error', { message: error?.message || String(error) });
         logHostTelemetry({ event: 'document_host.boot_error', ok: false, error: error?.message || String(error) });
       }
     </script>

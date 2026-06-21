@@ -1,11 +1,11 @@
 import { error, json } from "@sveltejs/kit";
 import {
-  deleteOdysseusSession,
-  getOdysseusDocument,
-  getOdysseusSession,
-  listOdysseusDocuments,
-  patchOdysseusSession,
-} from "$lib/server/odysseus-document-store";
+  deleteWorkspaceSession,
+  getWorkspaceDocument,
+  getWorkspaceSession,
+  listWorkspaceDocuments,
+  patchWorkspaceSession,
+} from "$lib/server/workspace-document-store";
 import {
   listWorkspaceMessages,
   listWorkspaceTelemetryEvents,
@@ -13,13 +13,13 @@ import {
 import { routeString, WORKSPACE_TITLE_MAX_CHARS } from "$lib/server/workspace-route-limits";
 
 export function GET({ params }) {
-  const session = getOdysseusSession(params.id);
+  const session = getWorkspaceSession(params.id);
   if (!session) error(404, "Session not found");
 
   return json({
     session,
-    documents: listOdysseusDocuments(session.id),
-    activeDocument: session.active_document_id ? getOdysseusDocument(session.active_document_id) : null,
+    documents: listWorkspaceDocuments(session.id),
+    activeDocument: session.active_document_id ? getWorkspaceDocument(session.active_document_id) : null,
     messages: listWorkspaceMessages(session.id),
     telemetry: listWorkspaceTelemetryEvents(session.id).slice(-50),
     artifactState: {
@@ -31,7 +31,7 @@ export function GET({ params }) {
 }
 
 export async function PATCH({ params, request }) {
-  const session = getOdysseusSession(params.id);
+  const session = getWorkspaceSession(params.id);
   if (!session) error(404, "Session not found");
 
   let body: Record<string, unknown>;
@@ -46,15 +46,15 @@ export async function PATCH({ params, request }) {
 
   const name = routeString(body.name, "name", WORKSPACE_TITLE_MAX_CHARS, "").trim();
   if (!name) error(400, "Session name is required");
-  const updated = patchOdysseusSession(session.id, { name });
+  const updated = patchWorkspaceSession(session.id, { name });
   if (!updated) error(404, "Session not found");
   return json(updated);
 }
 
 export function DELETE({ params }) {
-  const session = getOdysseusSession(params.id);
+  const session = getWorkspaceSession(params.id);
   if (!session) error(404, "Session not found");
-  const deleted = deleteOdysseusSession(session.id);
+  const deleted = deleteWorkspaceSession(session.id);
   if (!deleted) error(404, "Session not found");
   return json({ id: session.id, deleted: true });
 }

@@ -1,5 +1,5 @@
 import { error, json } from "@sveltejs/kit";
-import { patchOdysseusSession } from "$lib/server/odysseus-document-store";
+import { patchWorkspaceSession } from "$lib/server/workspace-document-store";
 
 export async function POST({ params, request }) {
   const contentType = request.headers.get("content-type") ?? "";
@@ -13,7 +13,7 @@ export async function POST({ params, request }) {
     rawValue = typeof raw === "string" ? raw : "";
   }
   const is_important = rawValue === "true" || rawValue === "1" || rawValue === "on";
-  const session = patchOdysseusSession(params.id, { is_important });
+  const session = patchWorkspaceSession(params.id, { is_important });
   if (!session) error(404, "Session not found");
   return json(session);
 }

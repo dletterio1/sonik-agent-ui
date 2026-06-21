@@ -28,5 +28,6 @@ export { default as WorkspaceRoot } from "./components/WorkspaceRoot.svelte";
 export type { CanvasPanel, CanvasToolbarProps } from "./components/CanvasToolbar.svelte";
 export type { CanvasViewportProps } from "./components/CanvasViewport.svelte";
 
-export { default as OdysseusDocumentFrame } from "./components/OdysseusDocumentFrame.svelte";
-export type { OdysseusDocumentEvent, OdysseusDocumentFrameProps, OdysseusDocumentSnapshot } from "./components/OdysseusDocumentFrame.svelte";
+
+export { default as WorkspaceDocumentFrame } from "./components/WorkspaceDocumentFrame.svelte";
+export type { WorkspaceDocumentEvent, WorkspaceDocumentFrameProps, WorkspaceDocumentSnapshot } from "./components/WorkspaceDocumentFrame.svelte";

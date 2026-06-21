@@ -1,6 +1,6 @@
 import { json } from "@sveltejs/kit";
-import { listOdysseusDocuments } from "$lib/server/odysseus-document-store";
+import { listWorkspaceDocuments } from "$lib/server/workspace-document-store";
 
 export function GET({ params }) {
-  return json(listOdysseusDocuments(params.sessionId));
+  return json(listWorkspaceDocuments(params.sessionId));
 }

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { dev } from "$app/environment";
   import { SvelteSet } from "svelte/reactivity";
   import { Chat } from "@ai-sdk/svelte";
   import { DefaultChatTransport } from "ai";
@@ -22,7 +23,8 @@
     type ArtifactObservationEvent,
     type ArtifactStatus,
   } from "$lib/artifacts/artifact-observability";
-  import { CanvasViewport, OdysseusDocumentFrame, WorkspaceRoot, type OdysseusDocumentEvent } from "@sonik-agent-ui/workspace-core";
+  import { CanvasViewport, WorkspaceDocumentFrame, WorkspaceRoot, type WorkspaceDocumentEvent } from "@sonik-agent-ui/workspace-core";
+  import type { AgentUiPageContextSnapshot } from "@sonik-agent-ui/agent-observability";
   import { registry } from "$lib/render/registry";
 
   interface ActiveDocumentSnapshot {
@@ -99,6 +101,8 @@
   let pendingDocumentSnapshot: ActiveDocumentSnapshot | null = null;
   let documentPersistPromise: Promise<void> | null = null;
   let lastPersistedDocumentSignature = "";
+  let lastConversationTelemetrySignature = "";
+  let lastPageContextSignature = "";
 
   const conversation = new Chat({
     transport: new DefaultChatTransport({
@@ -114,7 +118,9 @@
             workspace: {
               activeDocument,
               sessionId: activeSessionId,
+              pageContext: createPageContextSnapshot(),
             },
+            pageContext: createPageContextSnapshot(),
           },
         };
       },
@@ -128,10 +134,10 @@
   const activeArtifactRawSpec = $derived(
     activeArtifact ? JSON.stringify(activeArtifact.content, null, 2) : "",
   );
-  const initialOdysseusDocumentContent = "# Sonik Odysseus Document\n\nThis is the copied Odysseus document editor running as an isolated island. Use the language selector to switch Markdown, HTML, JSON, CSV, code, and preview modes.";
-  const documentFrameTitle = $derived(documentSeed?.title ?? "Sonik Odysseus Document");
+  const initialWorkspaceDocumentContent = "# Workspace Document\n\nThis is the isolated workspace document editor running as a document island. Use the language selector to switch Markdown, HTML, JSON, CSV, code, and preview modes.";
+  const documentFrameTitle = $derived(documentSeed?.title ?? "Workspace Document");
   const documentFrameLanguage = $derived(documentSeed?.language ?? "markdown");
-  const documentFrameContent = $derived(documentSeed?.current_content ?? initialOdysseusDocumentContent);
+  const documentFrameContent = $derived(documentSeed?.current_content ?? initialWorkspaceDocumentContent);
   const documentFrameId = $derived(documentSeed?.id);
   const documentFramePreferredView = $derived(documentPreferredView);
   const documentFrameSubtitle = $derived(`${documentFrameLanguage} · v${documentSeed?.version_count ?? 1}`);
@@ -407,8 +413,90 @@
     return Boolean(value) && typeof value === "object" && !Array.isArray(value);
   }
 
+  function createPageContextSnapshot(): AgentUiPageContextSnapshot {
+    return {
+      route: "/",
+      surface: documentEditorOpen ? "document" : activeArtifact ? "artifact" : "chat",
+      pageType: "standalone-agent-workspace",
+      title: currentSession?.name ?? "Sonik Chat",
+      theme: typeof document !== "undefined" ? document.documentElement.dataset.theme : undefined,
+      mode: currentSession?.mode ?? "chat",
+      activeSessionId,
+      activeArtifactId: activeArtifact?.id ?? null,
+      activeDocumentId: activeDocument?.id ?? null,
+      artifactType: activeDocument?.language ?? (activeArtifact ? "json-render" : null),
+      conversationStatus: conversation.status,
+      messageCount: conversation.messages.length,
+      visibleActions: ["theme-picker", "workspace-docs", "start-over"],
+      visibleWarnings: sessionRailError ? [sessionRailError] : undefined,
+      commandFamilies: documentEditorOpen ? ["local-ui", "document", "artifact"] : activeArtifact ? ["local-ui", "artifact"] : ["local-ui", "discovery"],
+      skillFamilies: documentEditorOpen || activeArtifact ? ["workspace"] : ["chat"],
+      at: new Date().toISOString(),
+    };
+  }
+
+  function recordConversationLifecycle(reason: string): void {
+    const lastMessage = conversation.messages.at(-1);
+    const parts = (lastMessage?.parts ?? []) as unknown[];
+    const signature = JSON.stringify({
+      status: conversation.status,
+      count: conversation.messages.length,
+      lastId: lastMessage?.id,
+      parts: parts.length,
+      reason,
+    });
+    if (signature === lastConversationTelemetrySignature) return;
+    lastConversationTelemetrySignature = signature;
+    logArtifactTelemetry({
+      source: "client",
+      event: "chat.stream.lifecycle",
+      sessionId: activeSessionId ?? undefined,
+      messageId: lastMessage?.id,
+      runtimeStatus: conversation.status,
+      reason,
+      elementCount: parts.length,
+      totalMatches: conversation.messages.length,
+      ok: !conversation.error,
+      error: conversation.error ? String(conversation.error) : undefined,
+    });
+  }
+
+  function syncDevPageContext(reason: string): void {
+    if (typeof window === "undefined") return;
+    if (!dev) return;
+    const pageContext = createPageContextSnapshot();
+    const signature = JSON.stringify({
+      reason,
+      route: pageContext.route,
+      surface: pageContext.surface,
+      theme: pageContext.theme,
+      activeSessionId: pageContext.activeSessionId,
+      activeArtifactId: pageContext.activeArtifactId,
+      activeDocumentId: pageContext.activeDocumentId,
+      conversationStatus: pageContext.conversationStatus,
+      messageCount: pageContext.messageCount,
+    });
+    (window as Window & { __SONIK_AGENT_UI_PAGE_CONTEXT__?: () => AgentUiPageContextSnapshot }).__SONIK_AGENT_UI_PAGE_CONTEXT__ = () => pageContext;
+    if (signature === lastPageContextSignature) return;
+    lastPageContextSignature = signature;
+    void fetch("/api/dev/page-context", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reason, pageContext }),
+      keepalive: true,
+    }).catch(() => undefined);
+  }
+
   onMount(() => {
     void initializeSessions();
+  });
+
+  $effect(() => {
+    recordConversationLifecycle("status_or_message_changed");
+  });
+
+  $effect(() => {
+    syncDevPageContext("state_changed");
   });
 
   $effect(() => {
@@ -663,6 +751,7 @@
     const messagesToPersist = conversation.messages.filter((message) => !persistedMessageIds.has(message.id));
     if (messagesToPersist.length === 0) return;
 
+    logSessionTelemetry("session.messages.persist_eligible", { sessionId, reason: `${messagesToPersist.length} message(s)` });
     messagePersistInFlight = true;
     logSessionTelemetry("session.messages.persist_start", { sessionId, reason: `${messagesToPersist.length} message(s)` });
     try {
@@ -857,10 +946,11 @@
       pendingArtifactIntent = trimmed;
     }
 
-    if (/\b(document|markdown|html|code|editor|odysseus)\b/i.test(trimmed)) {
+    if (/\b(document|markdown|html|code|editor|workspace)\b/i.test(trimmed)) {
       documentEditorOpen = true;
     }
 
+    logSessionTelemetry("chat.submit.start", { sessionId: activeSessionId, reason: `${trimmed.length} chars` });
     maybeNameNewChat(trimmed);
     conversation.sendMessage({ text: trimmed });
   }
@@ -899,7 +989,7 @@
     pendingArtifactIntent = null;
   }
 
-  function handleDocumentEvent(event: OdysseusDocumentEvent): void {
+  function handleDocumentEvent(event: WorkspaceDocumentEvent): void {
     if (!event.document) {
       if (event.type === "view") {
         logArtifactTelemetry({ source: "client", event: "document_frame.view", mode: documentPreferredView, ok: true });
@@ -966,7 +1056,7 @@
           onclick={openDocumentEditor}
           class="px-3 py-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
         >
-          Odysseus Docs
+          Workspace Docs
         </button>
       {/snippet}
 
@@ -989,7 +1079,7 @@
       documentSubtitle={documentFrameSubtitle}
     >
       {#snippet document()}
-        <OdysseusDocumentFrame
+        <WorkspaceDocumentFrame
           documentId={documentFrameId}
           title={documentFrameTitle}
           language={documentFrameLanguage}

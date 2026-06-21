@@ -2,6 +2,8 @@ import { writeAgentTelemetry, type AgentTelemetryEvent } from "./agent-telemetry
 
 export interface GenerateStreamTelemetryContext {
   requestId: string;
+  traceId?: string;
+  traceparent?: string;
   sessionId?: string;
   messageId?: string;
   documentId?: string;
@@ -31,6 +33,8 @@ export function instrumentGenerateStream<T>(
       source: "server",
       event,
       requestId: context.requestId,
+      traceId: context.traceId,
+      traceparent: context.traceparent,
       sessionId: context.sessionId,
       messageId: context.messageId,
       documentId: context.documentId,

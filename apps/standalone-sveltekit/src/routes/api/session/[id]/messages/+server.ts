@@ -1,16 +1,16 @@
 import { error, json } from "@sveltejs/kit";
-import { getOdysseusSession } from "$lib/server/odysseus-document-store";
+import { getWorkspaceSession } from "$lib/server/workspace-document-store";
 import { appendWorkspaceMessage, listWorkspaceMessages } from "$lib/server/workspace-store";
 import { routeString, WORKSPACE_CONTENT_MAX_CHARS, WORKSPACE_SESSION_ID_MAX_CHARS } from "$lib/server/workspace-route-limits";
 
 export function GET({ params }) {
-  const session = getOdysseusSession(params.id);
+  const session = getWorkspaceSession(params.id);
   if (!session) error(404, "Session not found");
   return json(listWorkspaceMessages(session.id));
 }
 
 export async function POST({ params, request }) {
-  const session = getOdysseusSession(params.id);
+  const session = getWorkspaceSession(params.id);
   if (!session) error(404, "Session not found");
   let body: Record<string, unknown>;
   try {

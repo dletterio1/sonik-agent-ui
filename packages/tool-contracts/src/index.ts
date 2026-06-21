@@ -747,7 +747,7 @@ function inferCommandFamilyId(tool: ToolContractEntry): string {
   if (tool.source === "sandbox") return "sandbox";
   if (tool.source === "mcp" || tool.source === "orpc" || tool.source === "openapi") return "integration";
   const text = `${tool.id} ${tool.title} ${tool.uiTargets.join(" ")} ${tool.capabilities.join(" ")}`.toLowerCase();
-  if (/\b(document|markdown|editor|odysseus)\b/.test(text)) return "document";
+  if (/\b(document|markdown|editor|workspace)\b/.test(text)) return "document";
   if (/\b(artifact|canvas|json-render)\b/.test(text)) return "artifact";
   if (/\b(data|weather|crypto|github|hacker|search)\b/.test(text)) return "data";
   return "ui";

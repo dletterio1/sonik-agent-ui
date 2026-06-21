@@ -1,5 +1,5 @@
 {
-  "name": "@sonik-agent-ui/workspace-session",
+  "name": "@sonik-agent-ui/agent-observability",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,9 +12,7 @@
       "default": "./dist/index.js"
     }
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json"
@@ -22,8 +20,5 @@
   "devDependencies": {
     "@internal/typescript-config": "workspace:*",
     "typescript": "^5.4.5"
-  },
-  "dependencies": {
-    "@sonik-agent-ui/agent-observability": "workspace:*"
   }
 }

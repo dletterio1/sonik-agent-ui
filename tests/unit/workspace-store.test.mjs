@@ -198,7 +198,7 @@ const { routeString, WORKSPACE_CONTENT_MAX_CHARS } = await import(
 assert.equal(routeString(undefined, "content", 10, "default"), "default");
 assert.throws(() => routeString("x".repeat(WORKSPACE_CONTENT_MAX_CHARS + 1), "content", WORKSPACE_CONTENT_MAX_CHARS), /exceeds/);
 
-const hostHtml = await import("node:fs/promises").then((fs) => fs.readFile("apps/standalone-sveltekit/static/odysseus-document-host.html", "utf8"));
+const hostHtml = await import("node:fs/promises").then((fs) => fs.readFile("apps/standalone-sveltekit/static/workspace-document-host.html", "utf8"));
 assert.equal(hostHtml.includes("creating a new local copy"), false, "host must not fork identity when documentId load fails");
 assert.equal(hostHtml.includes("message.source !== 'sonik-agent-ui-parent'"), true, "host should reject non-parent bridge messages");
 
@@ -228,13 +228,13 @@ assert.equal(documentToolSource.includes("runtime.activeDocument = document"), t
 assert.equal(documentToolSource.includes("readDocumentArtifact"), true, "specific document read tool should be available for verification loops");
 assert.equal(documentToolSource.includes("preferredDocumentViewSchema"), true, "document tools should expose preferred view schema");
 
-const frameSource = await import("node:fs/promises").then((fs) => fs.readFile("packages/workspace-core/src/components/OdysseusDocumentFrame.svelte", "utf8"));
+const frameSource = await import("node:fs/promises").then((fs) => fs.readFile("packages/workspace-core/src/components/WorkspaceDocumentFrame.svelte", "utf8"));
 assert.equal(frameSource.includes("preferredView?: PreferredDocumentView"), true, "Svelte wrapper should expose preferredView prop");
 assert.equal(frameSource.includes("content, preferredView"), true, "Svelte wrapper should post preferredView to host payload");
 
-assert.equal(hostHtml.includes("function applyPreferredView"), true, "host should apply preferred view without editing copied Odysseus source");
-assert.equal(hostHtml.includes("#doc-render-view-toggle [data-renderview="), true, "host should use Odysseus HTML/SVG/XML view toggle");
-assert.equal(hostHtml.includes("#doc-md-view-toggle [data-mdview="), true, "host should use Odysseus markdown preview toggle");
+assert.equal(hostHtml.includes("function applyPreferredView"), true, "host should apply preferred view without editing copied workspace source");
+assert.equal(hostHtml.includes("#doc-render-view-toggle [data-renderview="), true, "host should use workspace HTML/SVG/XML view toggle");
+assert.equal(hostHtml.includes("#doc-md-view-toggle [data-mdview="), true, "host should use workspace markdown preview toggle");
 assert.equal(hostHtml.includes("document_host.preferred_view_applied"), true, "host should log preferred view telemetry");
 
 const telemetryRoute = await import("node:fs/promises").then((fs) => fs.readFile("apps/standalone-sveltekit/src/routes/api/telemetry/+server.ts", "utf8"));
@@ -245,7 +245,7 @@ assert.equal(telemetryServer.includes("Intentional fail-safe: workspace telemetr
 assert.equal(generateRoute.includes("api.generate.stream_attached"), true, "generate route should log stream attachment");
 assert.equal(generateRoute.includes("sessionId: telemetrySessionId"), true, "generate route should associate agent telemetry with workspace sessions when available");
 
-assert.equal(hostHtml.includes("function stabilizeOpenedDocument"), true, "host should stabilize the editor after Odysseus deferred switchToDoc");
+assert.equal(hostHtml.includes("function stabilizeOpenedDocument"), true, "host should stabilize the editor after copied-editor deferred switchToDoc");
 assert.equal(hostHtml.includes("writeEditorDomFromRecord(documentRecord)"), true, "host stabilization should rewrite DOM from the just-opened document record");
 assert.equal(hostHtml.includes("refreshRenderedPreview(documentRecord)"), true, "host stabilization should refresh rendered HTML/SVG/XML preview from updated content");
 assert.equal(hostHtml.includes("function shouldSuppressStaleOpenSnapshot"), true, "host should suppress stale changed snapshots during open stabilization");

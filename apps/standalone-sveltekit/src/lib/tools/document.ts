@@ -51,7 +51,7 @@ export function createDocumentTools(context: DocumentToolContext = {}) {
 
   return {
     readActiveDocument: tool({
-      description: "Read the current active Odysseus/Sonik document that is open in the canvas document editor.",
+      description: "Read the current active Workspace/Sonik document that is open in the canvas document editor.",
       inputSchema: z.object({}),
       execute: async () => {
         const document = resolveDocumentSnapshot(runtime.activeDocument);
@@ -65,7 +65,7 @@ export function createDocumentTools(context: DocumentToolContext = {}) {
       },
     }),
     readDocumentArtifact: tool({
-      description: "Read a specific Odysseus/Sonik document artifact by id, or read the current active document when no id is supplied. Sets the read document as the active document for subsequent document tools in the same turn.",
+      description: "Read a specific Workspace/Sonik document artifact by id, or read the current active document when no id is supplied. Sets the read document as the active document for subsequent document tools in the same turn.",
       inputSchema: z.object({
         documentId: z.string().optional().describe("Document id to read. Defaults to the current active document."),
       }),
@@ -81,7 +81,7 @@ export function createDocumentTools(context: DocumentToolContext = {}) {
       },
     }),
     createDocumentArtifact: tool({
-      description: "Create a markdown, HTML, JSON, code, or plain-text document artifact in the Odysseus document editor canvas. Use this for explicit document/editor artifact requests, not for every answer.",
+      description: "Create a markdown, HTML, JSON, code, or plain-text document artifact in the workspace document editor canvas. Use this for explicit document/editor artifact requests, not for every answer.",
       inputSchema: z.object({
         title: z.string().describe("Short title for the document tab."),
         language: documentLanguageSchema.describe("Document language/render mode, e.g. markdown, html, json, typescript, python, csv."),
@@ -117,7 +117,7 @@ export function createDocumentTools(context: DocumentToolContext = {}) {
       },
     }),
     updateDocumentArtifact: tool({
-      description: "Update the active Odysseus/Sonik document artifact with complete replacement content. Uses the active document unless documentId is supplied.",
+      description: "Update the active Workspace/Sonik document artifact with complete replacement content. Uses the active document unless documentId is supplied.",
       inputSchema: z.object({
         documentId: z.string().optional().describe("Document id to update. Defaults to the active document."),
         title: z.string().optional().describe("Optional new document title."),

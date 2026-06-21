@@ -14,6 +14,8 @@ export interface ArtifactTelemetryEvent {
   title?: string;
   root?: string;
   elementCount?: number;
+  totalMatches?: number;
+  runtimeStatus?: string;
   reason?: string;
   mode?: string;
   messageId?: string;

@@ -10,6 +10,7 @@ import { pipeJsonRender } from "@json-render/core";
 import { pipeArtifactToolOutputsToSpecParts } from "$lib/artifacts/artifact-stream";
 import { logArtifactTelemetry } from "$lib/artifacts/artifact-telemetry";
 import { writeAgentTelemetry } from "$lib/server/agent-telemetry";
+import { createTelemetryCorrelation, sanitizePageContext } from "@sonik-agent-ui/agent-observability";
 import { instrumentGenerateStream } from "$lib/server/stream-telemetry";
 import { summarizeWorkspaceContext, syncActiveWorkspaceDocumentSnapshot, type WorkspaceDocumentRecord } from "$lib/server/workspace-store";
 import { createStandaloneCommandIndexSummary } from "$lib/server/tool-manifest";
@@ -84,7 +85,21 @@ function resolvePageContextSource(body: Record<string, unknown>, activeDocument:
   return "none";
 }
 
+function createCorrelationHeaders(input: { requestId: string; traceId: string; traceparent: string }): Record<string, string> {
+  return {
+    "x-sonik-request-id": input.requestId,
+    "x-sonik-trace-id": input.traceId,
+    traceparent: input.traceparent,
+  };
+}
+
 export const POST: RequestHandler = async ({ request }) => {
+  const correlation = createTelemetryCorrelation({
+    requestId: request.headers.get("x-sonik-request-id") ?? request.headers.get("x-request-id"),
+    traceId: request.headers.get("x-sonik-trace-id"),
+    traceparent: request.headers.get("traceparent"),
+  });
+  const correlationHeaders = createCorrelationHeaders(correlation);
   const ip =
     request.headers.get("x-forwarded-for")?.split(",")[0] ?? "anonymous";
 
@@ -104,7 +119,7 @@ export const POST: RequestHandler = async ({ request }) => {
       }),
       {
         status: 429,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...correlationHeaders },
       },
     );
   }
@@ -112,10 +127,13 @@ export const POST: RequestHandler = async ({ request }) => {
   const body = await request.json();
   const uiMessages: UIMessage[] = body.messages;
   const activeDocument = _resolveActiveDocument(body?.workspace?.activeDocument);
-  const requestId = crypto.randomUUID();
+  const requestId = correlation.requestId;
+  const traceId = correlation.traceId;
+  const traceparent = correlation.traceparent;
   const workspaceSessionId = routeString(body?.workspace?.sessionId, "workspace.sessionId", WORKSPACE_SESSION_ID_MAX_CHARS, "") || undefined;
   const telemetrySessionId = activeDocument?.session_id ?? workspaceSessionId;
   const pageContext = resolveAgentPageContext(body?.pageContext ?? body?.workspace?.pageContext, { activeDocument });
+  const telemetryPageContext = sanitizePageContext(body?.pageContext ?? body?.workspace?.pageContext);
   const pageContextSource = resolvePageContextSource(body, activeDocument);
   const startedAt = Date.now();
 
@@ -124,7 +142,7 @@ export const POST: RequestHandler = async ({ request }) => {
       JSON.stringify({ error: "messages array is required" }),
       {
         status: 400,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...correlationHeaders },
       },
     );
   }
@@ -134,6 +152,8 @@ export const POST: RequestHandler = async ({ request }) => {
     source: "server" as const,
     event: "api.generate.start",
     requestId,
+    traceId,
+    traceparent,
     sessionId: telemetrySessionId,
     messageId: lastMessage?.id,
     documentId: activeDocument?.id,
@@ -155,6 +175,8 @@ export const POST: RequestHandler = async ({ request }) => {
     source: "server",
     event: "api.generate.command_index_context",
     requestId,
+    traceId,
+    traceparent,
     sessionId: telemetrySessionId,
     messageId: lastMessage?.id,
     elementCount: commandIndexSummary.split("\n- ").length - 1,
@@ -163,6 +185,7 @@ export const POST: RequestHandler = async ({ request }) => {
     commandFamilies: pageContext?.commandFamilies,
     skillFamilies: pageContext?.skillFamilies,
     contextSource: pageContextSource,
+    pageContext: telemetryPageContext,
     ok: true,
   }).catch(() => undefined);
   const agent = createAgent({ activeDocument, sessionId: telemetrySessionId, pageContext });
@@ -175,6 +198,8 @@ export const POST: RequestHandler = async ({ request }) => {
         const aiStream = pipeArtifactToolOutputsToSpecParts(pipeJsonRender(result.toUIMessageStream()));
         writer.merge(instrumentGenerateStream(aiStream, {
           requestId,
+          traceId,
+          traceparent,
           sessionId: telemetrySessionId,
           messageId: lastMessage?.id,
           documentId: activeDocument?.id,
@@ -185,6 +210,8 @@ export const POST: RequestHandler = async ({ request }) => {
           source: "server",
           event: "api.generate.stream_attached",
           requestId,
+          traceId,
+          traceparent,
           sessionId: telemetrySessionId,
           messageId: lastMessage?.id,
           documentId: activeDocument?.id,
@@ -199,6 +226,8 @@ export const POST: RequestHandler = async ({ request }) => {
           source: "server",
           event: "api.generate.stream_error",
           requestId,
+          traceId,
+          traceparent,
           sessionId: telemetrySessionId,
           messageId: lastMessage?.id,
           durationMs: Date.now() - startedAt,
@@ -209,13 +238,17 @@ export const POST: RequestHandler = async ({ request }) => {
       },
     });
 
-    return createUIMessageStreamResponse({ stream });
+    const response = createUIMessageStreamResponse({ stream });
+    for (const [key, value] of Object.entries(correlationHeaders)) response.headers.set(key, value);
+    return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     void writeAgentTelemetry({
       source: "server",
       event: "api.generate.error",
       requestId,
+      traceId,
+      traceparent,
       sessionId: telemetrySessionId,
       messageId: lastMessage?.id,
       durationMs: Date.now() - startedAt,

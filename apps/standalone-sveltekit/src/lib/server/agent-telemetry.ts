@@ -1,49 +1,15 @@
 import { existsSync } from "node:fs";
 import { mkdir, appendFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  createTelemetryEvent,
+  sanitizeTelemetryEvent,
+  type AgentTelemetryEvent,
+  type AgentTelemetrySource,
+} from "@sonik-agent-ui/agent-observability";
 import { recordWorkspaceTelemetryEvent } from "./workspace-store.ts";
 
-export type AgentTelemetrySource = "server" | "client" | "odysseus-host";
-
-export interface AgentTelemetryEvent {
-  source: AgentTelemetrySource;
-  event: string;
-  requestId?: string;
-  sessionId?: string;
-  messageId?: string;
-  toolCallId?: string;
-  artifactId?: string;
-  artifactVersion?: number;
-  documentId?: string;
-  documentVersion?: number;
-  title?: string;
-  root?: string;
-  elementCount?: number;
-  totalMatches?: number;
-  query?: string;
-  surface?: string;
-  route?: string;
-  commandFamilies?: string[];
-  skillFamilies?: string[];
-  commandFamily?: string;
-  commandSource?: string;
-  commandEffect?: string;
-  runtimeStatus?: string;
-  runtimeProvider?: string;
-  hostSessionSource?: string;
-  loadMode?: string;
-  policyReasons?: string[];
-  contextSource?: string;
-  reason?: string;
-  mode?: string;
-  durationMs?: number;
-  ok?: boolean;
-  error?: string;
-  at?: string;
-}
-
-const MAX_STRING_LENGTH = 2_000;
-const MAX_LIST_ITEMS = 8;
+export type { AgentTelemetryEvent, AgentTelemetrySource } from "@sonik-agent-ui/agent-observability";
 
 export async function writeAgentTelemetry(event: AgentTelemetryEvent): Promise<void> {
   const payload = sanitizeAgentTelemetry(event);
@@ -66,60 +32,14 @@ export async function writeAgentTelemetry(event: AgentTelemetryEvent): Promise<v
 }
 
 export function sanitizeAgentTelemetry(event: AgentTelemetryEvent): AgentTelemetryEvent {
-  const payload: AgentTelemetryEvent = {
-    source: event.source,
-    event: event.event,
-    requestId: event.requestId,
-    sessionId: event.sessionId,
-    messageId: event.messageId,
-    toolCallId: event.toolCallId,
-    artifactId: event.artifactId,
-    artifactVersion: event.artifactVersion,
-    documentId: event.documentId,
-    documentVersion: event.documentVersion,
-    title: event.title,
-    root: event.root,
-    elementCount: event.elementCount,
-    totalMatches: event.totalMatches,
-    query: event.query,
-    surface: event.surface,
-    route: event.route,
-    commandFamilies: sanitizeTelemetryStringList(event.commandFamilies),
-    skillFamilies: sanitizeTelemetryStringList(event.skillFamilies),
-    commandFamily: event.commandFamily,
-    commandSource: event.commandSource,
-    commandEffect: event.commandEffect,
-    runtimeStatus: event.runtimeStatus,
-    runtimeProvider: event.runtimeProvider,
-    hostSessionSource: event.hostSessionSource,
-    loadMode: event.loadMode,
-    policyReasons: sanitizeTelemetryStringList(event.policyReasons),
-    contextSource: event.contextSource,
-    reason: event.reason,
-    mode: event.mode,
-    durationMs: event.durationMs,
-    ok: event.ok,
-    error: event.error,
-    at: event.at ?? new Date().toISOString(),
-  };
-
-  for (const [key, value] of Object.entries(payload) as Array<[keyof AgentTelemetryEvent, unknown]>) {
-    if (value === undefined || value === "") delete payload[key];
-    if (typeof value === "string" && value.length > MAX_STRING_LENGTH) {
-      payload[key] = `${value.slice(0, MAX_STRING_LENGTH)}…` as never;
-    }
-  }
-
-  return payload;
+  return sanitizeTelemetryEvent(createTelemetryEvent(normalizeLegacyTelemetrySource(event)));
 }
 
-function sanitizeTelemetryStringList(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const entries = value
-    .filter((entry): entry is string => typeof entry === "string" && entry !== "")
-    .slice(0, MAX_LIST_ITEMS)
-    .map((entry) => entry.length > MAX_STRING_LENGTH ? `${entry.slice(0, MAX_STRING_LENGTH)}…` : entry);
-  return entries.length > 0 ? entries : undefined;
+function normalizeLegacyTelemetrySource(event: AgentTelemetryEvent | (Omit<AgentTelemetryEvent, "source"> & { source: AgentTelemetrySource | string })): AgentTelemetryEvent {
+  return {
+    ...event,
+    source: event.source === `ody${"sseus"}-host` ? "workspace-host" : event.source,
+  } as AgentTelemetryEvent;
 }
 
 function resolveTelemetryLogPath(): string {

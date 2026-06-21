@@ -196,10 +196,10 @@ export function createStandaloneToolManifest(context: PlatformAdapterContext = {
     localTool("getHackerNewsTop", "Get Hacker News top stories", "Fetch current Hacker News top stories.", ["chat", "inline-json"]),
     localTool("webSearch", "Search web", "Search the web for real-time information.", ["chat"]),
     localTool("createJsonArtifact", "Create JSON-render artifact", "Promote a JSON-render spec into the live canvas artifact.", ["artifact", "canvas"], "write", "required"),
-    localTool("readActiveDocument", "Read active document", "Read the current Odysseus document bridge snapshot.", ["chat", "document"]),
+    localTool("readActiveDocument", "Read active document", "Read the current workspace document bridge snapshot.", ["chat", "document"]),
     localTool("readDocumentArtifact", "Read document by id", "Read a specific workspace document artifact.", ["chat", "document"]),
-    localTool("createDocumentArtifact", "Create document artifact", "Create a Markdown/HTML/code document in the Odysseus editor.", ["document", "canvas"], "write", "required"),
-    localTool("updateDocumentArtifact", "Update document artifact", "Update the active or selected Odysseus document artifact.", ["document", "canvas"], "write", "required"),
+    localTool("createDocumentArtifact", "Create document artifact", "Create a Markdown/HTML/code document in the workspace editor.", ["document", "canvas"], "write", "required"),
+    localTool("updateDocumentArtifact", "Update document artifact", "Update the active or selected workspace document artifact.", ["document", "canvas"], "write", "required"),
     {
       id: "booking.contexts.list",
       source: "orpc",

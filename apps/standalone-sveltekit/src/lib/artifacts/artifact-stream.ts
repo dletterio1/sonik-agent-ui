@@ -8,7 +8,7 @@ interface ToolOutputChunkLike {
 }
 
 /**
- * Bridges Odysseus-style artifact tool calls into the existing json-render
+ * Bridges workspace-style artifact tool calls into the existing json-render
  * stream lane. The renderer already knows how to consume `data-spec`; this
  * keeps the local JSON renderer intact while allowing a dedicated artifact
  * creation tool to deterministically promote the canvas.

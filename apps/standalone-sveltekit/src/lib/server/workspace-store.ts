@@ -240,7 +240,7 @@ export function summarizeWorkspaceContext(input: { activeDocument?: WorkspaceDoc
     ? `${document.current_content.slice(0, maxChars)}\n... (${document.current_content.length} chars total)`
     : document.current_content;
   return [
-    "Active Odysseus/Sonik document context:",
+    "Active Workspace/Sonik document context:",
     `- id: ${document.id}`,
     `- title: ${document.title}`,
     `- language: ${document.language}`,
