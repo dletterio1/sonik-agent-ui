@@ -241,4 +241,13 @@ assert.equal(smokeHarnessSource.includes("session.messages.persist_success"), tr
 assert.equal(smokeHarnessSource.includes("AGENT_UI_SMOKE_START_SERVER"), true, "smoke harness should be batteries-included and able to start local dev dependencies");
 assert.equal(packageSource.includes("smoke:agent-ui:real-model"), true, "package scripts should expose an explicit real-model smoke lane separate from deterministic crash gating");
 
+const artifactToolSource = await readFile("apps/standalone-sveltekit/src/lib/tools/artifact.ts", "utf8");
+assert.equal(artifactToolSource.includes("validateSpec"), true, "artifact tool should use shared json-render structural validation");
+assert.equal(artifactToolSource.includes("explorerCatalog.validate"), true, "artifact tool should validate against the component catalog");
+assert.equal(artifactToolSource.includes("Object.keys(elements).length > 0"), true, "artifact tool schema should reject empty elements maps");
+assert.equal(artifactToolSource.includes("spec.elements must include the root key"), true, "artifact tool schema should require root to exist in elements");
+assert.equal(artifactToolSource.includes("tool.createJsonArtifact.rejected_invalid_spec"), true, "invalid artifact specs should be rejected as tool errors, not promoted as recovered successes");
+assert.equal(artifactToolSource.includes("recovered_invalid_spec"), false, "artifact tool should not report recovered invalid specs as successful artifact outputs");
+assert.equal(artifactToolSource.includes("Never call this with { \"elements\": {} }"), true, "artifact tool description should explicitly forbid empty spec elements");
+
 console.log("app-shell-session-rail tests passed");
