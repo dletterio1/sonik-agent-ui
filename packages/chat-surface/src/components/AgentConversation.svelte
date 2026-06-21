@@ -9,6 +9,12 @@
     prompt: string;
   }
 
+  export interface AgentActivityStatus {
+    label: string;
+    detail?: string;
+    tone?: "neutral" | "waiting" | "tool" | "artifact" | "error";
+  }
+
   export interface AgentConversationProps {
     title?: string;
     messages: AgentChatMessage[];
@@ -17,6 +23,7 @@
     error?: { message?: string } | null;
     suggestions?: AgentSuggestion[];
     toolLabels?: Record<string, [string, string]>;
+    activity?: AgentActivityStatus | null;
     onSubmit: (text: string) => void;
     onStop?: () => void;
     onClear?: () => void;
@@ -39,6 +46,7 @@
     error = null,
     suggestions = [],
     toolLabels = {},
+    activity = null,
     onSubmit,
     onStop,
     onClear,
@@ -115,6 +123,19 @@
             {shouldRenderArtifact}
           />
         {/each}
+
+        {#if activity}
+          <div
+            class="inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-card/80 px-3 py-1.5 text-xs text-muted-foreground shadow-sm"
+            data-tone={activity.tone ?? "neutral"}
+          >
+            <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70 animate-pulse"></span>
+            <span class="font-medium text-foreground/80">{activity.label}</span>
+            {#if activity.detail}
+              <span class="truncate">{activity.detail}</span>
+            {/if}
+          </div>
+        {/if}
 
         {#if error?.message}
           <div class="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">

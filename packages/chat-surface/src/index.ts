@@ -4,7 +4,7 @@ export { default as AgentMessage } from "./components/AgentMessage.svelte";
 export { default as ToolCallBlock } from "./components/ToolCallBlock.svelte";
 
 export type { AgentChatStatus, AgentComposerProps } from "./components/AgentComposer.svelte";
-export type { AgentConversationProps, AgentSuggestion } from "./components/AgentConversation.svelte";
+export type { AgentActivityStatus, AgentConversationProps, AgentSuggestion } from "./components/AgentConversation.svelte";
 export type { AgentChatMessage, AgentMessageProps } from "./components/AgentMessage.svelte";
 export type { ToolCallBlockProps } from "./components/ToolCallBlock.svelte";
 export type { ChatSegment, ChatSegmentsResult, ToolInfo } from "./message-parts.js";

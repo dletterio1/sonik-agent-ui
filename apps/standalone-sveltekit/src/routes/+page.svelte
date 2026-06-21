@@ -6,7 +6,7 @@
   import { DefaultChatTransport } from "ai";
   import type { DataPart, Spec } from "@json-render/svelte";
   import { JsonArtifactRenderer } from "@sonik-agent-ui/json-ui-runtime";
-  import { AgentConversation, getSpec, getText, snapshotDataParts, type AgentChatMessage } from "@sonik-agent-ui/chat-surface";
+  import { AgentConversation, getSpec, getText, snapshotDataParts, type AgentActivityStatus, type AgentChatMessage } from "@sonik-agent-ui/chat-surface";
   import { upsertJsonRenderArtifact, type JsonRenderArtifact } from "@sonik-agent-ui/artifact-model";
   import { DEFAULT_WORKSPACE_SESSION_NAME, deriveWorkspaceSessionTitle, isDefaultWorkspaceSessionName } from "@sonik-agent-ui/workspace-session";
   import { promoteJsonRenderArtifact } from "$lib/artifacts/json-render-promotion";
@@ -104,6 +104,9 @@
   let lastPersistedDocumentSignature = "";
   let lastConversationTelemetrySignature = "";
   let lastPageContextSignature = "";
+  let lastActivityTelemetrySignature = "";
+  let streamStartedAt = $state<number | null>(null);
+  let activityClock = $state(Date.now());
   let lastPersistStatus = $state<AgentUiPageAssertions["lastPersistStatus"]>("idle");
 
   const conversation = new Chat({
@@ -148,6 +151,7 @@
   const documentFramePreferredView = $derived(documentPreferredView);
   const documentFrameSubtitle = $derived(`${documentFrameLanguage} · v${documentSeed?.version_count ?? 1}`);
   const artifactOpen = $derived(Boolean(activeArtifact || pendingArtifactIntent || documentEditorOpen));
+  const agentActivity = $derived<AgentActivityStatus | null>(createAgentActivityStatus());
   const pageAssertions = $derived<AgentUiPageAssertions>({
     schemaVersion: "sonik.agent_ui.assertions.v1",
     hasActiveSession: Boolean(activeSessionId),
@@ -453,6 +457,63 @@
   }
 
 
+  function formatToolActivityDetail(toolType: string): string {
+    const slug = toolType.replace(/^tool-/, "");
+    if (slug === "createJsonArtifact") return "Creating artifact";
+    if (slug === "updateDocument") return "Updating document";
+    if (slug === "createDocument") return "Creating document";
+    if (slug === "readDocument") return "Reading document";
+    return slug
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .replace(/[-_]+/g, " ")
+      .trim()
+      .replace(/^./, (char) => char.toUpperCase()) || "Running tool";
+  }
+
+  function createAgentActivityStatus(): AgentActivityStatus | null {
+    if (!isStreaming) return null;
+    const elapsedSeconds = streamStartedAt ? Math.max(0, Math.floor((activityClock - streamStartedAt) / 1000)) : 0;
+    const lastAssistant = [...conversation.messages].reverse().find((message) => message.role === "assistant");
+    const parts = snapshotDataParts(lastAssistant?.parts as DataPart[]);
+    const latestTool = [...parts].reverse().find((part) => part.type?.startsWith("tool-")) as (DataPart & { state?: string }) | undefined;
+
+    if (latestTool?.state === "output-error") return { label: "Tool failed", detail: "Inspecting recovery path…", tone: "error" };
+    if (latestTool && latestTool.state !== "output-available" && latestTool.state !== "output-denied") {
+      return { label: "Calling tool", detail: formatToolActivityDetail(latestTool.type), tone: "tool" };
+    }
+    if (parts.some((part) => part.type === "data-spec" || part.type === "tool-createJsonArtifact")) {
+      return { label: "Preparing canvas", detail: "Promoting artifact view…", tone: "artifact" };
+    }
+    if (parts.some((part) => part.type === "text" && typeof part.text === "string" && part.text.trim())) {
+      return { label: "Streaming response", tone: "neutral" };
+    }
+    if (elapsedSeconds >= 10) return { label: "Waiting for model response", detail: `${elapsedSeconds}s elapsed`, tone: "waiting" };
+    if (conversation.status === "submitted") return { label: "Starting request", tone: "neutral" };
+    return { label: "Working", detail: "Waiting for visible output…", tone: "waiting" };
+  }
+
+  function recordAgentActivity(activity: AgentActivityStatus | null): void {
+    if (!activity || !isStreaming) return;
+    const signature = JSON.stringify({
+      label: activity.label,
+      tone: activity.tone,
+      // Exclude exact elapsed-second detail so long waits emit bounded status-transition telemetry.
+      sessionId: activeSessionId,
+      status: conversation.status,
+    });
+    if (signature === lastActivityTelemetrySignature) return;
+    lastActivityTelemetrySignature = signature;
+    logArtifactTelemetry({
+      source: "client",
+      event: "chat.activity.status",
+      sessionId: activeSessionId ?? undefined,
+      runtimeStatus: conversation.status,
+      mode: activity.tone ?? "neutral",
+      reason: activity.label,
+      ok: true,
+    });
+  }
+
   function getSubmitDisabledReason(message: string): AgentUiPageAssertions["submitDisabledReason"] {
     if (isStreaming) return "streaming";
     if (sessionRailBusy) return "session_loading";
@@ -605,11 +666,27 @@
   }
 
   onMount(() => {
+    const activityTimer = window.setInterval(() => {
+      if (isStreaming) activityClock = Date.now();
+    }, 1_000);
     void initializeSessions();
+    return () => window.clearInterval(activityTimer);
   });
 
   $effect(() => {
+    if (isStreaming && streamStartedAt === null) {
+      streamStartedAt = Date.now();
+      activityClock = streamStartedAt;
+    }
+    if (!isStreaming && streamStartedAt !== null) {
+      streamStartedAt = null;
+      lastActivityTelemetrySignature = "";
+    }
     recordConversationLifecycle("status_or_message_changed");
+  });
+
+  $effect(() => {
+    recordAgentActivity(agentActivity);
   });
 
   $effect(() => {
@@ -853,6 +930,8 @@
     activeArtifact = null;
     activeArtifactStatus = null;
     pendingArtifactIntent = null;
+    streamStartedAt = null;
+    lastActivityTelemetrySignature = "";
     artifactEvents = [];
     observationIndex = 0;
     lastPromotionKey = null;
@@ -1089,6 +1168,8 @@
     activeArtifact = null;
     activeArtifactStatus = null;
     pendingArtifactIntent = null;
+    streamStartedAt = null;
+    lastActivityTelemetrySignature = "";
     artifactEvents = [];
     observationIndex = 0;
     lastPromotionKey = null;
@@ -1107,6 +1188,8 @@
     activeArtifact = null;
     activeArtifactStatus = null;
     pendingArtifactIntent = null;
+    streamStartedAt = null;
+    lastActivityTelemetrySignature = "";
     artifactEvents = [];
     lastPromotionKey = null;
   }
@@ -1170,6 +1253,7 @@
       error={conversation.error}
       suggestions={SUGGESTIONS}
       toolLabels={TOOL_LABELS}
+      activity={agentActivity}
       bind:input
       onSubmit={handleSubmit}
       onStop={handleStop}

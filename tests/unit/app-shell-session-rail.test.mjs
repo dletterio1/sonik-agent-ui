@@ -19,6 +19,7 @@ const layoutSource = await readFile("apps/standalone-sveltekit/src/routes/+layou
 const workspaceFrameSource = await readFile("packages/workspace-core/src/components/WorkspaceDocumentFrame.svelte", "utf8");
 const workspaceHostSource = await readFile("apps/standalone-sveltekit/static/workspace-document-host.html", "utf8");
 const agentMessageSource = await readFile("packages/chat-surface/src/components/AgentMessage.svelte", "utf8");
+const agentConversationSource = await readFile("packages/chat-surface/src/components/AgentConversation.svelte", "utf8");
 const chatTextSource = await readFile("packages/chat-surface/src/components/ChatText.svelte", "utf8");
 const chatTextParserSource = await readFile("packages/chat-surface/src/chat-text.ts", "utf8");
 const chatSurfaceIndexSource = await readFile("packages/chat-surface/src/index.ts", "utf8");
@@ -154,6 +155,21 @@ assert.equal(generateRoute.includes("instrumentGenerateStream"), true, "generate
 assert.equal(streamTelemetrySource.includes("api.generate.stream_finished"), true, "generate stream helper should log normal stream completion");
 assert.equal(streamTelemetrySource.includes("api.generate.stream_failed"), true, "generate stream helper should log stream failures before surfacing them");
 assert.equal(streamTelemetrySource.includes("api.generate.stream_cancelled"), true, "generate stream helper should log stream cancellation for manual stop/debugging");
+
+assert.equal(pageSource.includes("chat.activity.status"), true, "client should expose sanitized activity status telemetry without raw reasoning");
+assert.equal(pageSource.includes("Waiting for model response"), true, "chat UI should show a sanitized wait status for long silent model spans");
+assert.equal(pageSource.includes("formatToolActivityDetail"), true, "tool activity details should be human labels instead of raw tool slugs");
+assert.equal(pageSource.includes("detail: activity.detail,"), false, "activity telemetry signature should not emit every second during long waits");
+assert.equal(pageSource.includes("activity={agentActivity}"), true, "top-level app should pass activity status into the chat surface");
+assert.equal(agentConversationSource.includes("AgentActivityStatus"), true, "chat surface should define a reusable activity status contract");
+assert.equal(agentConversationSource.includes("data-tone={activity.tone"), true, "chat surface should render the activity tone without exposing reasoning text");
+assert.equal(streamTelemetrySource.includes("api.generate.stream_waiting"), true, "server stream telemetry should log sanitized long-wait spans");
+assert.equal(streamTelemetrySource.includes("api.generate.stream_first_visible_text"), true, "server stream telemetry should log first visible text latency");
+assert.equal(streamTelemetrySource.includes("api.generate.stream_first_tool"), true, "server stream telemetry should log first tool latency");
+assert.equal(streamTelemetrySource.includes("api.generate.stream_first_artifact_spec"), true, "server stream telemetry should log first artifact spec latency");
+assert.equal(streamTelemetrySource.includes("reasoning"), false, "stream telemetry milestones should not expose raw reasoning content or reasoning counts to users");
+assert.equal(generateRoute.includes("dropped_reasoning"), false, "generate telemetry should not expose hidden reasoning counters in log reason strings");
+assert.equal(generateRoute.includes("stream_safety_filter_applied"), true, "generate telemetry should report sanitized stream safety application");
 assert.equal(streamTelemetrySource.includes("runId: context.runId"), true, "generate stream helper should keep smoke/test run correlation on terminal stream events");
 assert.equal(streamTelemetrySource.includes(".catch(() => undefined)"), true, "generate stream helper telemetry should be best-effort and non-throwing");
 assert.equal(generateRoute.includes("devSmokeMockStream"), false, "generate route should not expose deterministic smoke mode as a general request-body command");

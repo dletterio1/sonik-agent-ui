@@ -72,7 +72,12 @@ export function createDevSmokeStream(input: DevSmokeStreamInput): ReadableStream
         runId: input.runId,
         durationMs: Date.now() - input.startedAt,
         ok: true,
-        reason: `dropped_reasoning=${stats.reasoningChunksDropped}; text_in=${stats.textDeltaChunksIn}; text_out=${stats.textDeltaChunksOut}; chars=${stats.textDeltaCharsOut}`,
+        reason: "stream_safety_filter_applied",
+        payload: {
+          textDeltaChunksIn: stats.textDeltaChunksIn,
+          textDeltaChunksOut: stats.textDeltaChunksOut,
+          textDeltaCharsOut: stats.textDeltaCharsOut,
+        },
       }).catch(() => undefined);
     },
   });

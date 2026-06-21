@@ -234,7 +234,12 @@ export const POST: RequestHandler = async ({ request }) => {
                 messageId: lastMessage?.id,
                 durationMs: Date.now() - startedAt,
                 ok: true,
-                reason: `dropped_reasoning=${stats.reasoningChunksDropped}; text_in=${stats.textDeltaChunksIn}; text_out=${stats.textDeltaChunksOut}; chars=${stats.textDeltaCharsOut}`,
+                reason: "stream_safety_filter_applied",
+                payload: {
+                  textDeltaChunksIn: stats.textDeltaChunksIn,
+                  textDeltaChunksOut: stats.textDeltaChunksOut,
+                  textDeltaCharsOut: stats.textDeltaCharsOut,
+                },
               }).catch(() => undefined);
             },
           },
@@ -249,6 +254,8 @@ export const POST: RequestHandler = async ({ request }) => {
           documentId: activeDocument?.id,
           documentVersion: activeDocument?.version_count,
           startedAt,
+          waitingMs: 10_000,
+          waitingIntervalMs: 20_000,
         }));
         void writeAgentTelemetry({
           source: "server",

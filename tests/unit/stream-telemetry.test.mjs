@@ -43,10 +43,12 @@ async function readAll(stream) {
   }));
 
   assert.deepEqual(values, ["a", "b"]);
-  assert.equal(events.length, 1);
-  assert.equal(events[0].event, "api.generate.stream_finished");
-  assert.equal(events[0].ok, true);
-  assert.equal(events[0].traceId, "0123456789abcdef0123456789abcdef");
+  assert.equal(events.length, 2);
+  assert.equal(events[0].event, "api.generate.stream_first_visible_chunk");
+  assert.equal(events[0].phase, undefined, "string streams should not invent a chunk type");
+  assert.equal(events[1].event, "api.generate.stream_finished");
+  assert.equal(events[1].ok, true);
+  assert.equal(events[1].traceId, "0123456789abcdef0123456789abcdef");
 }
 
 {
@@ -105,9 +107,42 @@ async function readAll(stream) {
   await reader.cancel("manual-stop");
 
   assert.equal(cancelReason, "manual-stop");
-  assert.equal(events.length, 1);
-  assert.equal(events[0].event, "api.generate.stream_cancelled");
-  assert.equal(events[0].ok, false);
+  assert.equal(events.length, 2);
+  assert.equal(events[0].event, "api.generate.stream_first_visible_chunk");
+  assert.equal(events[1].event, "api.generate.stream_cancelled");
+  assert.equal(events[1].ok, false);
+}
+
+{
+  const events = [];
+  const observerEvents = [];
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue({ type: "start" });
+      controller.enqueue({ type: "text-start", id: "txt" });
+      controller.enqueue({ type: "text-delta", id: "txt", delta: "" });
+      setTimeout(() => {
+        controller.enqueue({ type: "text-delta", id: "txt", delta: "Hello" });
+        controller.enqueue({ type: "tool-createJsonArtifact", toolCallId: "tool-1", state: "output-available" });
+        controller.enqueue({ type: "data-spec", data: { type: "flat", spec: { root: "main", elements: { main: { type: "Text", props: { content: "Hello" }, children: [] } }, state: {} } } });
+        controller.close();
+      }, 35);
+    },
+  });
+
+  await readAll(instrumentGenerateStream(stream, { requestId: "req-wait", startedAt: Date.now(), waitingMs: 5, waitingIntervalMs: 20, observer: (event) => observerEvents.push(event) }, async (event) => {
+    events.push(event);
+  }));
+
+  const waitEvents = events.filter((event) => event.event === "api.generate.stream_waiting");
+  assert.ok(waitEvents.length >= 1 && waitEvents.length <= 3, `silent wait telemetry should respect cadence, got ${waitEvents.length}`);
+  assert.equal(waitEvents.every((event) => event.phase === "before_visible_output"), true, "protocol chunks must not flip wait telemetry to after-visible-output");
+  assert.equal(events.some((event) => event.event === "api.generate.stream_first_visible_chunk" && (event.phase === "start" || event.phase === "text-start")), false, "protocol chunks are not user-visible output");
+  assert.equal(events.some((event) => event.event === "api.generate.stream_first_visible_text" && event.phase === "text-start"), false, "text-start does not contain visible text");
+  assert.equal(events.some((event) => event.event === "api.generate.stream_first_visible_text"), true, "first visible text latency should be observable");
+  assert.equal(events.some((event) => event.event === "api.generate.stream_first_tool" && event.phase === "createJsonArtifact"), true, "first tool latency should be observable");
+  assert.equal(events.some((event) => event.event === "api.generate.stream_first_artifact_spec"), true, "first artifact spec latency should be observable");
+  assert.equal(observerEvents.some((event) => event.event === "api.generate.stream_first_tool"), true, "observer seam should receive sanitized stream milestone events");
 }
 
 console.log("stream-telemetry tests passed");
