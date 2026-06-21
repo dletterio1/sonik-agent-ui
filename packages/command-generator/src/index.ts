@@ -466,6 +466,12 @@ function defaultTargetsForEffect(effect: ToolEffect): ToolUiTarget[] {
 
 function normalizeOperationId(operationId: string, method: string, path: string): string {
   if (validProcedurePattern.test(operationId)) return operationId;
+  const normalizedOperationId = operationId
+    .replace(/([a-z0-9])([A-Z])/g, "$1.$2")
+    .replace(/[^a-z0-9]+/gi, ".")
+    .replace(/^\.|\.$/g, "")
+    .toLowerCase();
+  if (validProcedurePattern.test(normalizedOperationId)) return normalizedOperationId;
   return `${method.toLowerCase()}.${path.replace(/^\//, "").replace(/\{([^}]+)\}/g, "$1").replace(/[^a-z0-9]+/gi, ".").replace(/^\.|\.$/g, "")}`;
 }
 
