@@ -3,12 +3,17 @@
   "name": "sonik-agent-ui",
   "main": ".svelte-kit/cloudflare/_worker.js",
   "compatibility_date": "2026-06-22",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "assets": {
     "binding": "ASSETS",
     "directory": ".svelte-kit/cloudflare"
   },
   "vars": {
-    "PUBLIC_AGENT_UI_ALLOWED_HOST_ORIGINS": "https://*.workers.dev,https://*.sonik.fm"
+    "PUBLIC_AGENT_UI_ALLOWED_HOST_ORIGINS": "https://*.workers.dev,https://*.sonik.fm",
+    "AI_GATEWAY_MODEL": "deepseek/deepseek-v4-flash",
+    "RATE_LIMIT_PER_MINUTE": "10",
+    "RATE_LIMIT_PER_DAY": "100"
   }
 }
