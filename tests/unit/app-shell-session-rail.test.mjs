@@ -200,6 +200,7 @@ const packageSource = await readFile("package.json", "utf8");
 const agentEmbedSource = await readFile("packages/agent-embed/src/index.ts", "utf8");
 const agentEmbedPackageSource = await readFile("packages/agent-embed/package.json", "utf8");
 const fakeBookingHostSource = await readFile("apps/standalone-sveltekit/static/fake-booking-host.html", "utf8");
+const agentEmbedDocsSource = await readFile("docs/agent-embed-v0.md", "utf8");
 assert.equal(agentEmbedSource.includes("export type AgentHostPageContext"), true, "agent embed package should export host page-context type");
 assert.equal(agentEmbedSource.includes("export type AgentHostContextProvider"), true, "agent embed package should export host context provider seam");
 assert.equal(agentEmbedSource.includes("export type AgentTrustedHostContext"), true, "agent embed package should export trusted host auth/session seam");
@@ -221,6 +222,10 @@ assert.equal(fakeBookingHostSource.includes("postMessage"), true, "static fake h
 assert.equal(fakeBookingHostSource.includes("booking-console"), true, "static fake host should donate booking surface context");
 assert.equal(fakeBookingHostSource.includes("Summer Jazz Night"), true, "static fake host should donate active entity label");
 assert.equal(packageSource.includes("@sonik-agent-ui/agent-embed build"), true, "root build/test scripts should build the agent embed package before the app");
+assert.equal(agentEmbedDocsSource.includes("Native Svelte API sketch"), true, "embedding docs should include a native Svelte API sketch using the same semantics");
+assert.equal(agentEmbedDocsSource.includes("Booking context adapter example"), true, "embedding docs should include a booking context adapter example");
+assert.equal(agentEmbedDocsSource.includes("Amplify shell context adapter example"), true, "embedding docs should include an Amplify shell context adapter example");
+assert.equal(agentEmbedDocsSource.includes("Never pass `organizationId`"), true, "embedding docs should preserve the host trust-boundary warning");
 assert.equal(observabilityPackageSource.includes("AGENT_UI_TELEMETRY_SCHEMA_VERSION"), true, "shared observability core should publish a stable telemetry schema version");
 assert.equal(observabilityPackageSource.includes("Runtime-safe page-control surface"), true, "page-control contract should document that it is a runtime-safe host seam, not an unbounded dev-only global");
 assert.equal(observabilityPackageSource.includes("sanitizeTelemetryValue"), true, "shared observability core should provide redaction before logs become machine evidence");
