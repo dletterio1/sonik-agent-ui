@@ -251,6 +251,13 @@ try {
   if (commandEvent?.pageContext?.activeEntity?.label !== "Summer Jazz Night") await finish("FAIL", "Command-index telemetry did not include active entity label.");
   if (!commandEvent?.commandFamilies?.includes("booking")) await finish("FAIL", "Command-index telemetry did not include booking command family.");
   if (evidence.telemetry.runtimeErrors.length > 0) await finish("FAIL", "Client runtime error telemetry observed during embed smoke.");
+  await page.focus("#agent-fab-main");
+  await page.waitForFunction(() => {
+    const button = document.querySelector("#open-canvas");
+    if (!button) return false;
+    const style = getComputedStyle(button.closest(".fab-item") ?? button);
+    return style.pointerEvents !== "none" && Number(style.opacity) > 0.9;
+  }, undefined, { timeout: 10_000 });
   await page.click("#open-canvas");
   const canvasEmbedMode = await page.evaluate(() => document.body.dataset.agentUiOpen);
   if (canvasEmbedMode !== "canvas") await finish("FAIL", "Fake host canvas launcher did not switch to canvas mode.");
