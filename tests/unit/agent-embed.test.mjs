@@ -5,6 +5,8 @@ import {
   createAgentEmbedUrl,
   createAgentHostPageContextMessage,
   isAgentHostPageContextMessage,
+  isAgentOriginAllowed,
+  parseAgentOriginAllowlist,
   mergeAgentHostPageContext,
   normalizeAgentEmbedIntent,
   mountSonikAgentUI,
@@ -86,6 +88,13 @@ const chatUrl = createAgentEmbedUrl({
   smokeRunId: "run-123",
 });
 assert.equal(chatUrl, "https://agent.sonik.local/workspace?agentUiHostOrigin=https%3A%2F%2Fbooking.sonik.local&theme=lemonade&embedMode=chat&rail=hidden&smokeMockStream=1&smokeRunId=run-123", "chat URL should encode host origin, mode, rail, theme, and smoke parameters deterministically");
+
+assert.deepEqual(parseAgentOriginAllowlist("https://*.workers.dev, https://*.sonik.fm"), ["https://*.workers.dev", "https://*.sonik.fm"], "origin allowlist should parse comma-separated wildcard patterns");
+assert.equal(isAgentOriginAllowed("https://amplify-staging.liam-trampota.workers.dev", "https://*.workers.dev,https://*.sonik.fm"), true, "workers.dev staging hosts should match wildcard allowlist");
+assert.equal(isAgentOriginAllowed("https://app.amplify.sonik.fm", "https://*.workers.dev,https://*.sonik.fm"), true, "sonik.fm hosts should match wildcard allowlist");
+assert.equal(isAgentOriginAllowed("https://workers.dev", "https://*.workers.dev"), false, "wildcard should require a subdomain boundary");
+assert.equal(isAgentOriginAllowed("https://evil.example", "https://*.workers.dev,https://*.sonik.fm"), false, "unlisted hosts should be rejected");
+assert.equal(isAgentOriginAllowed("https://evil.example", "*"), true, "explicit star should allow all origins for temporary frictionless demos only");
 
 const contextMessage = createAgentHostPageContextMessage({ surface: "booking-console" });
 assert.equal(contextMessage.source, SONIK_AGENT_UI_HOST_MESSAGE_SOURCE, "message builder should use canonical source");

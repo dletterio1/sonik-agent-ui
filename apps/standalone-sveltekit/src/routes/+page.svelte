@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { dev } from "$app/environment";
+  import { env as publicEnv } from "$env/dynamic/public";
   import type { PageData } from "./$types";
   import { SvelteSet } from "svelte/reactivity";
   import { Chat } from "@ai-sdk/svelte";
@@ -32,6 +33,7 @@
     mergeAgentHostPageContext,
     normalizeAgentEmbedIntent,
     sanitizeAgentHostPageContext,
+    isAgentOriginAllowed,
     type AgentHostPageContext,
     type AgentEmbedMode,
     type AgentEmbedRailMode,
@@ -645,9 +647,14 @@
     return origins;
   }
 
+  function isAllowedAgentHostOrigin(origin: string): boolean {
+    const exactOrigins = getAllowedAgentHostOrigins();
+    if (exactOrigins.has(origin)) return true;
+    return isAgentOriginAllowed(origin, publicEnv.PUBLIC_AGENT_UI_ALLOWED_HOST_ORIGINS);
+  }
+
   function handleAgentHostMessage(event: MessageEvent): void {
-    const allowedOrigins = getAllowedAgentHostOrigins();
-    if (!allowedOrigins.has(event.origin)) {
+    if (!isAllowedAgentHostOrigin(event.origin)) {
       logArtifactTelemetry({ source: "client", event: "host.page_context.message_ignored", reason: "origin_not_allowed", route: event.origin, ok: false });
       return;
     }

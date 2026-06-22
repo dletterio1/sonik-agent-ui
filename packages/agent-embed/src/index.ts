@@ -160,6 +160,52 @@ export function createAgentEmbedUrl(input: {
   return url.toString();
 }
 
+
+export function parseAgentOriginAllowlist(value: string | readonly string[] | undefined): string[] {
+  if (!value) return [];
+  const values = typeof value === "string" ? value.split(",") : [...value];
+  return values.map((entry: string) => entry.trim()).filter(Boolean);
+}
+
+export function isAgentOriginAllowed(origin: string, allowlist: string | readonly string[] | undefined): boolean {
+  const patterns = parseAgentOriginAllowlist(allowlist);
+  if (patterns.length === 0) return false;
+  const parsedOrigin = parseOriginUrl(origin);
+  if (!parsedOrigin) return false;
+  return patterns.some((pattern) => doesOriginMatchPattern(parsedOrigin, pattern));
+}
+
+function parseOriginUrl(origin: string): URL | undefined {
+  try {
+    const parsed = new URL(origin);
+    if (parsed.pathname !== "/" || parsed.search || parsed.hash) return undefined;
+    if (!["http:", "https:"].includes(parsed.protocol)) return undefined;
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function doesOriginMatchPattern(origin: URL, pattern: string): boolean {
+  if (pattern === "*") return true;
+  const wildcardMatch = pattern.match(/^(https?):\/\/\*\.([^/:]+(?::\d+)?)$/i);
+  if (wildcardMatch) {
+    const protocol = wildcardMatch[1];
+    const hostPattern = wildcardMatch[2];
+    if (!protocol || !hostPattern) return false;
+    if (`${protocol.toLowerCase()}:` !== origin.protocol) return false;
+    const [suffix, port] = hostPattern.toLowerCase().split(":");
+    if (!suffix) return false;
+    if (port && origin.port !== port) return false;
+    if (!port && origin.port) return false;
+    const hostname = origin.hostname.toLowerCase();
+    return hostname.endsWith(`.${suffix}`) && hostname !== suffix;
+  }
+
+  const exact = parseOriginUrl(pattern);
+  return exact?.origin === origin.origin;
+}
+
 export function createAgentHostPageContextMessage(payload: AgentHostPageContext): AgentHostPageContextMessage {
   return {
     source: SONIK_AGENT_UI_HOST_MESSAGE_SOURCE,
