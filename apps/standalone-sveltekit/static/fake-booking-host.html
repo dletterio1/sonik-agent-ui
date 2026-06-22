@@ -5,45 +5,149 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Fake Booking Host · Sonik Agent UI Embed</title>
     <style>
-      :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-      body { margin: 0; min-height: 100vh; background: #f6f2e8; color: #171717; }
-      .host-shell { display: grid; min-height: 100vh; grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr); }
-      aside { border-right: 1px solid rgba(0,0,0,.12); padding: 1rem; background: #fbf8ef; }
-      main { min-height: 100vh; padding: clamp(1.25rem, 4vw, 4rem); }
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --agent-chat-width: clamp(26rem, 34vw, 38rem);
+        --host-border: rgba(0,0,0,.12);
+        --host-panel: #fbf8ef;
+        --host-bg: #f6f2e8;
+        --host-ink: #171717;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body { margin: 0; min-height: 100vh; background: var(--host-bg); color: var(--host-ink); overflow: hidden; }
+      .host-shell {
+        display: grid;
+        height: 100vh;
+        min-height: 0;
+        grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr) 0;
+        transition: grid-template-columns 180ms ease;
+      }
+      body[data-agent-ui-open="chat"] .host-shell {
+        grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr) minmax(24rem, var(--agent-chat-width));
+      }
+      body[data-agent-ui-resizing="true"] .host-shell { transition: none; cursor: col-resize; user-select: none; }
+      aside.host-context { height: 100vh; min-height: 0; overflow: auto; border-right: 1px solid var(--host-border); padding: 1rem; background: var(--host-panel); min-width: 0; }
+      main { height: 100vh; min-height: 0; padding: clamp(1.25rem, 4vw, 4rem); overflow: auto; }
       iframe { width: 100%; height: 100%; border: 0; display: block; background: white; }
       .eyebrow { font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: #6a5d48; font-weight: 800; }
-      .card { border: 1px solid rgba(0,0,0,.12); border-radius: 1rem; padding: 1rem; background: white; box-shadow: 0 10px 30px rgba(0,0,0,.06); margin-top: 1rem; }
+      .card { border: 1px solid var(--host-border); border-radius: 1rem; padding: 1rem; background: white; box-shadow: 0 10px 30px rgba(0,0,0,.06); margin-top: 1rem; }
       code { background: #f1eadc; border-radius: .4rem; padding: .1rem .3rem; }
       button { border: 1px solid rgba(0,0,0,.18); border-radius: .75rem; padding: .7rem .9rem; background: #222; color: white; font-weight: 800; cursor: pointer; }
       button.secondary { background: white; color: #222; }
+      button.ghost { background: transparent; color: #222; }
       dl { display: grid; gap: .6rem; }
       dt { color: #6a5d48; font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; font-weight: 800; }
       dd { margin: 0; font-weight: 700; }
-      .host-actions { position: fixed; right: 1rem; bottom: 1rem; z-index: 40; display: flex; flex-wrap: wrap; gap: .55rem; justify-content: flex-end; }
-      .embed-window { position: fixed; z-index: 35; display: none; overflow: hidden; border: 1px solid rgba(0,0,0,.16); background: white; box-shadow: 0 24px 80px rgba(0,0,0,.22); }
-      .embed-window[data-open="true"] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
-      .embed-window[data-mode="chat"] { right: 1rem; bottom: 5rem; width: min(31rem, calc(100vw - 2rem)); height: min(44rem, calc(100vh - 7rem)); border-radius: 1.25rem; }
-      .embed-window[data-mode="canvas"] { inset: 1rem; border-radius: 1rem; }
-      .embed-chrome { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid rgba(0,0,0,.12); padding: .7rem .8rem; background: #fbf8ef; }
+      .host-actions {
+        position: fixed;
+        right: 1rem;
+        bottom: 1rem;
+        z-index: 40;
+        display: flex;
+        flex-wrap: wrap;
+        gap: .55rem;
+        justify-content: flex-end;
+      }
+      body[data-agent-ui-open="chat"] .host-actions { right: calc(var(--agent-chat-width) + 1rem); }
+      body[data-agent-ui-open="canvas"] .host-actions { display: none; }
+      .host-placeholder { max-width: 42rem; }
+      .host-placeholder h2 { margin-top: 0; font-size: clamp(2rem, 5vw, 4rem); letter-spacing: -.05em; }
+      .host-workspace-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1rem; margin-top: 2rem; max-width: 58rem; }
+      .host-workspace-grid .card { margin: 0; min-height: 10rem; }
+      .agent-sidecar {
+        position: relative;
+        min-width: 0;
+        height: 100vh;
+        min-height: 0;
+        display: none;
+        grid-template-rows: auto minmax(0, 1fr);
+        border-left: 1px solid var(--host-border);
+        background: white;
+        box-shadow: -18px 0 60px rgba(0,0,0,.08);
+        overflow: hidden;
+      }
+      body[data-agent-ui-open="chat"] .agent-sidecar { display: grid; }
+      .agent-sidecar-resize {
+        position: absolute;
+        inset: 0 auto 0 -.35rem;
+        z-index: 5;
+        width: .7rem;
+        cursor: col-resize;
+        background: transparent;
+      }
+      .agent-sidecar-resize::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: .2rem;
+        height: 4rem;
+        border-radius: 999px;
+        background: rgba(0,0,0,.18);
+        transform: translate(-50%, -50%);
+        opacity: .45;
+        transition: opacity 120ms ease, background 120ms ease;
+      }
+      .agent-sidecar-resize:hover::after,
+      body[data-agent-ui-resizing="true"] .agent-sidecar-resize::after { opacity: 1; background: rgba(0,0,0,.42); }
+      .embed-chrome {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        border-bottom: 1px solid var(--host-border);
+        padding: .7rem .8rem;
+        background: var(--host-panel);
+      }
       .embed-title { display: grid; gap: .12rem; min-width: 0; }
       .embed-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .embed-title span { color: #6a5d48; font-size: .75rem; }
-      .embed-close { border: 1px solid rgba(0,0,0,.14); background: white; color: #222; padding: .45rem .65rem; }
-      .host-placeholder { max-width: 42rem; }
-      .host-placeholder h2 { margin-top: 0; font-size: clamp(2rem, 5vw, 4rem); letter-spacing: -.05em; }
-      @media (max-width: 860px) {
-        .host-shell { grid-template-columns: 1fr; }
-        aside { border-right: 0; border-bottom: 1px solid rgba(0,0,0,.12); }
-        .embed-window[data-mode="canvas"] { inset: .5rem; }
+      .embed-actions { display: flex; align-items: center; gap: .45rem; flex-shrink: 0; }
+      .embed-actions button { padding: .45rem .65rem; }
+      .agent-frame-slot { min-height: 0; overflow: hidden; }
+      .canvas-window {
+        position: fixed;
+        z-index: 60;
+        inset: 1rem;
+        display: none;
+        overflow: hidden;
+        border: 1px solid rgba(0,0,0,.16);
+        border-radius: 1rem;
+        background: white;
+        box-shadow: 0 24px 80px rgba(0,0,0,.22);
+      }
+      .canvas-window[data-open="true"] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+      .canvas-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 55;
+        display: none;
+        background: rgba(17, 17, 17, .22);
+        backdrop-filter: blur(10px);
+      }
+      body[data-agent-ui-open="canvas"] .canvas-backdrop { display: block; }
+      @media (max-width: 980px) {
+        body { overflow: auto; }
+        .host-shell,
+        body[data-agent-ui-open="chat"] .host-shell { height: auto; min-height: 100vh; grid-template-columns: 1fr; grid-template-rows: auto minmax(32rem, 1fr) auto; }
+        aside.host-context { height: auto; border-right: 0; border-bottom: 1px solid var(--host-border); }
+        main { height: auto; min-height: auto; }
+        .agent-sidecar { height: auto; min-height: 38rem; border-left: 0; border-top: 1px solid var(--host-border); box-shadow: 0 -18px 60px rgba(0,0,0,.08); }
+        .agent-sidecar-resize { display: none; }
+        .host-actions,
+        body[data-agent-ui-open="chat"] .host-actions { right: 1rem; }
+        .canvas-window { inset: .5rem; }
       }
     </style>
   </head>
   <body>
     <div class="host-shell">
-      <aside>
+      <aside class="host-context">
         <div class="eyebrow">Fake host harness</div>
         <h1>Booking detail host</h1>
-        <p>This page embeds the standalone Agent UI through launcher-controlled iframe modes and donates sanitized booking page context over postMessage.</p>
+        <p>This page embeds the standalone Agent UI through host-owned layout modes and donates sanitized booking page context over postMessage.</p>
         <div class="card">
           <dl>
             <div><dt>Surface</dt><dd>booking-console</dd></div>
@@ -54,14 +158,33 @@
           <button id="resend" type="button">Resend page context</button>
         </div>
       </aside>
-      <main>
+      <main id="host-main">
         <section class="host-placeholder">
           <div class="eyebrow">Host application</div>
           <h2>Booking detail workspace</h2>
-          <p>The host page remains primary. Use the floating controls to open a compact chat pane or a full canvas workspace without permanently surrendering the page to the embedded Agent UI.</p>
-          <p><strong>Chat</strong> opens a narrow assistant window. <strong>Canvas</strong> opens the richer artifact/document workspace as a near-fullscreen modal.</p>
+          <p>The host page remains primary. Chat opens as a layout-affecting sidecar that compresses this workspace instead of covering it. Canvas opens the richer artifact/document workspace as a modal layer.</p>
+          <p><strong>Chat</strong> reserves a right-side rail. <strong>Canvas</strong> opens the full artifact workspace. Both modes preserve the same sanitized page context.</p>
+        </section>
+        <section class="host-workspace-grid" aria-label="Booking host mock content">
+          <article class="card"><div class="eyebrow">Timeline</div><p>Holds, deposits, staff notes, and booking lifecycle events remain visible while chat is open.</p></article>
+          <article class="card"><div class="eyebrow">Resources</div><p>Tables, rooms, staff, and equipment assignments should remain reachable beside the assistant.</p></article>
+          <article class="card"><div class="eyebrow">Revenue</div><p>Host dashboards compress horizontally instead of being hidden under an overlay.</p></article>
         </section>
       </main>
+      <section id="agent-sidecar" class="agent-sidecar" data-open="false" aria-label="Embedded Sonik Agent UI chat sidecar">
+        <div id="sidecar-resize" class="agent-sidecar-resize" role="separator" aria-orientation="vertical" aria-label="Resize chat sidecar" tabindex="0"></div>
+        <div class="embed-chrome">
+          <div class="embed-title">
+            <strong>Sonik Chat</strong>
+            <span>Embedded sidecar · resizes host layout</span>
+          </div>
+          <div class="embed-actions">
+            <button id="expand-canvas" type="button" class="secondary">Canvas</button>
+            <button id="close-chat" type="button" class="ghost">Close</button>
+          </div>
+        </div>
+        <div id="chat-frame-slot" class="agent-frame-slot"></div>
+      </section>
     </div>
 
     <div class="host-actions" aria-label="Agent UI launchers">
@@ -69,27 +192,36 @@
       <button id="open-canvas" type="button" class="secondary">Canvas</button>
     </div>
 
-    <section id="embed-window" class="embed-window" data-open="false" data-mode="chat" aria-label="Embedded Sonik Agent UI">
+    <div class="canvas-backdrop" aria-hidden="true"></div>
+    <section id="canvas-window" class="canvas-window" data-open="false" aria-label="Embedded Sonik Agent UI canvas workspace">
       <div class="embed-chrome">
         <div class="embed-title">
-          <strong id="embed-title">Sonik Agent UI</strong>
-          <span id="embed-subtitle">Embedded chat</span>
+          <strong>Sonik Canvas</strong>
+          <span>Full workspace modal</span>
         </div>
-        <button id="close-embed" type="button" class="embed-close">Close</button>
+        <div class="embed-actions">
+          <button id="dock-chat" type="button" class="secondary">Dock chat</button>
+          <button id="close-canvas" type="button" class="ghost">Close</button>
+        </div>
       </div>
-      <iframe id="agent-frame" title="Sonik Agent UI embedded workspace"></iframe>
+      <div id="canvas-frame-slot" class="agent-frame-slot"></div>
     </section>
+
+    <iframe id="agent-frame" title="Sonik Agent UI embedded workspace"></iframe>
 
     <script type="module">
       const SONIK_AGENT_UI_HOST_MESSAGE_SOURCE = "sonik-agent-ui-host";
       const SONIK_AGENT_UI_PAGE_CONTEXT_MESSAGE = "sonik:agent-ui:page-context";
       const url = new URL(window.location.href);
       const iframe = document.getElementById("agent-frame");
-      const embedWindow = document.getElementById("embed-window");
-      const embedTitle = document.getElementById("embed-title");
-      const embedSubtitle = document.getElementById("embed-subtitle");
+      const chatSlot = document.getElementById("chat-frame-slot");
+      const canvasSlot = document.getElementById("canvas-frame-slot");
+      const sidecar = document.getElementById("agent-sidecar");
+      const canvasWindow = document.getElementById("canvas-window");
+      const resizeHandle = document.getElementById("sidecar-resize");
       const smokeRunId = url.searchParams.get("smokeRunId") ?? `fake-booking-host-${Date.now()}`;
       let activeMode = null;
+      let resizeFrame = 0;
 
       const payload = {
         route: "/booking/bookings/booking_123",
@@ -124,36 +256,88 @@
       }
 
       function scheduleContextPosts() {
-        // The iframe's app listener is installed after hydration, so the host sends
-        // a small bounded burst instead of relying on one load-time postMessage.
         [250, 900, 1800].forEach((delay) => setTimeout(postContext, delay));
+      }
+
+      function mountFrame(slot) {
+        if (iframe.parentElement !== slot) slot.appendChild(iframe);
+      }
+
+      function setFrameMode(mode) {
+        const nextSrc = frameUrlFor(mode);
+        if (iframe.getAttribute("src") !== nextSrc) iframe.src = nextSrc;
+        else postContext();
       }
 
       function openEmbed(mode) {
         activeMode = mode === "canvas" ? "canvas" : "chat";
         document.body.dataset.agentUiOpen = activeMode;
-        embedWindow.dataset.open = "true";
-        embedWindow.dataset.mode = activeMode;
-        embedTitle.textContent = activeMode === "canvas" ? "Sonik Canvas" : "Sonik Chat";
-        embedSubtitle.textContent = activeMode === "canvas" ? "Full workspace modal" : "Compact chat pane";
-        const nextSrc = frameUrlFor(activeMode);
-        if (iframe.getAttribute("src") !== nextSrc) iframe.src = nextSrc;
-        else postContext();
+        sidecar.dataset.open = activeMode === "chat" ? "true" : "false";
+        canvasWindow.dataset.open = activeMode === "canvas" ? "true" : "false";
+        mountFrame(activeMode === "canvas" ? canvasSlot : chatSlot);
+        setFrameMode(activeMode);
       }
 
-      function closeEmbed() {
-        embedWindow.dataset.open = "false";
+      function closeChat() {
+        if (activeMode !== "chat") return;
+        activeMode = null;
+        sidecar.dataset.open = "false";
         delete document.body.dataset.agentUiOpen;
+      }
+
+      function closeCanvas() {
+        if (activeMode !== "canvas") return;
+        activeMode = null;
+        canvasWindow.dataset.open = "false";
+        delete document.body.dataset.agentUiOpen;
+      }
+
+      function setChatWidth(width) {
+        const clamped = Math.max(360, Math.min(760, width));
+        document.documentElement.style.setProperty("--agent-chat-width", `${clamped}px`);
+        resizeHandle.setAttribute("aria-valuenow", String(Math.round(clamped)));
+      }
+
+      function startResize(event) {
+        if (activeMode !== "chat") return;
+        event.preventDefault();
+        resizeHandle.setPointerCapture?.(event.pointerId);
+        document.body.dataset.agentUiResizing = "true";
+        const move = (moveEvent) => {
+          cancelAnimationFrame(resizeFrame);
+          resizeFrame = requestAnimationFrame(() => setChatWidth(window.innerWidth - moveEvent.clientX));
+        };
+        const end = () => {
+          cancelAnimationFrame(resizeFrame);
+          delete document.body.dataset.agentUiResizing;
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", end);
+          window.removeEventListener("pointercancel", end);
+        };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", end, { once: true });
+        window.addEventListener("pointercancel", end, { once: true });
       }
 
       iframe.addEventListener("load", scheduleContextPosts);
       document.getElementById("open-chat").addEventListener("click", () => openEmbed("chat"));
       document.getElementById("open-canvas").addEventListener("click", () => openEmbed("canvas"));
-      document.getElementById("close-embed").addEventListener("click", closeEmbed);
+      document.getElementById("expand-canvas").addEventListener("click", () => openEmbed("canvas"));
+      document.getElementById("dock-chat").addEventListener("click", () => openEmbed("chat"));
+      document.getElementById("close-chat").addEventListener("click", closeChat);
+      document.getElementById("close-canvas").addEventListener("click", closeCanvas);
       document.getElementById("resend").addEventListener("click", postContext);
+      resizeHandle.addEventListener("pointerdown", startResize);
+      resizeHandle.addEventListener("keydown", (event) => {
+        if (activeMode !== "chat") return;
+        const current = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--agent-chat-width")) || 520;
+        if (event.key === "ArrowLeft") setChatWidth(current + 24);
+        if (event.key === "ArrowRight") setChatWidth(current - 24);
+      });
 
       const autoOpen = url.searchParams.get("autoOpen");
       if (autoOpen === "chat" || autoOpen === "canvas") openEmbed(autoOpen);
+      else mountFrame(chatSlot);
     </script>
   </body>
 </html>

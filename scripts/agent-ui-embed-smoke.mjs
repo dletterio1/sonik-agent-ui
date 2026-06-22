@@ -29,6 +29,7 @@ const evidence = {
   pageContext: null,
   assertions: null,
   telemetry: { commandIndexContext: [], hostContextUpdated: [], ignoredHostMessages: [], runtimeErrors: [] },
+  layout: { chat: null, canvas: null },
 };
 const watchdog = setTimeout(() => void finish("FAIL", "Embed smoke timed out."), Number(process.env.AGENT_UI_EMBED_SMOKE_TIMEOUT_MS ?? 120_000));
 
@@ -122,6 +123,56 @@ async function readTelemetryEvents() {
   return events.filter((event) => Date.parse(event.at ?? "") >= startedAtMs - 1_000);
 }
 
+function overlaps(a, b) {
+  if (!a || !b) return false;
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+function serialRect(rect) {
+  if (!rect) return null;
+  return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+}
+
+async function captureEmbedLayout(page) {
+  return page.evaluate(() => {
+    const hostMain = document.querySelector("main")?.getBoundingClientRect();
+    const hostPlaceholder = document.querySelector(".host-placeholder")?.getBoundingClientRect();
+    const sidecar = document.querySelector("#agent-sidecar")?.getBoundingClientRect();
+    const canvas = document.querySelector("#canvas-window")?.getBoundingClientRect();
+    const actions = document.querySelector(".host-actions")?.getBoundingClientRect();
+    const iframe = document.querySelector("#agent-frame")?.getBoundingClientRect();
+    const sidecarStyle = document.querySelector("#agent-sidecar") ? getComputedStyle(document.querySelector("#agent-sidecar")) : null;
+    const canvasStyle = document.querySelector("#canvas-window") ? getComputedStyle(document.querySelector("#canvas-window")) : null;
+    const actionStyle = document.querySelector(".host-actions") ? getComputedStyle(document.querySelector(".host-actions")) : null;
+    const hostShellStyle = document.querySelector(".host-shell") ? getComputedStyle(document.querySelector(".host-shell")) : null;
+    return {
+      mode: document.body.dataset.agentUiOpen ?? null,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      hostGridColumns: hostShellStyle?.gridTemplateColumns ?? null,
+      hostMain: hostMain ? { left: hostMain.left, right: hostMain.right, top: hostMain.top, bottom: hostMain.bottom, width: hostMain.width, height: hostMain.height } : null,
+      hostPlaceholder: hostPlaceholder ? { left: hostPlaceholder.left, right: hostPlaceholder.right, top: hostPlaceholder.top, bottom: hostPlaceholder.bottom, width: hostPlaceholder.width, height: hostPlaceholder.height } : null,
+      sidecar: sidecar ? { left: sidecar.left, right: sidecar.right, top: sidecar.top, bottom: sidecar.bottom, width: sidecar.width, height: sidecar.height } : null,
+      canvas: canvas ? { left: canvas.left, right: canvas.right, top: canvas.top, bottom: canvas.bottom, width: canvas.width, height: canvas.height } : null,
+      actions: actions ? { left: actions.left, right: actions.right, top: actions.top, bottom: actions.bottom, width: actions.width, height: actions.height } : null,
+      iframe: iframe ? { left: iframe.left, right: iframe.right, top: iframe.top, bottom: iframe.bottom, width: iframe.width, height: iframe.height } : null,
+      sidecarDisplay: sidecarStyle?.display ?? null,
+      canvasDisplay: canvasStyle?.display ?? null,
+      actionsDisplay: actionStyle?.display ?? null,
+      iframeParentId: document.querySelector("#agent-frame")?.parentElement?.id ?? null,
+    };
+  });
+}
+
+function assertWithinViewport(name, rect, viewport, tolerance = 1) {
+  if (!rect || !viewport) throw new Error(`${name} rect or viewport was not captured`);
+  if (rect.top < -tolerance || rect.bottom > viewport.height + tolerance) {
+    throw new Error(`${name} is clipped vertically: top=${rect.top}, bottom=${rect.bottom}, viewportHeight=${viewport.height}`);
+  }
+  if (rect.left < -tolerance || rect.right > viewport.width + tolerance) {
+    throw new Error(`${name} is clipped horizontally: left=${rect.left}, right=${rect.right}, viewportWidth=${viewport.width}`);
+  }
+}
+
 function classifyTelemetry(events) {
   const requestIds = new Set(evidence.responses.map((response) => response.requestId).filter(Boolean));
   const sessionId = evidence.pageContext?.activeSessionId;
@@ -161,6 +212,15 @@ try {
   await page.goto(hostUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
   const initialEmbedMode = await page.evaluate(() => document.body.dataset.agentUiOpen);
   if (initialEmbedMode !== "chat") throw new Error(`fake host did not auto-open chat embed mode: ${initialEmbedMode}`);
+  await page.waitForSelector("#agent-sidecar[data-open=\"true\"]", { timeout: 15_000 });
+  evidence.layout.chat = await captureEmbedLayout(page);
+  if (evidence.layout.chat.sidecarDisplay === "none") throw new Error("chat sidecar is not displayed");
+  if (evidence.layout.chat.iframeParentId !== "chat-frame-slot") throw new Error(`chat iframe was not mounted in chat slot: ${evidence.layout.chat.iframeParentId}`);
+  if (overlaps(evidence.layout.chat.sidecar, evidence.layout.chat.hostPlaceholder)) throw new Error("chat sidecar overlaps host placeholder content instead of compressing it");
+  if (overlaps(evidence.layout.chat.sidecar, evidence.layout.chat.hostMain)) throw new Error("chat sidecar overlaps host main instead of occupying its own grid column");
+  assertWithinViewport("chat sidecar", evidence.layout.chat.sidecar, evidence.layout.chat.viewport);
+  assertWithinViewport("chat iframe", evidence.layout.chat.iframe, evidence.layout.chat.viewport);
+  if (!evidence.layout.chat.hostGridColumns || evidence.layout.chat.hostGridColumns.split(" ").length < 3) throw new Error(`host shell did not expose sidecar grid columns: ${evidence.layout.chat.hostGridColumns}`);
   const frameElement = await page.waitForSelector("iframe#agent-frame", { timeout: 15_000 });
   const frame = await frameElement.contentFrame();
   if (!frame) throw new Error("agent iframe frame was not available");
@@ -175,8 +235,10 @@ try {
   await frame.waitForFunction(() => window.__sonikAgentUI.getAssertions().isStreaming === true, undefined, { timeout: 10_000 });
   await frame.waitForFunction(() => window.__sonikAgentUI.getAssertions().isStreaming === false && window.__sonikAgentUI.getAssertions().messageCount >= 2, undefined, { timeout: 45_000 });
   await sleep(1500);
+  await frame.waitForFunction(() => window.__sonikAgentUI?.getPageContext?.().surface === "booking-console", undefined, { timeout: 10_000 });
   evidence.pageContext = await frame.evaluate(() => window.__sonikAgentUI.getPageContext());
   evidence.assertions = await frame.evaluate(() => window.__sonikAgentUI.getAssertions());
+  const chatSessionId = evidence.pageContext?.activeSessionId ?? null;
   classifyTelemetry(await readTelemetryEvents());
 
   if (evidence.errors.length) await finish("FAIL", "Browser errors observed during embed smoke.");
@@ -192,6 +254,13 @@ try {
   await page.click("#open-canvas");
   const canvasEmbedMode = await page.evaluate(() => document.body.dataset.agentUiOpen);
   if (canvasEmbedMode !== "canvas") await finish("FAIL", "Fake host canvas launcher did not switch to canvas mode.");
+  await page.waitForSelector("#canvas-window[data-open=\"true\"]", { timeout: 15_000 });
+  evidence.layout.canvas = await captureEmbedLayout(page);
+  if (evidence.layout.canvas.canvasDisplay === "none") await finish("FAIL", "Canvas modal is not displayed after launcher switch.");
+  if (evidence.layout.canvas.iframeParentId !== "canvas-frame-slot") await finish("FAIL", `Canvas iframe was not mounted in canvas slot: ${evidence.layout.canvas.iframeParentId}`);
+  if (evidence.layout.canvas.actionsDisplay !== "none" && overlaps(evidence.layout.canvas.actions, evidence.layout.canvas.canvas)) await finish("FAIL", "Host launcher controls overlap the canvas modal.");
+  assertWithinViewport("canvas modal", evidence.layout.canvas.canvas, evidence.layout.canvas.viewport);
+  assertWithinViewport("canvas iframe", evidence.layout.canvas.iframe, evidence.layout.canvas.viewport);
   const canvasFrameElement = await page.waitForSelector("iframe#agent-frame", { timeout: 15_000 });
   const canvasFrame = await canvasFrameElement.contentFrame();
   if (!canvasFrame) await finish("FAIL", "Agent iframe was not available after canvas launcher switch.");
@@ -199,8 +268,11 @@ try {
     const root = document.querySelector(".workspace-root");
     return root?.getAttribute("data-layout-mode") === "canvas" && root?.getAttribute("data-rail-mode") === "collapsed";
   }, undefined, { timeout: 20_000 });
+  await canvasFrame.waitForFunction(() => window.__sonikAgentUI?.getAssertions?.().hasActiveSession === true, undefined, { timeout: 20_000 });
+  const canvasContext = await canvasFrame.evaluate(() => window.__sonikAgentUI.getPageContext());
+  if (chatSessionId && canvasContext?.activeSessionId !== chatSessionId) await finish("FAIL", `Session changed across chat to canvas switch: ${chatSessionId} -> ${canvasContext?.activeSessionId}`);
   await browser.close();
-  await finish("PASS", "Iframe embed accepted host page context, sent it to generate, and emitted correlated command-index telemetry.");
+  await finish("PASS", "Iframe embed accepted host page context, compressed chat into a non-overlapping sidecar, opened canvas without launcher overlap, and emitted correlated command-index telemetry.");
 } catch (error) {
   await browser?.close().catch(() => undefined);
   evidence.errors.push({ event: "harness.error", message: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined });
