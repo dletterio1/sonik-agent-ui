@@ -17,6 +17,7 @@ import { instrumentGenerateStream } from "$lib/server/stream-telemetry";
 import { createDevSmokeStream, readDevSmokeRunId, shouldUseDevSmokeStream, writeDevSmokeStreamTelemetry } from "$lib/server/dev-smoke-stream";
 import { summarizeWorkspaceContext, syncActiveWorkspaceDocumentSnapshot, type WorkspaceDocumentRecord } from "$lib/server/workspace-store";
 import { createStandaloneCommandIndexSummary } from "$lib/server/tool-manifest";
+import { createBookingRuntimeAuthContextFromEnv, hasBookingRuntimeCredential } from "$lib/server/host-command-runtime";
 import type { AgentPageContext } from "@sonik-agent-ui/tool-contracts";
 import {
   optionalRouteString,
@@ -162,6 +163,7 @@ export const POST: RequestHandler = async ({ request }) => {
   const telemetryPageContext = sanitizePageContext(body?.pageContext ?? body?.workspace?.pageContext);
   const pageContextSource = resolvePageContextSource(body, activeDocument);
   const bookingServiceBaseUrl = env.SONIK_BOOKING_API_BASE_URL ?? env.BOOKING_SERVICE_BASE_URL ?? null;
+  const bookingRuntimeAuth = createBookingRuntimeAuthContextFromEnv(env);
   const startedAt = Date.now();
 
   if (!uiMessages || !Array.isArray(uiMessages) || uiMessages.length === 0) {
@@ -194,7 +196,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
   const modelMessages = await convertToModelMessages(uiMessages);
   const contextSummary = summarizeWorkspaceContext({ activeDocument });
-  const commandIndexSummary = createStandaloneCommandIndexSummary({ includeApprovalRequired: true, includeHostRuntime: true, hostSessionMode: "standalone-demo", sessionId: telemetrySessionId, pageContext, bookingServiceBaseUrl });
+  const commandIndexSummary = createStandaloneCommandIndexSummary({ includeApprovalRequired: true, includeHostRuntime: true, hostSessionMode: "standalone-demo", sessionId: telemetrySessionId, pageContext, bookingServiceBaseUrl, bookingRuntimeAuth });
   const pageContextSummary = createCurrentPageContextSummary(pageContext);
   const systemContext = [contextSummary, pageContextSummary, `CONTRACT-DERIVED COMMAND STARTUP INDEX:\n${commandIndexSummary}`].filter(Boolean).join("\n\n");
   const contextualModelMessages = systemContext
@@ -216,6 +218,10 @@ export const POST: RequestHandler = async ({ request }) => {
     skillFamilies: pageContext?.skillFamilies,
     contextSource: pageContextSource,
     pageContext: telemetryPageContext,
+    payload: {
+      bookingRuntimeAuthMode: bookingRuntimeAuth.mode,
+      bookingRuntimeCredentialed: hasBookingRuntimeCredential(bookingRuntimeAuth),
+    },
     ok: true,
   }).catch(() => undefined);
   if (shouldUseDevSmokeStream(request)) {
@@ -236,7 +242,7 @@ export const POST: RequestHandler = async ({ request }) => {
     return response;
   }
 
-  const agent = createAgent({ activeDocument, sessionId: telemetrySessionId, pageContext, bookingServiceBaseUrl });
+  const agent = createAgent({ activeDocument, sessionId: telemetrySessionId, pageContext, bookingServiceBaseUrl, bookingRuntimeAuth });
 
   try {
     const result = await agent.stream({ messages: contextualModelMessages });

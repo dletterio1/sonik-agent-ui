@@ -851,14 +851,68 @@ const generatedContextsReceipt = await executeHostCatalogCommand({
   runtimeAdapters: generatedLiveBundle.runtimeAdapters,
   execution: { ...generatedLiveBundle.executionContext, requestId: "req_generated_contexts" },
 });
-assert.equal(generatedContextsReceipt.ok, true, "generated booking runtime should allow declared query parameters");
-assert.equal(generatedContextsReceipt.summary.url, "/root/api/v1/booking/contexts?kind=event");
+assert.equal(generatedContextsReceipt.ok, false, "protected generated booking reads need configured runtime auth credentials");
+assert.equal(generatedContextsReceipt.policy.reasons.includes("runtime_unavailable"), true);
+const generatedCookieOnlyBundle = createStandaloneHostCommandRuntimeBundle({
+  sessionId: "s-generated-cookie-only",
+  hostSessionMode: "standalone-demo",
+  bookingServiceBaseUrl: "https://booking.test/root/",
+  bookingRuntimeAuth: { mode: "cookie", includeCredentials: true, source: "test" },
+  fetcher: async () => new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } }),
+  pageContext: { surface: "booking-console", commandFamilies: ["booking"], skillFamilies: ["booking-ops"] },
+}, "2026-06-20T00:00:00.000Z");
+const generatedCookieOnlyContextsReceipt = await executeHostCatalogCommand({
+  catalog: generatedCookieOnlyBundle.catalog,
+  commandId: GENERATED_BOOKING_LIST_CONTEXTS_COMMAND_ID,
+  commandInput: { kind: "event" },
+  runtimeAdapters: generatedCookieOnlyBundle.runtimeAdapters,
+  execution: { ...generatedCookieOnlyBundle.executionContext, requestId: "req_generated_cookie_only" },
+});
+assert.equal(generatedCookieOnlyContextsReceipt.ok, false, "cookie mode is not treated as credentialed for protected booking reads until cookie forwarding is explicitly implemented");
+assert.equal(generatedCookieOnlyContextsReceipt.policy.reasons.includes("runtime_unavailable"), true);
+let credentialedFetchHeaders = {};
+const generatedCredentialedLiveBundle = createStandaloneHostCommandRuntimeBundle({
+  sessionId: "s-generated-live-credentialed",
+  hostSessionMode: "standalone-demo",
+  bookingServiceBaseUrl: "https://booking.test/root/",
+  bookingRuntimeAuth: { mode: "bearer", token: "test-booking-token", source: "test" },
+  fetcher: async (url, init) => {
+    credentialedFetchHeaders = init?.headers ?? {};
+    return new Response(JSON.stringify({
+      service: "sonik-booking-service",
+      ok: true,
+      url: String(url),
+      authorization: init?.headers?.authorization,
+      nested: { token: "test-booking-token", note: "Bearer test-booking-token" },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  },
+  pageContext: { surface: "booking-console", commandFamilies: ["booking"], skillFamilies: ["booking-ops"] },
+}, "2026-06-20T00:00:00.000Z");
+const generatedCredentialedContextsReceipt = await executeHostCatalogCommand({
+  catalog: generatedCredentialedLiveBundle.catalog,
+  commandId: GENERATED_BOOKING_LIST_CONTEXTS_COMMAND_ID,
+  commandInput: { kind: "event" },
+  runtimeAdapters: generatedCredentialedLiveBundle.runtimeAdapters,
+  execution: { ...generatedCredentialedLiveBundle.executionContext, requestId: "req_generated_contexts_credentialed" },
+});
+assert.equal(generatedCredentialedContextsReceipt.ok, true, "credentialed generated booking runtime should allow declared query parameters");
+assert.equal(generatedCredentialedContextsReceipt.summary.url, "/root/api/v1/booking/contexts?kind=event");
+assert.equal(generatedCredentialedContextsReceipt.summary.authMode, "bearer");
+assert.equal(generatedCredentialedContextsReceipt.summary.credentialed, true);
+assert.equal(JSON.stringify(generatedCredentialedContextsReceipt).includes("test-booking-token"), false, "runtime receipts must redact bearer tokens even if the upstream body echoes them");
+assert.equal(JSON.stringify(generatedCredentialedContextsReceipt).includes("Bearer test-booking-token"), false, "runtime receipts must redact authorization header echoes");
+assert.equal(generatedCredentialedContextsReceipt.summary.body.authorization, "[redacted]");
+assert.equal(generatedCredentialedContextsReceipt.summary.body.nested.token, "[redacted]");
+assert.equal(generatedCredentialedContextsReceipt.summary.body.nested.note, "Bearer [redacted]");
+assert.equal(credentialedFetchHeaders.authorization, "Bearer test-booking-token", "trusted runtime token should be sent only as an outbound header");
+assert.equal(credentialedFetchHeaders["x-sonik-agent-org-id"], "standalone-demo-org", "trusted org id should be forwarded as bounded telemetry");
+assert.equal(credentialedFetchHeaders["x-sonik-agent-session-id"], "s-generated-live-credentialed", "trusted session id should be forwarded as bounded telemetry");
 const generatedInvalidContextReceipt = await executeHostCatalogCommand({
-  catalog: generatedLiveBundle.catalog,
+  catalog: generatedCredentialedLiveBundle.catalog,
   commandId: GENERATED_BOOKING_LIST_CONTEXTS_COMMAND_ID,
   commandInput: { kind: "venue" },
-  runtimeAdapters: generatedLiveBundle.runtimeAdapters,
-  execution: { ...generatedLiveBundle.executionContext, requestId: "req_generated_contexts_invalid" },
+  runtimeAdapters: generatedCredentialedLiveBundle.runtimeAdapters,
+  execution: { ...generatedCredentialedLiveBundle.executionContext, requestId: "req_generated_contexts_invalid" },
 });
 assert.equal(generatedInvalidContextReceipt.ok, false, "generated booking runtime should reject undeclared enum-like query values");
 assert.match(generatedInvalidContextReceipt.summary.error, /Unsupported generated booking query value/);

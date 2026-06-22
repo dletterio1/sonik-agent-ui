@@ -39,6 +39,15 @@ export const GENERATED_BOOKING_TEMPLATES_COMMAND_ID = "booking.list.organizer.te
 export const GENERATED_BOOKING_TEMPLATE_COMMAND_ID = "booking.get.organizer.template";
 export const GENERATED_BOOKING_RUNTIME_PROVIDER = "sonik-booking-openapi-runtime";
 
+export type BookingRuntimeAuthMode = "anonymous" | "bearer" | "service-token" | "cookie";
+
+export type BookingRuntimeAuthContext = {
+  mode: BookingRuntimeAuthMode;
+  token?: string | null;
+  includeCredentials?: boolean;
+  source?: "env" | "host" | "test";
+};
+
 const STANDALONE_BOOKING_COMMAND_FAMILY = {
   id: "booking",
   title: "Booking Contexts",
@@ -118,18 +127,24 @@ function createGeneratedBookingReadHostAdapter(): HostCommandAdapter {
 function createGeneratedBookingRuntimeAdapter(input: StandaloneHostRuntimeInput): HostCommandRuntimeAdapter {
   const baseUrl = normalizeBaseUrl(input.bookingServiceBaseUrl ?? readProcessEnv("SONIK_BOOKING_API_BASE_URL") ?? readProcessEnv("BOOKING_SERVICE_BASE_URL"));
   const fetcher: typeof fetch | undefined = input.fetcher ?? (typeof globalThis.fetch === "function" ? globalThis.fetch.bind(globalThis) : undefined);
+  const authContext = resolveBookingRuntimeAuthContext(input.bookingRuntimeAuth);
   const commands = generatedMountedBookingReadCommands();
   return {
     provider: GENERATED_BOOKING_RUNTIME_PROVIDER,
     bindings: commands.map((command) => ({
       commandId: command.id,
-      status: baseUrl && fetcher ? "mounted-read" : "unavailable",
-      execute: baseUrl && fetcher ? executeGeneratedOpenApiReadCommand(baseUrl, fetcher) : undefined,
+      status: baseUrl && fetcher && canExecuteGeneratedBookingRead(command, authContext) ? "mounted-read" : "unavailable",
+      execute: baseUrl && fetcher && canExecuteGeneratedBookingRead(command, authContext) ? executeGeneratedOpenApiReadCommand(baseUrl, fetcher, authContext) : undefined,
     })),
   };
 }
 
-function executeGeneratedOpenApiReadCommand(baseUrl: string, fetcher: typeof fetch) {
+function canExecuteGeneratedBookingRead(command: CommandDescriptor, authContext: BookingRuntimeAuthContext): boolean {
+  if (command.auth.required !== true && command.auth.orgScoped !== true) return true;
+  return hasBookingRuntimeCredential(authContext);
+}
+
+function executeGeneratedOpenApiReadCommand(baseUrl: string, fetcher: typeof fetch, authContext: BookingRuntimeAuthContext) {
   return async (input: unknown, context: { command: CommandDescriptor; execution: CommandExecutionContext }) => {
     const method = context.command.transport.method ?? "GET";
     if (method.toUpperCase() !== "GET") {
@@ -139,16 +154,16 @@ function executeGeneratedOpenApiReadCommand(baseUrl: string, fetcher: typeof fet
     const inputPolicy = GENERATED_BOOKING_READ_INPUT_POLICIES[context.command.id];
     if (!inputPolicy) throw new Error(`Generated booking runtime has no input policy for ${context.command.id}`);
     const url = buildOpenApiReadUrl(baseUrl, context.command.transport.path ?? "/", record, inputPolicy);
+    const headers = createGeneratedBookingRuntimeHeaders(authContext, context.execution);
     const response = await fetcher(url, {
       method: "GET",
-      headers: {
-        accept: "application/json",
-        "x-sonik-request-id": context.execution.requestId ?? `agent-ui-${Date.now()}`,
-        ...(context.execution.organizationId ? { "x-sonik-agent-org-id": context.execution.organizationId } : {}),
-      },
+      headers,
+      credentials: authContext.includeCredentials === true ? "include" : "same-origin",
     });
     const contentType = response.headers.get("content-type") ?? "";
-    const body = contentType.includes("application/json") ? await response.json() : await response.text();
+    const rawBody = contentType.includes("application/json") ? await response.json() : await response.text();
+    const body = redactGeneratedBookingRuntimeBody(rawBody, authContext);
+    const credentialed = hasBookingRuntimeCredential(authContext);
     return {
       summary: {
         ok: response.ok,
@@ -157,11 +172,58 @@ function executeGeneratedOpenApiReadCommand(baseUrl: string, fetcher: typeof fet
         method,
         path: context.command.transport.path,
         url: redactUrlForReceipt(url),
+        authMode: authContext.mode,
+        credentialed,
         body,
       },
       nextActions: response.ok ? ["learnCommand"] : ["learnCommand", "checkBookingRuntimeConfiguration"],
     };
   };
+}
+
+function createGeneratedBookingRuntimeHeaders(authContext: BookingRuntimeAuthContext, execution: CommandExecutionContext): Record<string, string> {
+  const headers: Record<string, string> = {
+    accept: "application/json",
+    "x-sonik-request-id": safeHeaderValue(execution.requestId ?? `agent-ui-${Date.now()}`, 160),
+    "x-sonik-agent-host-source": safeHeaderValue(execution.hostSessionSource ?? "agent-ui", 80),
+  };
+  if (execution.organizationId) headers["x-sonik-agent-org-id"] = safeHeaderValue(execution.organizationId, 160);
+  if (execution.sessionId) headers["x-sonik-agent-session-id"] = safeHeaderValue(execution.sessionId, 160);
+  if (execution.principalId) headers["x-sonik-agent-principal-id"] = safeHeaderValue(execution.principalId, 160);
+  const token = safeSecretHeaderValue(authContext.token);
+  if (token && authContext.mode === "bearer") headers.authorization = `Bearer ${token}`;
+  if (token && authContext.mode === "service-token") headers["x-sonik-service-token"] = token;
+  return headers;
+}
+
+function redactGeneratedBookingRuntimeBody(value: unknown, authContext: BookingRuntimeAuthContext): unknown {
+  const token = safeSecretHeaderValue(authContext.token);
+  return redactSecretValue(value, token ? [token, `Bearer ${token}`] : []);
+}
+
+function redactSecretValue(value: unknown, secrets: string[]): unknown {
+  if (typeof value === "string") return secrets.reduce((current, secret) => current.split(secret).join("[redacted]"), value);
+  if (Array.isArray(value)) return value.map((entry) => redactSecretValue(entry, secrets));
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [
+    key,
+    isSecretLikeKey(key) ? "[redacted]" : redactSecretValue(entry, secrets),
+  ]));
+}
+
+function isSecretLikeKey(key: string): boolean {
+  return /(authorization|api[-_]?key|token|secret|password|cookie|set-cookie|credential)/i.test(key);
+}
+
+function safeHeaderValue(value: string, maxLength: number): string {
+  return value.replace(/[\r\n]/g, "").slice(0, maxLength);
+}
+
+function safeSecretHeaderValue(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim().replace(/[\r\n]/g, "");
+  if (!trimmed || trimmed.length > 4096) return null;
+  return trimmed;
 }
 
 function buildOpenApiReadUrl(baseUrl: string, path: string, input: Record<string, unknown>, inputPolicy: GeneratedBookingReadInputPolicy): string {
@@ -234,8 +296,60 @@ export type StandaloneHostRuntimeInput = PlatformAdapterContext & {
   indexContext?: CommandIndexContext;
   indexLimit?: number;
   bookingServiceBaseUrl?: string | null;
+  bookingRuntimeAuth?: BookingRuntimeAuthContext | null;
   fetcher?: typeof fetch;
 };
+
+export function createBookingRuntimeAuthContextFromEnv(envLike: Record<string, string | undefined> = {}): BookingRuntimeAuthContext {
+  const includeCredentials = truthyEnv(envLike.SONIK_BOOKING_INCLUDE_CREDENTIALS ?? envLike.BOOKING_SERVICE_INCLUDE_CREDENTIALS);
+  const token = safeSecretHeaderValue(envLike.SONIK_BOOKING_API_BEARER_TOKEN ?? envLike.SONIK_BOOKING_API_TOKEN ?? envLike.BOOKING_SERVICE_API_TOKEN);
+  const requestedMode = normalizeBookingRuntimeAuthMode(envLike.SONIK_BOOKING_AUTH_MODE ?? envLike.BOOKING_SERVICE_AUTH_MODE);
+  const mode = requestedMode ?? (token ? "bearer" : includeCredentials ? "cookie" : "anonymous");
+  return {
+    mode,
+    token: mode === "bearer" || mode === "service-token" ? token : null,
+    includeCredentials: includeCredentials || mode === "cookie",
+    source: "env",
+  };
+}
+
+export function hasBookingRuntimeCredential(authContext: BookingRuntimeAuthContext | null | undefined): boolean {
+  if (!authContext) return false;
+  const mode = normalizeBookingRuntimeAuthMode(authContext.mode) ?? "anonymous";
+  if (mode !== "bearer" && mode !== "service-token") return false;
+  return Boolean(safeSecretHeaderValue(authContext.token));
+}
+
+function resolveBookingRuntimeAuthContext(input: BookingRuntimeAuthContext | null | undefined): BookingRuntimeAuthContext {
+  if (!input) return createBookingRuntimeAuthContextFromEnv({
+    SONIK_BOOKING_AUTH_MODE: readProcessEnv("SONIK_BOOKING_AUTH_MODE"),
+    BOOKING_SERVICE_AUTH_MODE: readProcessEnv("BOOKING_SERVICE_AUTH_MODE"),
+    SONIK_BOOKING_INCLUDE_CREDENTIALS: readProcessEnv("SONIK_BOOKING_INCLUDE_CREDENTIALS"),
+    BOOKING_SERVICE_INCLUDE_CREDENTIALS: readProcessEnv("BOOKING_SERVICE_INCLUDE_CREDENTIALS"),
+    SONIK_BOOKING_API_BEARER_TOKEN: readProcessEnv("SONIK_BOOKING_API_BEARER_TOKEN"),
+    SONIK_BOOKING_API_TOKEN: readProcessEnv("SONIK_BOOKING_API_TOKEN"),
+    BOOKING_SERVICE_API_TOKEN: readProcessEnv("BOOKING_SERVICE_API_TOKEN"),
+  });
+  const mode = normalizeBookingRuntimeAuthMode(input.mode) ?? "anonymous";
+  const token = safeSecretHeaderValue(input.token);
+  return {
+    mode,
+    token: mode === "bearer" || mode === "service-token" ? token : null,
+    includeCredentials: input.includeCredentials === true || mode === "cookie",
+    source: input.source ?? "host",
+  };
+}
+
+function normalizeBookingRuntimeAuthMode(value: string | null | undefined): BookingRuntimeAuthMode | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "bearer" || normalized === "service-token" || normalized === "cookie" || normalized === "anonymous") return normalized;
+  return null;
+}
+
+function truthyEnv(value: string | null | undefined): boolean {
+  return /^(1|true|yes|include)$/i.test(value ?? "");
+}
 
 const bookingReadHostAdapter: HostCommandAdapter = {
   provider: STANDALONE_HOST_PROVIDER,

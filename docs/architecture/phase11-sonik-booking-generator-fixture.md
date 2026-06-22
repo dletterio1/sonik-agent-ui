@@ -99,4 +99,15 @@ The standalone app mounts only a small safe read subset from the generated catal
 - `booking.list.organizer.templates`
 - `booking.get.organizer.template`
 
-The runtime adapter is transport-driven from generated OpenAPI method/path metadata and is enabled by `SONIK_BOOKING_API_BASE_URL` / `BOOKING_SERVICE_BASE_URL`. If no base URL is configured, command execution returns a typed unavailable receipt instead of fixture data. The v0 live seam also uses explicit per-command input policies for the mounted read subset so unknown parameters, invalid `kind` values, and unsafe path/query values are rejected before outbound fetch. Writes and destructive commands remain descriptor-only until an explicit trusted commit adapter is added.
+The runtime adapter is transport-driven from generated OpenAPI method/path metadata and is enabled by `SONIK_BOOKING_API_BASE_URL` / `BOOKING_SERVICE_BASE_URL`. If no base URL is configured, command execution returns a typed unavailable receipt instead of fixture data. The v0 live seam also uses explicit per-command input policies for the mounted read subset so unknown parameters, invalid `kind` values, and unsafe path/query values are rejected before outbound fetch.
+
+Authentication is server/runtime-owned, not page-context-owned:
+
+- `SONIK_BOOKING_AUTH_MODE=anonymous|bearer|service-token|cookie` declares the runtime posture.
+- `SONIK_BOOKING_API_BEARER_TOKEN`, `SONIK_BOOKING_API_TOKEN`, or `BOOKING_SERVICE_API_TOKEN` are secrets and must not live in checked config.
+- protected generated reads such as `booking.list.contexts` return a typed unavailable receipt unless a credentialed runtime mode is configured.
+- `cookie` mode is reserved for a future explicit host cookie-forwarding adapter; it does not unlock protected generated reads in v0.
+- public reads such as `booking.ping` and template reads can still execute anonymously.
+- receipts expose `authMode` and `credentialed` only; they never echo tokens.
+
+Writes and destructive commands remain descriptor-only until an explicit trusted commit adapter is added.

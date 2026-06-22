@@ -17,6 +17,7 @@ import {
 } from "@sonik-agent-ui/tool-contracts";
 import { createStandaloneHostCommandIndex } from "./host-command-runtime.ts";
 import { resolveStandaloneHostSession } from "./host-command-runtime.ts";
+import type { BookingRuntimeAuthContext } from "./host-command-runtime.ts";
 
 export type StandaloneToolManifestInput = {
   sessionId?: string | null;
@@ -32,6 +33,7 @@ export type StandaloneToolManifestInput = {
   hostSession?: HostSessionEnvelope | null;
   hostSessionMode?: "anonymous" | "standalone-demo" | "amplify-embedded";
   bookingServiceBaseUrl?: string | null;
+  bookingRuntimeAuth?: BookingRuntimeAuthContext | null;
 };
 
 export function createStandaloneAvailableToolManifest(input: StandaloneToolManifestInput = {}): ToolManifest {

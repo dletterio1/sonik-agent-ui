@@ -8,14 +8,14 @@ import {
   type CommandLearnAspect,
 } from "@sonik-agent-ui/tool-contracts";
 import { executeHostCatalogCommand } from "@sonik-agent-ui/platform-adapters";
-import { createStandaloneHostCommandIndex, createStandaloneHostCommandRuntimeBundle } from "$lib/server/host-command-runtime";
+import { createStandaloneHostCommandIndex, createStandaloneHostCommandRuntimeBundle, type BookingRuntimeAuthContext } from "$lib/server/host-command-runtime";
 import { writeAgentTelemetry } from "$lib/server/agent-telemetry";
 
 const commandAspectSchema = z.enum(["description", "schema", "examples", "policy", "output", "surfaces", "transport", "auth"]);
 
-export function createCommandCatalogTools(context: { sessionId?: string | null; approvedCommandIds?: string[]; pageContext?: AgentPageContext; bookingServiceBaseUrl?: string | null } = {}) {
-  const createBundle = () => createStandaloneHostCommandRuntimeBundle({ sessionId: context.sessionId, pageContext: context.pageContext, hostSessionMode: "standalone-demo", bookingServiceBaseUrl: context.bookingServiceBaseUrl });
-  const createContextCommandIds = () => new Set(createStandaloneHostCommandIndex({ sessionId: context.sessionId, pageContext: context.pageContext, hostSessionMode: "standalone-demo", bookingServiceBaseUrl: context.bookingServiceBaseUrl }).commands.map((command) => command.id));
+export function createCommandCatalogTools(context: { sessionId?: string | null; approvedCommandIds?: string[]; pageContext?: AgentPageContext; bookingServiceBaseUrl?: string | null; bookingRuntimeAuth?: BookingRuntimeAuthContext | null } = {}) {
+  const createBundle = () => createStandaloneHostCommandRuntimeBundle({ sessionId: context.sessionId, pageContext: context.pageContext, hostSessionMode: "standalone-demo", bookingServiceBaseUrl: context.bookingServiceBaseUrl, bookingRuntimeAuth: context.bookingRuntimeAuth });
+  const createContextCommandIds = () => new Set(createStandaloneHostCommandIndex({ sessionId: context.sessionId, pageContext: context.pageContext, hostSessionMode: "standalone-demo", bookingServiceBaseUrl: context.bookingServiceBaseUrl, bookingRuntimeAuth: context.bookingRuntimeAuth }).commands.map((command) => command.id));
   const summarizeCommandTelemetry = (command: CommandDescriptor | undefined, contextCommandIds = createContextCommandIds()) => ({
     commandFamily: command?.familyId,
     commandSource: command?.source,
