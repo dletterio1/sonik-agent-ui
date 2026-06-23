@@ -237,6 +237,157 @@ export function createLocalAuthAdapter(defaults: Pick<Partial<WorkspaceAuthConte
   };
 }
 
+export interface AsyncWorkspaceSessionDocumentStore {
+  createSession(input?: { id?: string; name?: string | null; mode?: WorkspaceMode; folder?: string | null }): Promise<WorkspaceSessionRecord>;
+  ensureSession(sessionId?: string | null): Promise<WorkspaceSessionRecord>;
+  getSession(id: string): Promise<WorkspaceSessionRecord | null>;
+  listSessions(input?: { archived?: boolean }): Promise<WorkspaceSessionRecord[]>;
+  patchSession(id: string, input: Partial<Pick<WorkspaceSessionRecord, "name" | "mode" | "folder" | "active_document_id" | "active_artifact_id" | "is_important">>): Promise<WorkspaceSessionRecord | null>;
+  archiveSession(id: string, archived?: boolean): Promise<WorkspaceSessionRecord | null>;
+  deleteSession(id: string): Promise<boolean>;
+  createDocument(input: { session_id?: string | null; title?: string | null; content?: string | null; language?: string | null; source?: WorkspaceDocumentVersionSource; summary?: string | null }): Promise<WorkspaceDocumentRecord>;
+  getDocument(id: string): Promise<WorkspaceDocumentRecord | null>;
+  listDocuments(sessionId: string): Promise<WorkspaceDocumentRecord[]>;
+  listDocumentLibrary(input?: { search?: string | null; language?: string | null; sort?: string | null; offset?: number; limit?: number; archived?: boolean }): Promise<DocumentLibraryResult>;
+  updateDocument(id: string, input: { content?: string; title?: string; language?: string; source?: WorkspaceDocumentVersionSource; summary?: string | null }): Promise<WorkspaceDocumentRecord | null>;
+  patchDocument(id: string, input: { content?: string; title?: string; language?: string; session_id?: string | null }): Promise<WorkspaceDocumentRecord | null>;
+  archiveDocument(id: string, archived?: boolean): Promise<WorkspaceDocumentRecord | null>;
+  deleteDocument(id: string): Promise<boolean>;
+  listDocumentVersions(documentId: string): Promise<WorkspaceDocumentVersionRecord[]>;
+  getDocumentVersion(documentId: string, versionNumber: number): Promise<WorkspaceDocumentVersionRecord | null>;
+  restoreDocumentVersion(documentId: string, versionNumber: number): Promise<WorkspaceDocumentRecord | null>;
+  syncActiveDocumentSnapshot(snapshot: WorkspaceDocumentRecord): Promise<WorkspaceDocumentRecord>;
+}
+
+export interface AsyncWorkspaceArtifactStore {
+  createArtifact<TContent = unknown>(input: { session_id?: string | null; id?: string; kind: WorkspaceArtifactKind; title: string; content: TContent; source?: WorkspaceDocumentVersionSource; summary?: string | null }): Promise<WorkspaceArtifactRecord<TContent>>;
+  getArtifact<TContent = unknown>(id: string): Promise<WorkspaceArtifactRecord<TContent> | null>;
+  updateArtifact<TContent = unknown>(id: string, input: { title?: string; content?: TContent; source?: WorkspaceDocumentVersionSource; summary?: string | null }): Promise<WorkspaceArtifactRecord<TContent> | null>;
+  listArtifactVersions<TContent = unknown>(artifactId: string): Promise<WorkspaceArtifactVersionRecord<TContent>[]>;
+}
+
+export interface AsyncWorkspaceActivityStore {
+  appendMessage<TParts = unknown>(input: { session_id?: string | null; id?: string; role: WorkspaceMessageRecord<TParts>["role"]; content?: string | null; parts?: TParts | null }): Promise<WorkspaceMessageRecord<TParts>>;
+  listMessages<TParts = unknown>(sessionId: string): Promise<WorkspaceMessageRecord<TParts>[]>;
+  recordToolCall<TInput = unknown, TOutput = unknown>(input: Omit<WorkspaceToolCallRecord<TInput, TOutput>, "id" | "created_at" | "completed_at"> & { id?: string; created_at?: string; completed_at?: string | null }): Promise<WorkspaceToolCallRecord<TInput, TOutput>>;
+  listToolCalls(sessionId: string): Promise<WorkspaceToolCallRecord[]>;
+  recordLayoutSnapshot<TLayout = unknown>(input: { session_id?: string | null; active_pane_id?: string | null; active_artifact_id?: string | null; layout: TLayout; source?: WorkspaceLayoutSnapshotRecord<TLayout>["source"] }): Promise<WorkspaceLayoutSnapshotRecord<TLayout>>;
+  listLayoutSnapshots<TLayout = unknown>(sessionId: string): Promise<WorkspaceLayoutSnapshotRecord<TLayout>[]>;
+}
+
+export interface AsyncWorkspaceTelemetryStore {
+  recordTelemetryEvent<TPayload = unknown>(input: { session_id?: string | null; request_id?: string | null; source: WorkspaceTelemetryEventRecord<TPayload>["source"]; event: string; payload?: TPayload; ok?: boolean | null; error?: string | null }): Promise<WorkspaceTelemetryEventRecord<TPayload>>;
+  listTelemetryEvents(sessionId?: string | null): Promise<WorkspaceTelemetryEventRecord[]>;
+}
+
+export type AsyncWorkspacePersistenceAdapter = AsyncWorkspaceSessionDocumentStore & AsyncWorkspaceArtifactStore & AsyncWorkspaceActivityStore & AsyncWorkspaceTelemetryStore;
+
+export type WorkspacePersistencePolicy = "memory" | "cloud" | "auto";
+
+export interface WorkspaceCommandPolicyDecision {
+  allowed: boolean;
+  commandId: string;
+  reasonCode: string;
+  effectiveScope: "workspace" | "session" | "document" | "artifact" | "none";
+  auditRequired?: boolean;
+}
+
+export interface WorkspaceSqlTransaction {
+  query<T = unknown>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
+}
+
+export interface WorkspaceSqlExecutor {
+  transaction<T>(fn: (tx: WorkspaceSqlTransaction) => Promise<T>): Promise<T>;
+}
+
+export interface WorkspaceHostSessionSnapshot {
+  source: string;
+  sessionId?: string | null;
+  userId?: string | null;
+  principalId?: string | null;
+  organizationId?: string | null;
+  authenticated: boolean;
+  scopes: string[];
+  expiresAt?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AuthorizedWorkspaceRuntime {
+  kind: "cloud";
+  env: unknown;
+  db: WorkspaceSqlExecutor;
+  userId: string;
+  organizationId: string;
+  principalId?: string | null;
+  requestId: string;
+  commandPolicy: WorkspaceCommandPolicyDecision;
+  hostSession: WorkspaceHostSessionSnapshot;
+}
+
+export type MemoryWorkspaceRuntimeReason = "local" | "anonymous" | "cloud-unavailable";
+
+export interface MemoryWorkspaceRuntime {
+  kind: "memory";
+  persistence: AsyncWorkspacePersistenceAdapter;
+  reason: MemoryWorkspaceRuntimeReason;
+}
+
+export interface CloudWorkspaceRuntime {
+  kind: "cloud";
+  persistence: AsyncWorkspacePersistenceAdapter;
+  authorized: AuthorizedWorkspaceRuntime;
+}
+
+export type ResolvedWorkspaceRuntime = MemoryWorkspaceRuntime | CloudWorkspaceRuntime;
+
+export function createAsyncWorkspacePersistenceAdapter(adapter: WorkspacePersistenceAdapter): AsyncWorkspacePersistenceAdapter {
+  return {
+    createSession: async (input) => adapter.createSession(input),
+    ensureSession: async (sessionId) => adapter.ensureSession(sessionId),
+    getSession: async (id) => adapter.getSession(id),
+    listSessions: async (input) => adapter.listSessions(input),
+    patchSession: async (id, input) => adapter.patchSession(id, input),
+    archiveSession: async (id, archived) => adapter.archiveSession(id, archived),
+    deleteSession: async (id) => adapter.deleteSession(id),
+    createDocument: async (input) => adapter.createDocument(input),
+    getDocument: async (id) => adapter.getDocument(id),
+    listDocuments: async (sessionId) => adapter.listDocuments(sessionId),
+    listDocumentLibrary: async (input) => adapter.listDocumentLibrary(input),
+    updateDocument: async (id, input) => adapter.updateDocument(id, input),
+    patchDocument: async (id, input) => adapter.patchDocument(id, input),
+    archiveDocument: async (id, archived) => adapter.archiveDocument(id, archived),
+    deleteDocument: async (id) => adapter.deleteDocument(id),
+    listDocumentVersions: async (documentId) => adapter.listDocumentVersions(documentId),
+    getDocumentVersion: async (documentId, versionNumber) => adapter.getDocumentVersion(documentId, versionNumber),
+    restoreDocumentVersion: async (documentId, versionNumber) => adapter.restoreDocumentVersion(documentId, versionNumber),
+    syncActiveDocumentSnapshot: async (snapshot) => adapter.syncActiveDocumentSnapshot(snapshot),
+    createArtifact: async <TContent = unknown>(input: { session_id?: string | null; id?: string; kind: WorkspaceArtifactKind; title: string; content: TContent; source?: WorkspaceDocumentVersionSource; summary?: string | null }) => adapter.createArtifact<TContent>(input),
+    getArtifact: async <TContent = unknown>(id: string) => adapter.getArtifact<TContent>(id),
+    updateArtifact: async <TContent = unknown>(id: string, input: { title?: string; content?: TContent; source?: WorkspaceDocumentVersionSource; summary?: string | null }) => adapter.updateArtifact<TContent>(id, input),
+    listArtifactVersions: async <TContent = unknown>(artifactId: string) => adapter.listArtifactVersions<TContent>(artifactId),
+    appendMessage: async <TParts = unknown>(input: { session_id?: string | null; id?: string; role: WorkspaceMessageRecord<TParts>["role"]; content?: string | null; parts?: TParts | null }) => adapter.appendMessage<TParts>(input),
+    listMessages: async <TParts = unknown>(sessionId: string) => adapter.listMessages<TParts>(sessionId),
+    recordToolCall: async <TInput = unknown, TOutput = unknown>(input: Omit<WorkspaceToolCallRecord<TInput, TOutput>, "id" | "created_at" | "completed_at"> & { id?: string; created_at?: string; completed_at?: string | null }) => adapter.recordToolCall<TInput, TOutput>(input),
+    listToolCalls: async (sessionId) => adapter.listToolCalls(sessionId),
+    recordLayoutSnapshot: async <TLayout = unknown>(input: { session_id?: string | null; active_pane_id?: string | null; active_artifact_id?: string | null; layout: TLayout; source?: WorkspaceLayoutSnapshotRecord<TLayout>["source"] }) => adapter.recordLayoutSnapshot<TLayout>(input),
+    listLayoutSnapshots: async <TLayout = unknown>(sessionId: string) => adapter.listLayoutSnapshots<TLayout>(sessionId),
+    recordTelemetryEvent: async <TPayload = unknown>(input: { session_id?: string | null; request_id?: string | null; source: WorkspaceTelemetryEventRecord<TPayload>["source"]; event: string; payload?: TPayload; ok?: boolean | null; error?: string | null }) => adapter.recordTelemetryEvent<TPayload>(input),
+    listTelemetryEvents: async (sessionId) => adapter.listTelemetryEvents(sessionId),
+  };
+}
+
+export function createMemoryWorkspaceRuntime(input: {
+  persistence?: WorkspacePersistenceAdapter;
+  reason?: MemoryWorkspaceRuntimeReason;
+  persistenceOptions?: InMemoryWorkspacePersistenceOptions;
+} = {}): MemoryWorkspaceRuntime {
+  return {
+    kind: "memory",
+    reason: input.reason ?? "local",
+    persistence: createAsyncWorkspacePersistenceAdapter(input.persistence ?? createInMemoryWorkspacePersistence(input.persistenceOptions)),
+  };
+}
+
 export interface InMemoryWorkspacePersistenceOptions {
   maxTelemetryEvents?: number;
   maxTelemetryPayloadChars?: number;
