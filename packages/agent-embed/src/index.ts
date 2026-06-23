@@ -4,6 +4,7 @@ import type { AgentPageContext } from "@sonik-agent-ui/tool-contracts";
 
 export const SONIK_AGENT_UI_HOST_MESSAGE_SOURCE = "sonik-agent-ui-host";
 export const SONIK_AGENT_UI_PAGE_CONTEXT_MESSAGE = "sonik:agent-ui:page-context";
+export const SONIK_AGENT_UI_PAGE_CONTEXT_REQUEST = "sonik:agent-ui:request-page-context";
 
 export type AgentEmbedMode = "workspace" | "chat" | "canvas";
 export type AgentEmbedRailMode = "expanded" | "collapsed" | "hidden";
@@ -210,6 +211,13 @@ function doesOriginMatchPattern(origin: URL, pattern: string): boolean {
   return exact?.origin === origin.origin;
 }
 
+
+function isAgentPageContextRequestMessage(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return record.source === "sonik-agent-ui" && record.type === SONIK_AGENT_UI_PAGE_CONTEXT_REQUEST;
+}
+
 export function createAgentHostPageContextMessage(payload: AgentHostPageContext): AgentHostPageContextMessage {
   return {
     source: SONIK_AGENT_UI_HOST_MESSAGE_SOURCE,
@@ -289,7 +297,9 @@ export function mountSonikAgentUI(options: AgentEmbedMountOptions): AgentEmbedCo
   const postContext = async () => {
     try {
       const payload = sanitizeAgentHostPageContext(await getPageContext()) ?? {};
-      iframe.contentWindow?.postMessage(createAgentHostPageContextMessage(payload), resolveAgentTargetOrigin(iframe, options.agentUrl, ownerWindow));
+      const targetOrigin = resolveMountedAgentTargetOrigin(iframe, options.agentUrl, ownerWindow);
+      if (!targetOrigin) return;
+      iframe.contentWindow?.postMessage(createAgentHostPageContextMessage(payload), targetOrigin);
     } catch (error) {
       options.onError?.(error);
     }
@@ -382,8 +392,18 @@ export function mountSonikAgentUI(options: AgentEmbedMountOptions): AgentEmbedCo
   };
 
   const onLoad = () => scheduleContextPosts();
+  const onRequestPageContext = (event: MessageEvent) => {
+    if (event.source !== iframe.contentWindow) return;
+    if (!isAgentPageContextRequestMessage(event.data)) return;
+    if (event.origin !== resolveMountedAgentTargetOrigin(iframe, options.agentUrl, ownerWindow)) return;
+    void postContext();
+  };
   iframe.addEventListener("load", onLoad);
-  disposers.push(() => iframe.removeEventListener("load", onLoad));
+  ownerWindow.addEventListener("message", onRequestPageContext);
+  disposers.push(() => {
+    iframe.removeEventListener("load", onLoad);
+    ownerWindow.removeEventListener("message", onRequestPageContext);
+  });
 
   addClick(options.elements.openChat, () => open("chat"));
   addClick(options.elements.openCanvas, () => open("canvas"));
@@ -479,9 +499,12 @@ function resolveTheme(theme: AgentEmbedThemeProvider | undefined): string | unde
   return cleanText(theme);
 }
 
-function resolveAgentTargetOrigin(iframe: HTMLIFrameElement, agentUrl: string | URL, ownerWindow: Window): string {
+function resolveMountedAgentTargetOrigin(iframe: HTMLIFrameElement, agentUrl: string | URL, ownerWindow: Window): string | null {
   const frameSrc = iframe.getAttribute("src");
-  return new URL(frameSrc || String(agentUrl), ownerWindow.location.href).origin;
+  if (!frameSrc || frameSrc === "about:blank") return null;
+  const agentOrigin = new URL(String(agentUrl), ownerWindow.location.href).origin;
+  const frameOrigin = new URL(frameSrc, ownerWindow.location.href).origin;
+  return frameOrigin === agentOrigin ? frameOrigin : null;
 }
 
 function requiredElement<T extends HTMLElement>(document: Document, ref: AgentEmbedElementRef<T>, name: string): T {

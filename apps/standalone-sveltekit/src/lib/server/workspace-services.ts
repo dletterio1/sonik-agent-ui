@@ -20,7 +20,7 @@ import { createNeonWorkspaceSqlExecutor } from "./workspace-cloud-sql.ts";
 export type WorkspaceRuntimeRequest = {
   platform?: { env?: Record<string, unknown> } | null;
   request?: Request;
-  locals?: Record<string, unknown>;
+  locals?: unknown;
 };
 
 export const AGENT_UI_HOST_CONTEXT_HEADER = "x-sonik-agent-ui-host-context";
@@ -38,6 +38,20 @@ export type RequestWorkspaceServices = {
   auth: WorkspaceAuthAdapter;
   persistencePolicy: WorkspacePersistencePolicy;
   persistenceMode: ResolvedWorkspaceRuntime["kind"];
+};
+
+export type WorkspaceRuntimeDiagnostics = {
+  policy: WorkspacePersistencePolicy | "invalid";
+  mode: ResolvedWorkspaceRuntime["kind"] | "unresolved";
+  memoryReason?: MemoryWorkspaceRuntimeReason;
+  cloudErrorCode?: WorkspaceRuntimeResolutionError["code"];
+  hostContext: {
+    hasHeader: boolean;
+    authenticated: boolean;
+    organizationIdPresent: boolean;
+    userIdPresent: boolean;
+    source: string | null;
+  };
 };
 
 const localWorkspacePersistence = createInMemoryWorkspacePersistence();
@@ -129,6 +143,60 @@ export function createRequestWorkspaceServices(event?: WorkspaceRuntimeRequest |
   };
 }
 
+export function resolveWorkspaceRuntimeDiagnostics(event?: WorkspaceRuntimeRequest | null, input: { policy?: WorkspacePersistencePolicy } = {}): WorkspaceRuntimeDiagnostics {
+  const env = event?.platform?.env ?? null;
+  const hostSession = resolveTrustedHostSessionSnapshot(event);
+  const hostContext = {
+    hasHeader: Boolean(event?.request?.headers.get(AGENT_UI_HOST_CONTEXT_HEADER)),
+    authenticated: hostSession.authenticated,
+    organizationIdPresent: Boolean(hostSession.organizationId),
+    userIdPresent: Boolean(hostSession.userId),
+    source: hostSession.source ?? null,
+  };
+
+  let policy: WorkspacePersistencePolicy;
+  try {
+    policy = resolveWorkspacePersistencePolicy({ env, override: input.policy });
+  } catch (error) {
+    return {
+      policy: "invalid",
+      mode: "unresolved",
+      cloudErrorCode: error instanceof WorkspaceRuntimeResolutionError ? error.code : "invalid-persistence-policy",
+      hostContext,
+    };
+  }
+
+  try {
+    const runtime = resolveWorkspaceRuntime({ event, policy });
+    return {
+      policy,
+      mode: runtime.kind,
+      ...(runtime.kind === "memory" ? { memoryReason: runtime.reason } : {}),
+      hostContext,
+    };
+  } catch (error) {
+    return {
+      policy,
+      mode: "unresolved",
+      cloudErrorCode: error instanceof WorkspaceRuntimeResolutionError ? error.code : "cloud-runtime-not-mounted",
+      hostContext,
+    };
+  }
+}
+
+export function createWorkspaceRuntimeDiagnosticHeaders(event?: WorkspaceRuntimeRequest | null): Record<string, string> {
+  const diagnostics = resolveWorkspaceRuntimeDiagnostics(event);
+  return {
+    "x-sonik-agent-ui-persistence-policy": diagnostics.policy,
+    "x-sonik-agent-ui-persistence-mode": diagnostics.mode,
+    ...(diagnostics.memoryReason ? { "x-sonik-agent-ui-memory-reason": diagnostics.memoryReason } : {}),
+    ...(diagnostics.cloudErrorCode ? { "x-sonik-agent-ui-cloud-error": diagnostics.cloudErrorCode } : {}),
+    "x-sonik-agent-ui-host-authenticated": diagnostics.hostContext.authenticated ? "true" : "false",
+    "x-sonik-agent-ui-host-org": diagnostics.hostContext.organizationIdPresent ? "present" : "missing",
+    "x-sonik-agent-ui-host-user": diagnostics.hostContext.userIdPresent ? "present" : "missing",
+  };
+}
+
 export function createAsyncLocalWorkspacePersistence(): AsyncWorkspacePersistenceAdapter {
   return createAsyncWorkspacePersistenceAdapter(localWorkspacePersistence);
 }
@@ -184,7 +252,7 @@ function resolveCloudWorkspaceRuntime(event: WorkspaceRuntimeRequest | null, req
       "Cloud workspace persistence requires SONIK_AGENT_UI_DATABASE_URL, DATABASE_URL, POSTGRES_URL, or NEON_DATABASE_URL in the current Worker env.",
     );
   }
-  const hostSession = resolveTrustedHostSessionSnapshot(event?.request);
+  const hostSession = resolveTrustedHostSessionSnapshot(event);
   if (!hostSession.authenticated || !hostSession.organizationId || !hostSession.userId) {
     throw new WorkspaceRuntimeResolutionError(
       "missing-host-context",
@@ -211,13 +279,45 @@ function resolveCloudWorkspaceRuntime(event: WorkspaceRuntimeRequest | null, req
   return createCloudWorkspaceRuntime(authorized);
 }
 
-function resolveTrustedHostSessionSnapshot(request?: Request | null): WorkspaceHostSessionSnapshot {
-  const context = resolveTrustedHostContextFromRequest(request);
-  const hostSession = context?.hostSession ?? {};
+function resolveTrustedHostSessionSnapshot(event?: WorkspaceRuntimeRequest | null): WorkspaceHostSessionSnapshot {
+  const env = event?.platform?.env ?? null;
+  const fromLocals = resolveHostSessionFromLocals(event?.locals);
+  if (fromLocals) return normalizeHostSessionSnapshot(fromLocals, "server-local-auth-adapter");
+
+  const unsignedContext = isUnsignedBrowserHostContextAllowed(env) ? resolveTrustedHostContextFromRequest(event?.request) : null;
+  if (unsignedContext?.hostSession) return normalizeHostSessionSnapshot(unsignedContext.hostSession, "unsigned-dev-fixture-host-context", unsignedContext);
+
+  return {
+    source: "none",
+    sessionId: event?.request?.headers.get("x-sonik-session-id") ?? null,
+    userId: null,
+    principalId: null,
+    organizationId: null,
+    authenticated: false,
+    scopes: [],
+    expiresAt: null,
+    metadata: { authAuthority: "none" },
+  };
+}
+
+function resolveHostSessionFromLocals(locals: unknown): Partial<WorkspaceHostSessionSnapshot> | null {
+  if (!isRecord(locals)) return null;
+  const direct = locals.agentUiHostSession ?? locals.hostSession;
+  if (isRecord(direct)) return direct as Partial<WorkspaceHostSessionSnapshot>;
+  const auth = locals.auth;
+  if (isRecord(auth) && isRecord(auth.agentUiHostSession)) return auth.agentUiHostSession as Partial<WorkspaceHostSessionSnapshot>;
+  return null;
+}
+
+function normalizeHostSessionSnapshot(
+  hostSession: Partial<WorkspaceHostSessionSnapshot>,
+  defaultAuthority: string,
+  context?: WorkspaceTrustedHostContext | null,
+): WorkspaceHostSessionSnapshot {
   const authenticated = hostSession.authenticated === true || context?.authenticated === true;
   const organizationId = cleanRuntimeString(hostSession.organizationId) ?? cleanRuntimeString(context?.organizationId) ?? null;
-  const sessionId = cleanRuntimeString(hostSession.sessionId) ?? request?.headers.get("x-sonik-session-id") ?? null;
-  const userId = cleanRuntimeString(hostSession.userId) ?? cleanRuntimeString(hostSession.principalId) ?? cleanRuntimeString(sessionId) ?? null;
+  const sessionId = cleanRuntimeString(hostSession.sessionId) ?? null;
+  const userId = cleanRuntimeString(hostSession.userId) ?? cleanRuntimeString(hostSession.principalId) ?? null;
   const principalId = cleanRuntimeString(hostSession.principalId) ?? userId;
   const scopes = normalizeScopes(hostSession.scopes ?? context?.scopes ?? []);
   return {
@@ -229,8 +329,12 @@ function resolveTrustedHostSessionSnapshot(request?: Request | null): WorkspaceH
     authenticated,
     scopes,
     expiresAt: cleanRuntimeString(hostSession.expiresAt) ?? null,
-    metadata: isRecord(hostSession.metadata) ? hostSession.metadata : { authAuthority: "host-asserted-embed-context" },
+    metadata: isRecord(hostSession.metadata) ? hostSession.metadata : { authAuthority: defaultAuthority },
   };
+}
+
+function isUnsignedBrowserHostContextAllowed(env: Record<string, unknown> | null): boolean {
+  return readEnvString(env, "SONIK_AGENT_UI_ALLOW_UNSIGNED_HOST_CONTEXT") === "true";
 }
 
 function normalizeTrustedHostContext(value: unknown): WorkspaceTrustedHostContext | null {

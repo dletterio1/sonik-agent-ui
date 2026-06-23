@@ -3,6 +3,7 @@
 
 export const SONIK_AGENT_UI_HOST_MESSAGE_SOURCE = "sonik-agent-ui-host";
 export const SONIK_AGENT_UI_PAGE_CONTEXT_MESSAGE = "sonik:agent-ui:page-context";
+export const SONIK_AGENT_UI_PAGE_CONTEXT_REQUEST = "sonik:agent-ui:request-page-context";
 
 const MAX_SAFE_TEXT_LENGTH = 160;
 const MAX_LIST_ITEMS = 8;
@@ -34,6 +35,12 @@ export function createAgentEmbedUrl(input) {
   }
   if (input.smokeRunId) url.searchParams.set("smokeRunId", input.smokeRunId);
   return url.toString();
+}
+
+
+function isAgentPageContextRequestMessage(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return value.source === "sonik-agent-ui" && value.type === SONIK_AGENT_UI_PAGE_CONTEXT_REQUEST;
 }
 
 export function createAgentHostPageContextMessage(payload) {
@@ -68,9 +75,11 @@ export function mountSonikAgentUI(options) {
   const postContext = async () => {
     try {
       const host = sanitizeAgentHostPageContext(await getPageContext()) ?? {};
+      const targetOrigin = resolveMountedAgentTargetOrigin(iframe, options.agentUrl, ownerWindow);
+      if (!targetOrigin) return;
       iframe.contentWindow?.postMessage(
         createAgentHostPageContextMessage(host),
-        resolveAgentTargetOrigin(iframe, options.agentUrl, ownerWindow),
+        targetOrigin,
       );
     } catch (error) {
       options.onError?.(error);
@@ -162,8 +171,18 @@ export function mountSonikAgentUI(options) {
   };
 
   const onLoad = () => scheduleContextPosts();
+  const onRequestPageContext = (event) => {
+    if (event.source !== iframe.contentWindow) return;
+    if (!isAgentPageContextRequestMessage(event.data)) return;
+    if (event.origin !== resolveMountedAgentTargetOrigin(iframe, options.agentUrl, ownerWindow)) return;
+    void postContext();
+  };
   iframe.addEventListener("load", onLoad);
-  disposers.push(() => iframe.removeEventListener("load", onLoad));
+  ownerWindow.addEventListener("message", onRequestPageContext);
+  disposers.push(() => {
+    iframe.removeEventListener("load", onLoad);
+    ownerWindow.removeEventListener("message", onRequestPageContext);
+  });
   addClick(options.elements.openChat, () => open("chat"));
   addClick(options.elements.openCanvas, () => open("canvas"));
   addClick(options.elements.expandCanvas, () => open("canvas"));
@@ -260,9 +279,12 @@ function defaultRailModeForEmbedMode(mode) {
   if (mode === "canvas") return "collapsed";
   return "expanded";
 }
-function resolveAgentTargetOrigin(iframe, agentUrl, ownerWindow) {
+function resolveMountedAgentTargetOrigin(iframe, agentUrl, ownerWindow) {
   const frameSrc = iframe.getAttribute("src");
-  return new URL(frameSrc || String(agentUrl), ownerWindow.location.href).origin;
+  if (!frameSrc || frameSrc === "about:blank") return null;
+  const agentOrigin = new URL(String(agentUrl), ownerWindow.location.href).origin;
+  const frameOrigin = new URL(frameSrc, ownerWindow.location.href).origin;
+  return frameOrigin === agentOrigin ? frameOrigin : null;
 }
 function requiredElement(document, ref, name) {
   const element = optionalElement(document, ref);

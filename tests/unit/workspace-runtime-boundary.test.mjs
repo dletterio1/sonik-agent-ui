@@ -10,9 +10,11 @@ import {
   AGENT_UI_HOST_CONTEXT_HEADER,
   WorkspaceRuntimeResolutionError,
   createRequestWorkspaceServices,
+  createWorkspaceRuntimeDiagnosticHeaders,
   encodeTrustedHostContextHeader,
   resolveWorkspacePersistencePolicy,
   resolveWorkspaceRuntime,
+  resolveWorkspaceRuntimeDiagnostics,
 } from "../../apps/standalone-sveltekit/src/lib/server/workspace-services.ts";
 
 const syncPersistence = createInMemoryWorkspacePersistence();
@@ -50,6 +52,18 @@ const autoRuntime = resolveWorkspaceRuntime({ event: { platform: { env: { SONIK_
 assert.equal(autoRuntime.kind, "memory", "auto policy should fall back to memory when DB/host context are unavailable");
 assert.equal(autoRuntime.kind === "memory" ? autoRuntime.reason : null, "cloud-unavailable");
 
+const autoDiagnostics = resolveWorkspaceRuntimeDiagnostics({ platform: { env: { SONIK_AGENT_UI_PERSISTENCE_MODE: "auto" } } });
+assert.equal(autoDiagnostics.policy, "auto", "runtime diagnostics should report the effective persistence policy");
+assert.equal(autoDiagnostics.mode, "memory", "runtime diagnostics should report the mounted runtime mode");
+assert.equal(autoDiagnostics.memoryReason, "cloud-unavailable", "runtime diagnostics should surface auto fallback reason without secrets");
+const autoDiagnosticHeaders = createWorkspaceRuntimeDiagnosticHeaders({ platform: { env: { SONIK_AGENT_UI_PERSISTENCE_MODE: "auto" } } });
+assert.equal(autoDiagnosticHeaders["x-sonik-agent-ui-persistence-policy"], "auto", "diagnostic headers should expose persistence policy for smoke gates");
+assert.equal(autoDiagnosticHeaders["x-sonik-agent-ui-persistence-mode"], "memory", "diagnostic headers should expose runtime mode for smoke gates");
+assert.equal(autoDiagnosticHeaders["x-sonik-agent-ui-host-user"], "missing", "diagnostic headers should report missing trusted host user without exposing identities");
+const invalidDiagnosticHeaders = createWorkspaceRuntimeDiagnosticHeaders({ platform: { env: { SONIK_AGENT_UI_PERSISTENCE_MODE: "sqlite" } } });
+assert.equal(invalidDiagnosticHeaders["x-sonik-agent-ui-persistence-policy"], "invalid", "diagnostic headers should fail safe when persistence policy parsing fails");
+assert.equal(invalidDiagnosticHeaders["x-sonik-agent-ui-cloud-error"], "invalid-persistence-policy", "diagnostic headers should preserve invalid policy error code for failure responses");
+
 assert.throws(
   () => resolveWorkspaceRuntime({ event: { platform: { env: { SONIK_AGENT_UI_PERSISTENCE_MODE: "cloud" } } } }),
   /requires SONIK_AGENT_UI_DATABASE_URL/,
@@ -76,14 +90,52 @@ const hostContextHeader = encodeTrustedHostContextHeader({
     scopes: ["workspace:read", "workspace:write"],
   },
 });
+assert.throws(
+  () => resolveWorkspaceRuntime({ event: { platform: { env: { SONIK_AGENT_UI_PERSISTENCE_MODE: "cloud", SONIK_AGENT_UI_DATABASE_URL: "postgres://user:pass@example.neon.tech/db" } }, request: new Request("https://agent.example/api/session", { headers: { [AGENT_UI_HOST_CONTEXT_HEADER]: hostContextHeader, "x-sonik-request-id": "request-a" } }) } }),
+  /requires authenticated host session context/,
+  "unsigned browser host-context headers must not mount the cloud runtime by default",
+);
+
 const cloudEvent = {
   platform: { env: { SONIK_AGENT_UI_PERSISTENCE_MODE: "cloud", SONIK_AGENT_UI_DATABASE_URL: "postgres://user:pass@example.neon.tech/db" } },
-  request: new Request("https://agent.example/api/session", { headers: { [AGENT_UI_HOST_CONTEXT_HEADER]: hostContextHeader, "x-sonik-request-id": "request-a" } }),
+  request: new Request("https://agent.example/api/session", { headers: { "x-sonik-request-id": "request-a" } }),
+  locals: {
+    agentUiHostSession: {
+      source: "amplify-embedded",
+      sessionId: "host-session-a",
+      userId: "user-a",
+      principalId: "principal-a",
+      organizationId: "org-a",
+      authenticated: true,
+      scopes: ["workspace:read", "workspace:write"],
+    },
+  },
 };
 const cloudRuntime = resolveWorkspaceRuntime({ event: cloudEvent });
-assert.equal(cloudRuntime.kind, "cloud", "explicit cloud mode should mount the cloud runtime when DB and trusted host context are present");
+assert.equal(cloudRuntime.kind, "cloud", "explicit cloud mode should mount the cloud runtime when DB and server-local trusted host context are present");
 assert.equal(cloudRuntime.kind === "cloud" ? cloudRuntime.authorized.organizationId : null, "org-a");
 assert.equal(cloudRuntime.kind === "cloud" ? cloudRuntime.authorized.userId : null, "user-a");
+const cloudDiagnosticHeaders = createWorkspaceRuntimeDiagnosticHeaders(cloudEvent);
+assert.equal(cloudDiagnosticHeaders["x-sonik-agent-ui-persistence-mode"], "cloud", "diagnostic headers should prove cloud runtime mounting when trusted host context is complete");
+assert.equal(cloudDiagnosticHeaders["x-sonik-agent-ui-host-org"], "present", "diagnostic headers should prove host org context is present without leaking org id");
+assert.equal(cloudDiagnosticHeaders["x-sonik-agent-ui-host-user"], "present", "diagnostic headers should prove host user context is present without leaking user id");
+
+const sessionOnlyHeader = encodeTrustedHostContextHeader({
+  authenticated: true,
+  organizationId: "org-session-only",
+  hostSession: {
+    source: "amplify-embedded",
+    sessionId: "browser-session-is-not-user-authority",
+    organizationId: "org-session-only",
+    authenticated: true,
+    scopes: ["workspace:read"],
+  },
+});
+assert.throws(
+  () => resolveWorkspaceRuntime({ event: { platform: { env: { SONIK_AGENT_UI_PERSISTENCE_MODE: "cloud", SONIK_AGENT_UI_DATABASE_URL: "postgres://user:pass@example.neon.tech/db" } }, request: new Request("https://agent.example/api/session", { headers: { [AGENT_UI_HOST_CONTEXT_HEADER]: sessionOnlyHeader } }) } }),
+  /requires authenticated host session context/,
+  "host session ids must not be promoted into user authority for cloud RLS context",
+);
 
 assert.throws(
   () => resolveWorkspaceRuntime({ event: { platform: { env: { SONIK_AGENT_UI_PERSISTENCE_MODE: "cloud" } } }, policy: "memory" }),
@@ -150,6 +202,10 @@ const servicesSource = await readFile("apps/standalone-sveltekit/src/lib/server/
 assert.equal(servicesSource.includes("createCloudWorkspaceRuntime"), true, "cloud runtime should be mounted through the workspace-session adapter");
 assert.equal(servicesSource.includes("SONIK_AGENT_UI_DATABASE_URL"), true, "cloud runtime should use current Worker env database bindings");
 assert.equal(servicesSource.includes("process.env"), false, "request runtime resolver must not use ambient process.env for deployed policy");
+assert.equal(servicesSource.includes("createWorkspaceRuntimeDiagnosticHeaders"), true, "workspace runtime should expose safe diagnostic headers for deployed smoke tests");
+assert.equal(servicesSource.includes("resolveHostSessionFromLocals"), true, "cloud runtime authority should come from a server-local auth adapter seam");
+assert.equal(servicesSource.includes("isUnsignedBrowserHostContextAllowed"), true, "unsigned browser host context should be explicitly gated as a fixture path, not a default runtime authority source");
+assert.equal(servicesSource.includes("cleanRuntimeString(sessionId)"), false, "trusted runtime must not derive user authority from a browser/session id fallback");
 
 console.log("workspace-runtime-boundary tests passed");
 

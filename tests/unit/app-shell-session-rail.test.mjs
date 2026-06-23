@@ -15,6 +15,7 @@ const sessionMessagesRoute = await readFile("apps/standalone-sveltekit/src/route
 const documentToolsSource = await readFile("apps/standalone-sveltekit/src/lib/tools/document.ts", "utf8");
 const workspaceSessionSource = await readFile("packages/workspace-session/src/index.ts", "utf8");
 const sessionsRoute = await readFile("apps/standalone-sveltekit/src/routes/api/sessions/+server.ts", "utf8");
+const sessionsArchivedRoute = await readFile("apps/standalone-sveltekit/src/routes/api/sessions/archived/+server.ts", "utf8");
 const appCss = await readFile("apps/standalone-sveltekit/src/app.css", "utf8");
 const layoutSource = await readFile("apps/standalone-sveltekit/src/routes/+layout.svelte", "utf8");
 const workspaceFrameSource = await readFile("packages/workspace-core/src/components/WorkspaceDocumentFrame.svelte", "utf8");
@@ -129,6 +130,9 @@ assert.equal(workspaceSessionSource.includes("deleteSession(id: string): boolean
 assert.equal(workspaceSessionSource.includes("this.#messages.delete(id)"), true, "session deletion should remove local message history");
 
 assert.equal(sessionsRoute.includes('url.searchParams.get("archived") === "true"'), true, "session list API should expose archived session records for future archive views");
+assert.equal(sessionsArchivedRoute.includes("createWorkspaceRuntimeDiagnosticHeaders(event)"), true, "legacy archived sessions route should expose persistence diagnostics like the main session APIs");
+assert.equal(sessionsArchivedRoute.includes("Workspace archived sessions request failed"), true, "legacy archived sessions route should return a stable sanitized failure envelope");
+assert.equal(sessionsArchivedRoute.includes("sonik_agent_ui_workspace_route_error"), true, "legacy archived sessions route should log raw server errors without leaking them to the client");
 assert.equal(appCss.includes('@source "../../../packages/chat-surface/dist"'), true, "Tailwind should scan packaged chat surface Svelte output");
 assert.equal(appCss.includes('@import "./lib/theme/foundations/themes/daisy.css"'), true, "standalone app should import the copied Amplify/Daisy theme foundation");
 assert.equal(appCss.includes("--color-background: var(--color-base-100)"), true, "standalone app should map copied Daisy theme vars into shadcn-style aliases");
@@ -214,6 +218,8 @@ assert.equal(pageSource.includes("session.messages.persist_unhandled"), true, "p
 const agentTelemetrySource = await readFile("apps/standalone-sveltekit/src/lib/server/agent-telemetry.ts", "utf8");
 const telemetryRouteSource = await readFile("apps/standalone-sveltekit/src/routes/api/telemetry/+server.ts", "utf8");
 const pageContextRouteSource = await readFile("apps/standalone-sveltekit/src/routes/api/dev/page-context/+server.ts", "utf8");
+const sessionRouteSource = await readFile("apps/standalone-sveltekit/src/routes/api/session/+server.ts", "utf8");
+const sessionsRouteSource = await readFile("apps/standalone-sveltekit/src/routes/api/sessions/+server.ts", "utf8");
 const observabilityPackageSource = await readFile("packages/agent-observability/src/index.ts", "utf8");
 const evidenceServerSource = await readFile("scripts/agent-ui-dev-evidence-server.mjs", "utf8");
 const smokeHarnessSource = await readFile("scripts/agent-ui-smoke.mjs", "utf8");
@@ -242,6 +248,21 @@ assert.equal(pageSource.includes("isAgentHostPageContextMessage"), true, "standa
 assert.equal(pageSource.includes("getAllowedAgentHostOrigins"), true, "standalone app should use an explicit host-origin allowlist");
 assert.equal(pageSource.includes("host.page_context.message_ignored"), true, "standalone app should log rejected host-context messages as non-fatal telemetry");
 assert.equal(pageSource.includes("host.page_context.updated"), true, "standalone app should log accepted host-context updates");
+assert.equal(pageSource.includes('maybeBootstrapSessions("host_page_context_updated")'), true, "embedded app should bootstrap sessions after host page context arrives instead of racing before postMessage");
+assert.equal(pageSource.includes("session.bootstrap.waiting_for_host_context"), true, "embedded app should log a clear missing host page context bootstrap state");
+assert.equal(pageSource.includes("requestHostPageContext"), true, "embedded app should actively request host page context after its listener is mounted");
+assert.equal(pageSource.includes("host.page_context.requested"), true, "embedded app should emit telemetry when it requests page context from the host");
+assert.equal(pageSource.includes("SONIK_AGENT_UI_PAGE_CONTEXT_REQUEST"), true, "embedded app should use a stable page-context request message type");
+assert.equal(pageSource.includes("sessionBootstrapPromise"), true, "embedded session bootstrap should guard repeated host page-context messages while initialization is in flight");
+assert.equal(pageSource.includes("Cloud org/user authority is resolved server-side"), true, "browser page context should not be forwarded as trusted runtime authority headers");
+assert.equal(pageSource.includes("workspace.persistence.runtime"), true, "embedded app should log safe runtime persistence diagnostics from response headers");
+assert.equal(pageSource.includes("readWorkspaceResponseError"), true, "client workspace fetch failures should parse structured error envelopes before falling back to bounded text");
+assert.equal(pageSource.includes("isWorkspaceErrorEnvelope"), true, "client should guard structured workspace error envelopes before showing them in the session rail");
+assert.equal((pageSource.match(/await response\.text\(\)/g) ?? []).length, 1, "only readWorkspaceResponseError should contain the bounded raw text fallback");
+assert.equal(sessionRouteSource.includes("error: caught instanceof Error ? caught.message"), false, "session route should not return raw backend error messages to the browser");
+assert.equal(sessionsRouteSource.includes("error: caught instanceof Error ? caught.message"), false, "sessions route should not return raw backend error messages to the browser");
+assert.equal(sessionRouteSource.includes("sonik_agent_ui_workspace_route_error"), true, "session route should keep full failure detail in server logs instead of client bodies");
+assert.equal(sessionsRouteSource.includes("sonik_agent_ui_workspace_route_error"), true, "sessions route should keep full failure detail in server logs instead of client bodies");
 assert.equal(pageSource.includes("mergeAgentHostPageContext(localContext, hostPageContext)"), true, "page context snapshots should merge local state with sanitized host context");
 assert.equal(pageLoadSource.includes("normalizeAgentEmbedIntent"), true, "standalone page load should initialize embed intent through the shared normalizer");
 assert.equal(pageSource.includes("getInitialEmbedIntent().mode"), true, "standalone app should initialize embed mode from page load data before mount effects");
@@ -256,7 +277,10 @@ assert.equal(fakeBookingHostSource.includes("fake booking host") || fakeBookingH
 assert.equal(fakeBookingHostSource.includes("postMessage"), true, "static fake host should donate page context through postMessage");
 assert.equal(fakeBookingHostSource.includes("booking-console"), true, "static fake host should donate booking surface context");
 assert.equal(fakeBookingHostSource.includes("Summer Jazz Night"), true, "static fake host should donate active entity label");
+assert.equal(fakeBookingHostSource.includes("org_fake_booking") || fakeBookingHostSource.includes("user_fake_booking"), false, "static fake host should keep browser-donated page context display-only and not carry org/user authority");
 assert.equal(fakeBookingHostSource.includes("mountSonikAgentUI"), true, "static fake host should consume the one-call SDK mount helper instead of handwritten iframe glue");
+assert.equal(agentEmbedSource.includes("SONIK_AGENT_UI_PAGE_CONTEXT_REQUEST"), true, "host embed helper should define a stable page-context request message type");
+assert.equal(agentEmbedSource.includes("onRequestPageContext"), true, "host embed helper should respond to page context request messages from the iframe");
 assert.equal(fakeBookingHostSource.includes("openChat: \"#open-chat\""), true, "static fake host should expose a compact chat launcher through the SDK element map");
 assert.equal(fakeBookingHostSource.includes("openCanvas: \"#open-canvas\""), true, "static fake host should expose a canvas workspace launcher through the SDK element map");
 assert.equal(fakeBookingHostSource.includes("agentUrl: \"/\""), true, "static fake host should pass the agent URL through the SDK mount helper");

@@ -187,6 +187,8 @@ const controller = mountSonikAgentUI({
   document: fakeDocument,
 });
 assert.equal(fakeIframe.parentElement, fakeChatSlot, "mount should park iframe in chat slot before a mode opens");
+fakeIframe.dispatch("load");
+assert.equal(fakeIframe.contentWindow.messages.length, 0, "parked about:blank iframe must not receive host context before it is navigated to the agent origin");
 controller.open("chat");
 assert.equal(controller.getMode(), "chat", "controller should track chat mode");
 assert.equal(fakeBody.dataset.agentUiOpen, "chat", "controller should expose host body open mode");

@@ -128,6 +128,11 @@
   let lastConversationTelemetrySignature = "";
   let lastPageContextSignature = "";
   let lastActivityTelemetrySignature = "";
+  let lastWorkspaceRuntimeTelemetrySignature = "";
+  const SONIK_AGENT_UI_PAGE_CONTEXT_REQUEST = "sonik:agent-ui:request-page-context";
+  let sessionBootstrapKey: string | null = null;
+  let sessionBootstrapPromise: Promise<void> | null = null;
+  let hostContextWaitTimer: number | null = null;
   let hostPageContext = $state<AgentHostMergedPageContext | null>(null);
   let embedMode = $state<AgentEmbedMode>(getInitialEmbedIntent().mode);
   let embedRailMode = $state<AgentEmbedRailMode>(getInitialEmbedIntent().railMode);
@@ -632,42 +637,67 @@
     };
   }
 
-  function workspaceFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
-    return fetch(input, {
+  async function workspaceFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+    const response = await fetch(input, {
       ...init,
       headers: {
         ...headersToRecord(init.headers),
-        ...createWorkspaceRequestHeaders(),
       },
+    });
+    recordWorkspaceRuntimeDiagnostics(response, input);
+    return response;
+  }
+
+  function recordWorkspaceRuntimeDiagnostics(response: Response, input: RequestInfo | URL): void {
+    const policy = response.headers.get("x-sonik-agent-ui-persistence-policy");
+    const mode = response.headers.get("x-sonik-agent-ui-persistence-mode");
+    if (!policy && !mode) return;
+    const signature = JSON.stringify({
+      policy,
+      mode,
+      memoryReason: response.headers.get("x-sonik-agent-ui-memory-reason"),
+      cloudError: response.headers.get("x-sonik-agent-ui-cloud-error"),
+      hostAuthenticated: response.headers.get("x-sonik-agent-ui-host-authenticated"),
+      hostOrg: response.headers.get("x-sonik-agent-ui-host-org"),
+      hostUser: response.headers.get("x-sonik-agent-ui-host-user"),
+      url: typeof input === "string" ? input : input instanceof URL ? input.pathname : "request",
+    });
+    if (signature === lastWorkspaceRuntimeTelemetrySignature) return;
+    lastWorkspaceRuntimeTelemetrySignature = signature;
+    logArtifactTelemetry({
+      source: "client",
+      event: "workspace.persistence.runtime",
+      sessionId: activeSessionId ?? undefined,
+      mode: mode ?? undefined,
+      reason: response.headers.get("x-sonik-agent-ui-memory-reason") ?? response.headers.get("x-sonik-agent-ui-cloud-error") ?? undefined,
+      ok: response.ok,
     });
   }
 
   function createWorkspaceRequestHeaders(): Record<string, string> {
-    const context = createTrustedHostRuntimeContext();
-    return context ? { "x-sonik-agent-ui-host-context": encodeHeaderJson(context) } : {};
+    // Browser page context is display/context only. Cloud org/user authority is resolved server-side
+    // through the host auth adapter (`locals.agentUiHostSession`), not from postMessage-derived headers.
+    return {};
   }
 
-  function createTrustedHostRuntimeContext(): Record<string, unknown> | null {
-    const context = hostPageContext;
-    if (!context?.authenticated || !context.organizationId) return null;
-    return {
-      authenticated: true,
-      organizationId: context.organizationId,
-      scopes: Array.isArray(context.scopes) ? context.scopes : [],
-      hostSession: context.hostSession ?? {
-        source: "amplify-embedded",
-        sessionId: context.activeSessionId ?? activeSessionId ?? undefined,
-        userId: undefined,
-        principalId: undefined,
-        organizationId: context.organizationId,
-        authenticated: true,
-        scopes: Array.isArray(context.scopes) ? context.scopes : [],
-      },
-    };
+  function hasHostPageContext(): boolean {
+    return Boolean(hostPageContext?.route || hostPageContext?.surface || hostPageContext?.pageType || hostPageContext?.title || hostPageContext?.activeEntity);
   }
 
-  function encodeHeaderJson(value: unknown): string {
-    return btoa(unescape(encodeURIComponent(JSON.stringify(value)))).replace(/=+$/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+  function createHostPageContextKey(): string | null {
+    if (!hasHostPageContext()) return null;
+    return [
+      hostPageContext?.route,
+      hostPageContext?.surface,
+      hostPageContext?.pageType,
+      hostPageContext?.activeEntity?.type,
+      hostPageContext?.activeEntity?.id,
+    ].map((value) => typeof value === "string" ? value : "").join(":");
+  }
+
+  function isEmbeddedHostContextExpected(): boolean {
+    if (typeof window === "undefined") return false;
+    return new URLSearchParams(window.location.search).has("agentUiHostOrigin");
   }
 
   function headersToRecord(headers: HeadersInit | undefined): Record<string, string> {
@@ -675,6 +705,28 @@
     if (headers instanceof Headers) return Object.fromEntries(headers.entries());
     if (Array.isArray(headers)) return Object.fromEntries(headers);
     return { ...headers };
+  }
+
+  async function readWorkspaceResponseError(response: Response): Promise<string> {
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      try {
+        const body = await response.clone().json();
+        if (isWorkspaceErrorEnvelope(body)) {
+          return body.code ? `${body.error} (${body.code})` : body.error;
+        }
+      } catch {
+        // Fall through to bounded text parsing below; malformed JSON should not hide the failure.
+      }
+    }
+    const text = await response.text().catch(() => "");
+    return text.trim().slice(0, 500) || `Workspace request failed with HTTP ${response.status}`;
+  }
+
+  function isWorkspaceErrorEnvelope(value: unknown): value is { ok: false; error: string; code?: string } {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const record = value as Record<string, unknown>;
+    return record.ok === false && typeof record.error === "string" && (record.code === undefined || typeof record.code === "string");
   }
 
   function getAllowedAgentHostOrigins(): Set<string> {
@@ -698,6 +750,20 @@
     const exactOrigins = getAllowedAgentHostOrigins();
     if (exactOrigins.has(origin)) return true;
     return isAgentOriginAllowed(origin, publicEnv.PUBLIC_AGENT_UI_ALLOWED_HOST_ORIGINS);
+  }
+
+
+  function requestHostPageContext(reason: string): void {
+    if (typeof window === "undefined" || !isEmbeddedHostContextExpected()) return;
+    const configuredOrigin = new URLSearchParams(window.location.search).get("agentUiHostOrigin");
+    if (!configuredOrigin) return;
+    try {
+      const targetOrigin = new URL(configuredOrigin).origin;
+      window.parent?.postMessage({ source: "sonik-agent-ui", type: SONIK_AGENT_UI_PAGE_CONTEXT_REQUEST, reason, sentAt: new Date().toISOString() }, targetOrigin);
+      logArtifactTelemetry({ source: "client", event: "host.page_context.requested", reason, ok: true });
+    } catch (error) {
+      logArtifactTelemetry({ source: "client", event: "host.page_context.request_failed", reason, error: error instanceof Error ? error.message : String(error), ok: false });
+    }
   }
 
   function handleAgentHostMessage(event: MessageEvent): void {
@@ -728,6 +794,7 @@
       ok: true,
     });
     syncDevPageContext("host_page_context_updated");
+    maybeBootstrapSessions("host_page_context_updated");
   }
 
   function createPageContextSnapshot(): AgentUiPageContextSnapshot {
@@ -911,10 +978,22 @@
       if (isStreaming) activityClock = Date.now();
     }, 1_000);
     window.addEventListener("message", handleAgentHostMessage);
-    void initializeSessions();
+    requestHostPageContext("mount");
+    maybeBootstrapSessions("mount");
+    if (isEmbeddedHostContextExpected()) {
+      hostContextWaitTimer = window.setTimeout(() => {
+        if (!activeSessionId && !createHostPageContextKey()) {
+          sessionRailError = "Waiting for host page context before starting an embedded workspace session.";
+          logSessionTelemetry("session.bootstrap.waiting_for_host_context", { ok: false, reason: "missing_host_page_context" });
+          requestHostPageContext("host_context_wait_timeout");
+          syncDevPageContext("host_context_wait_timeout");
+        }
+      }, 1_500);
+    }
     return () => {
       stopLongTaskTelemetry?.();
       window.clearInterval(activityTimer);
+      if (hostContextWaitTimer !== null) window.clearTimeout(hostContextWaitTimer);
       window.removeEventListener("message", handleAgentHostMessage);
     };
   });
@@ -947,21 +1026,43 @@
     });
   });
 
-  async function initializeSessions(): Promise<void> {
+  function maybeBootstrapSessions(reason: string): void {
+    const hostPageKey = createHostPageContextKey();
+    const bootstrapKey = hostPageKey ?? (isEmbeddedHostContextExpected() ? null : "standalone");
+    if (!bootstrapKey) return;
+    if (sessionBootstrapKey === bootstrapKey && (activeSessionId || sessionRailBusy || sessionBootstrapPromise)) return;
+    sessionBootstrapKey = bootstrapKey;
+    if (hostContextWaitTimer !== null) {
+      window.clearTimeout(hostContextWaitTimer);
+      hostContextWaitTimer = null;
+    }
+    logSessionTelemetry("session.bootstrap.start", { reason, mode: hostPageKey ? "embedded-page-context" : "standalone" });
+    sessionBootstrapPromise = initializeSessions(reason)
+      .catch((error) => {
+        sessionRailError = error instanceof Error ? error.message : String(error);
+        logSessionTelemetry("session.bootstrap.error", { ok: false, error: sessionRailError, reason });
+      })
+      .finally(() => {
+        sessionBootstrapPromise = null;
+      });
+  }
+
+  async function initializeSessions(reason = "manual"): Promise<void> {
     await loadSessions();
     const firstSession = sessions[0];
     if (firstSession) {
-      await switchSession(firstSession.id);
+      await switchSession(firstSession.id, { force: true });
+      logSessionTelemetry("session.bootstrap.success", { sessionId: firstSession.id, reason });
       return;
     }
-    await createSession();
+    await createSession({ force: true });
   }
 
   async function loadSessions(): Promise<void> {
     sessionRailError = null;
     try {
       const response = await workspaceFetch("/api/sessions");
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readWorkspaceResponseError(response));
       sessions = (await response.json()) as WorkspaceSessionSummary[];
       void loadArchivedSessionCount();
     } catch (error) {
@@ -972,7 +1073,7 @@
   async function loadArchivedSessionCount(): Promise<void> {
     try {
       const response = await workspaceFetch("/api/sessions?archived=true");
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readWorkspaceResponseError(response));
       archivedSessionCount = ((await response.json()) as WorkspaceSessionSummary[]).length;
     } catch (error) {
       logSessionTelemetry("session.archive_count.error", {
@@ -1024,7 +1125,7 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: DEFAULT_WORKSPACE_SESSION_NAME, mode: "chat" }),
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readWorkspaceResponseError(response));
       const session = (await response.json()) as WorkspaceSessionSummary;
       await loadSessions();
       await switchSession(session.id, { force: true });
@@ -1049,7 +1150,7 @@
     try {
       await flushPendingDocumentPersistence();
       const response = await workspaceFetch(`/api/session/${encodeURIComponent(sessionId)}`);
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readWorkspaceResponseError(response));
       const detail = (await response.json()) as WorkspaceSessionDetail;
       activeSessionId = detail.session.id;
       sessions = upsertSessionSummary(sessions, detail.session);
@@ -1074,7 +1175,7 @@
     try {
       await flushPendingDocumentPersistence();
       const response = await workspaceFetch(`/api/session/${encodeURIComponent(sessionId)}/archive`, { method: "POST" });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readWorkspaceResponseError(response));
       await loadSessions();
       if (activeSessionId === sessionId) {
         const nextSession = sessions.find((session) => session.id !== sessionId);
@@ -1107,7 +1208,7 @@
     try {
       await flushPendingDocumentPersistence();
       const response = await workspaceFetch(`/api/session/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readWorkspaceResponseError(response));
       artifactWarehouse.deleteSession(sessionId);
       await loadSessions();
       if (activeSessionId === sessionId) {
@@ -1136,7 +1237,7 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: trimmed }),
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) throw new Error(await readWorkspaceResponseError(response));
       const session = (await response.json()) as WorkspaceSessionSummary;
       sessions = upsertSessionSummary(sessions, session);
       logSessionTelemetry("session.rename.success", { sessionId: session.id });
@@ -1223,7 +1324,7 @@
           }),
         });
         if (!response.ok) {
-          sessionRailError = await response.text();
+          sessionRailError = await readWorkspaceResponseError(response);
           lastPersistStatus = "error";
           logSessionTelemetry("session.messages.persist_error", {
             sessionId,
@@ -1315,7 +1416,7 @@
         }),
       });
       if (!response.ok) {
-        const message = await response.text();
+        const message = await readWorkspaceResponseError(response);
         throw new Error(message || "Document changes could not be saved; session transition was blocked.");
       }
       const persisted = (await response.json()) as ActiveDocumentSnapshot;

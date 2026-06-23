@@ -4,11 +4,12 @@ The Agent UI runtime currently uses an in-memory `WorkspacePersistenceAdapter` f
 
 ```txt
 packages/workspace-session/migrations/postgres/0001_agent_workspace_persistence.sql
+packages/workspace-session/migrations/postgres/0002_agent_workspace_access_grants.sql
 ```
 
 ## Boundary
 
-The migration is a durable schema contract, not a runtime adapter swap. The working standalone app should keep using the in-memory adapter until a request-scoped cloud adapter is wired and tested.
+The migrations are durable schema contracts, not runtime adapter swaps. The working standalone app should keep using the in-memory adapter until a request-scoped cloud adapter is wired and tested.
 
 ## Auth/org doctrine
 
@@ -39,7 +40,28 @@ The schema creates org/user-scoped tables for:
 - `agent_workspace_page_context_snapshots`
 - `agent_workspace_telemetry_events`
 
+The additive sharing migration creates:
+
+- `agent_workspace_access_grants`
+- `agent_workspace_access_grant_audit`
+
 Every table has `organization_id text not null` and `user_id text not null` and has row-level security enabled and forced. Child rows use composite foreign keys containing `organization_id`, `user_id`, and the parent id so a child cannot reference another user's/org's session, document, artifact, or message.
+
+
+
+## Sharing and audit v0
+
+The v0 persistence tables are owner-private by default. Shared chats, workspace documents, JSON artifacts, and future workspace-level resources should be opened through `agent_workspace_access_grants`, not by weakening the base owner columns or trusting browser page context.
+
+`agent_workspace_access_grants` uses `organization_id` and `user_id` as the resource owner scope, then separately records the grantee as one of:
+
+- `user` — `grantee_organization_id` + `grantee_user_id`;
+- `organization` — `grantee_organization_id`;
+- `external_identity` — `external_email` / `external_domain` for invitation-style flows.
+
+`agent_workspace_access_grant_audit` records grant creation, mutation, revocation, access, denial, role changes, and external invite lifecycle events with actor fields, request id, before/after state, policy decision metadata, and optional retention deadline.
+
+Current owner tables remain owner-only until the runtime explicitly mounts grant-aware read/write policies for sessions/documents/artifacts. Treat grant-aware collaboration as a follow-up runtime-policy slice, not as implicit access from JSON metadata.
 
 ## Runtime adapter target
 
