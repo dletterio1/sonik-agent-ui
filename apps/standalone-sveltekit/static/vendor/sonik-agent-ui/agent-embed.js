@@ -9,7 +9,8 @@ const MAX_LIST_ITEMS = 8;
 const ALLOWED_CONTEXT_KEYS = new Set([
   "route", "surface", "pageType", "title", "theme", "mode", "activeSessionId",
   "activeArtifactId", "activeDocumentId", "artifactType", "conversationStatus", "messageCount",
-  "visibleActions", "visibleWarnings", "visibleErrors", "commandFamilies", "skillFamilies", "activeEntity", "at",
+  "visibleActions", "visibleWarnings", "visibleErrors", "commandFamilies", "skillFamilies", "activeEntity",
+  "authenticated", "organizationId", "scopes", "hostSession", "at",
 ]);
 const SECRET_VALUE_PATTERN = /\b(vck_[A-Za-z0-9_-]{12,}|sk-[A-Za-z0-9_-]{12,}|Bearer\s+[A-Za-z0-9._-]{12,})\b/g;
 
@@ -55,7 +56,7 @@ export function mountSonikAgentUI(options) {
   const resizeHandle = optionalElement(ownerDocument, options.elements.resizeHandle);
   const disposers = [];
   const contextPostTimeouts = [];
-  const delays = options.contextPostDelaysMs ?? [250, 900, 1800];
+  const delays = options.contextPostDelaysMs ?? [250, 900, 1800, 3200, 5200, 8000];
   const bodyDatasetKey = options.bodyDatasetKey ?? "agentUiOpen";
   let activeMode = null;
   let resizeFrame = 0;
@@ -207,11 +208,32 @@ function sanitizeAgentHostPageContext(value) {
       if (entity) context.activeEntity = entity;
       continue;
     }
+    if (key === "hostSession") {
+      const session = sanitizeTrustedHostSession(raw);
+      if (session) context.hostSession = session;
+      continue;
+    }
     if (Array.isArray(raw)) context[key] = raw.map(cleanText).filter(Boolean).slice(0, MAX_LIST_ITEMS);
     else if (typeof raw === "string") context[key] = cleanText(raw);
     else if (typeof raw === "number" || typeof raw === "boolean" || raw === null) context[key] = raw;
   }
   return Object.keys(context).length > 0 ? context : undefined;
+}
+function sanitizeTrustedHostSession(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const source = cleanText(value.source);
+  const scopes = Array.isArray(value.scopes) ? value.scopes.map(cleanText).filter(Boolean).slice(0, MAX_LIST_ITEMS) : [];
+  return {
+    source: source === "amplify-embedded" || source === "embedded-host" || source === "standalone-demo" ? source : "anonymous",
+    sessionId: cleanText(value.sessionId) ?? null,
+    userId: cleanText(value.userId) ?? null,
+    principalId: cleanText(value.principalId) ?? null,
+    organizationId: cleanText(value.organizationId) ?? null,
+    authenticated: value.authenticated === true,
+    scopes,
+    expiresAt: cleanText(value.expiresAt) ?? null,
+    metadata: undefined,
+  };
 }
 function sanitizeAgentHostActiveEntity(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;

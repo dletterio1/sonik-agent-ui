@@ -34,6 +34,7 @@
     "RATE_LIMIT_PER_MINUTE": "10",
     "RATE_LIMIT_PER_DAY": "100",
     "SONIK_BOOKING_API_BASE_URL": "https://sonik-booking-app.liam-trampota.workers.dev",
-    "SONIK_BOOKING_AUTH_MODE": "anonymous"
+    "SONIK_BOOKING_AUTH_MODE": "anonymous",
+    "SONIK_AGENT_UI_PERSISTENCE_MODE": "auto"
   }
 }

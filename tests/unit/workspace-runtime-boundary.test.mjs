@@ -7,8 +7,10 @@ import {
   createMemoryWorkspaceRuntime,
 } from "../../packages/workspace-session/src/index.ts";
 import {
+  AGENT_UI_HOST_CONTEXT_HEADER,
   WorkspaceRuntimeResolutionError,
   createRequestWorkspaceServices,
+  encodeTrustedHostContextHeader,
   resolveWorkspacePersistencePolicy,
   resolveWorkspaceRuntime,
 } from "../../apps/standalone-sveltekit/src/lib/server/workspace-services.ts";
@@ -45,14 +47,43 @@ assert.equal(localServices.runtime.kind, "memory");
 assert.equal((await localServices.persistence.createSession({ id: "request-local-session" })).id, "request-local-session");
 
 const autoRuntime = resolveWorkspaceRuntime({ event: { platform: { env: { SONIK_AGENT_UI_PERSISTENCE_MODE: "auto" } } } });
-assert.equal(autoRuntime.kind, "memory", "auto policy should not silently mount cloud before the cloud adapter exists");
+assert.equal(autoRuntime.kind, "memory", "auto policy should fall back to memory when DB/host context are unavailable");
 assert.equal(autoRuntime.kind === "memory" ? autoRuntime.reason : null, "cloud-unavailable");
 
 assert.throws(
   () => resolveWorkspaceRuntime({ event: { platform: { env: { SONIK_AGENT_UI_PERSISTENCE_MODE: "cloud" } } } }),
-  /Cloud workspace persistence is not mounted in Slice 1/,
-  "explicit cloud mode should fail closed until AuthorizedWorkspaceRuntime + SQL adapter are mounted",
+  /requires SONIK_AGENT_UI_DATABASE_URL/,
+  "explicit cloud mode should fail closed when DB env is missing",
 );
+
+assert.throws(
+  () => resolveWorkspaceRuntime({ event: { platform: { env: { SONIK_AGENT_UI_PERSISTENCE_MODE: "cloud", SONIK_AGENT_UI_DATABASE_URL: "postgres://user:pass@example.neon.tech/db" } } } }),
+  /requires authenticated host session context/,
+  "explicit cloud mode should fail closed when authenticated host context is missing",
+);
+
+const hostContextHeader = encodeTrustedHostContextHeader({
+  authenticated: true,
+  organizationId: "org-a",
+  scopes: ["workspace:read", "workspace:write"],
+  hostSession: {
+    source: "amplify-embedded",
+    sessionId: "host-session-a",
+    userId: "user-a",
+    principalId: "principal-a",
+    organizationId: "org-a",
+    authenticated: true,
+    scopes: ["workspace:read", "workspace:write"],
+  },
+});
+const cloudEvent = {
+  platform: { env: { SONIK_AGENT_UI_PERSISTENCE_MODE: "cloud", SONIK_AGENT_UI_DATABASE_URL: "postgres://user:pass@example.neon.tech/db" } },
+  request: new Request("https://agent.example/api/session", { headers: { [AGENT_UI_HOST_CONTEXT_HEADER]: hostContextHeader, "x-sonik-request-id": "request-a" } }),
+};
+const cloudRuntime = resolveWorkspaceRuntime({ event: cloudEvent });
+assert.equal(cloudRuntime.kind, "cloud", "explicit cloud mode should mount the cloud runtime when DB and trusted host context are present");
+assert.equal(cloudRuntime.kind === "cloud" ? cloudRuntime.authorized.organizationId : null, "org-a");
+assert.equal(cloudRuntime.kind === "cloud" ? cloudRuntime.authorized.userId : null, "user-a");
 
 assert.throws(
   () => resolveWorkspaceRuntime({ event: { platform: { env: { SONIK_AGENT_UI_PERSISTENCE_MODE: "cloud" } } }, policy: "memory" }),
@@ -62,7 +93,7 @@ assert.throws(
 
 assert.throws(
   () => createRequestWorkspaceServices(null, { policy: "cloud", persistence: createInMemoryWorkspacePersistence() }),
-  /Cloud workspace persistence is not mounted in Slice 1/,
+  /requires SONIK_AGENT_UI_DATABASE_URL/,
   "explicit cloud mode should fail closed even if a test/local persistence adapter is supplied",
 );
 assert.throws(
@@ -93,25 +124,8 @@ const singletonIdentifierMarkers = [
   "workspaceServices.persistence",
   "workspacePersistence",
 ];
-const localOnlySingletonRouteAllowlist = new Set([
-  "apps/standalone-sveltekit/src/routes/api/document/+server.ts",
-  "apps/standalone-sveltekit/src/routes/api/document/[id]/+server.ts",
-  "apps/standalone-sveltekit/src/routes/api/document/[id]/archive/+server.ts",
-  "apps/standalone-sveltekit/src/routes/api/document/[id]/restore/[num]/+server.ts",
-  "apps/standalone-sveltekit/src/routes/api/document/[id]/version/[num]/+server.ts",
-  "apps/standalone-sveltekit/src/routes/api/document/[id]/versions/+server.ts",
-  "apps/standalone-sveltekit/src/routes/api/documents/[sessionId]/+server.ts",
-  "apps/standalone-sveltekit/src/routes/api/documents/library/+server.ts",
-  "apps/standalone-sveltekit/src/routes/api/generate/+server.ts",
-  "apps/standalone-sveltekit/src/routes/api/session/+server.ts",
-  "apps/standalone-sveltekit/src/routes/api/session/[id]/+server.ts",
-  "apps/standalone-sveltekit/src/routes/api/session/[id]/archive/+server.ts",
-  "apps/standalone-sveltekit/src/routes/api/session/[id]/important/+server.ts",
-  "apps/standalone-sveltekit/src/routes/api/session/[id]/messages/+server.ts",
-  "apps/standalone-sveltekit/src/routes/api/session/[id]/unarchive/+server.ts",
-  "apps/standalone-sveltekit/src/routes/api/sessions/+server.ts",
-  "apps/standalone-sveltekit/src/routes/api/sessions/archived/+server.ts",
-]);
+const localOnlySingletonRouteAllowlist = new Set([]);
+
 let singletonBackedRouteCount = 0;
 for (const file of routeFiles) {
   const source = await readFile(file, "utf8");
@@ -133,7 +147,8 @@ for (const file of routeFiles) {
 assert.equal(singletonBackedRouteCount, localOnlySingletonRouteAllowlist.size, "local-only singleton route allowlist must match the current import graph exactly");
 
 const servicesSource = await readFile("apps/standalone-sveltekit/src/lib/server/workspace-services.ts", "utf8");
-assert.equal(servicesSource.includes("Cloud workspace persistence is not mounted in Slice 1"), true, "slice 1 should make explicit cloud fail closed");
+assert.equal(servicesSource.includes("createCloudWorkspaceRuntime"), true, "cloud runtime should be mounted through the workspace-session adapter");
+assert.equal(servicesSource.includes("SONIK_AGENT_UI_DATABASE_URL"), true, "cloud runtime should use current Worker env database bindings");
 assert.equal(servicesSource.includes("process.env"), false, "request runtime resolver must not use ambient process.env for deployed policy");
 
 console.log("workspace-runtime-boundary tests passed");

@@ -117,6 +117,10 @@ const ALLOWED_CONTEXT_KEYS = new Set([
   "commandFamilies",
   "skillFamilies",
   "activeEntity",
+  "authenticated",
+  "organizationId",
+  "scopes",
+  "hostSession",
   "at",
 ]);
 const SECRET_VALUE_PATTERN = /\b(vck_[A-Za-z0-9_-]{12,}|sk-[A-Za-z0-9_-]{12,}|Bearer\s+[A-Za-z0-9._-]{12,})\b/g;
@@ -215,15 +219,17 @@ export function createAgentHostPageContextMessage(payload: AgentHostPageContext)
   };
 }
 
-export function sanitizeAgentHostPageContext(value: unknown): AgentHostPageContext | undefined {
+export function sanitizeAgentHostPageContext(value: unknown): AgentHostMergedPageContext | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
   const allowedRecord = Object.fromEntries(Object.entries(record).filter(([key]) => ALLOWED_CONTEXT_KEYS.has(key)));
   const base = sanitizePageContext(allowedRecord) as AgentHostPageContext | undefined;
   const activeEntity = sanitizeAgentHostActiveEntity(record.activeEntity);
-  const context: AgentHostPageContext = {
+  const trusted = sanitizeTrustedHostContext(record as AgentTrustedHostContext);
+  const context: AgentHostMergedPageContext = {
     ...(base ?? {}),
     ...(activeEntity ? { activeEntity } : {}),
+    ...trusted,
   };
   return Object.keys(context).length > 0 ? context : undefined;
 }
@@ -270,7 +276,7 @@ export function mountSonikAgentUI(options: AgentEmbedMountOptions): AgentEmbedCo
   let resizeFrame = 0;
   const disposers: Array<() => void> = [];
   const contextPostTimeouts: number[] = [];
-  const delays = options.contextPostDelaysMs ?? [250, 900, 1800];
+  const delays = options.contextPostDelaysMs ?? [250, 900, 1800, 3200, 5200, 8000];
   const bodyDatasetKey = options.bodyDatasetKey ?? "agentUiOpen";
 
   const iframe = requiredElement<HTMLIFrameElement>(ownerDocument, options.elements.iframe, "iframe");
@@ -430,7 +436,20 @@ function sanitizeTrustedHostContext(value: AgentTrustedHostContext | null | unde
   if (typeof value.organizationId === "string" && value.organizationId.trim()) trusted.organizationId = cleanText(value.organizationId);
   if (value.organizationId === null) trusted.organizationId = null;
   if (Array.isArray(value.scopes)) trusted.scopes = value.scopes.map(cleanText).filter((scope): scope is string => Boolean(scope)).slice(0, MAX_LIST_ITEMS);
-  if (value.hostSession) trusted.hostSession = value.hostSession;
+  if (value.hostSession && typeof value.hostSession === "object" && !Array.isArray(value.hostSession)) {
+    const session = value.hostSession as HostSessionEnvelope;
+    trusted.hostSession = {
+      source: cleanText(session.source) === "amplify-embedded" ? "amplify-embedded" : cleanText(session.source) === "embedded-host" ? "embedded-host" : cleanText(session.source) === "standalone-demo" ? "standalone-demo" : "anonymous",
+      sessionId: cleanText(session.sessionId) ?? null,
+      userId: cleanText(session.userId) ?? null,
+      principalId: cleanText(session.principalId) ?? null,
+      organizationId: cleanText(session.organizationId) ?? null,
+      authenticated: session.authenticated === true,
+      scopes: Array.isArray(session.scopes) ? session.scopes.map(cleanText).filter((scope): scope is string => Boolean(scope)).slice(0, MAX_LIST_ITEMS) : [],
+      expiresAt: cleanText(session.expiresAt) ?? null,
+      metadata: undefined,
+    };
+  }
   return trusted;
 }
 

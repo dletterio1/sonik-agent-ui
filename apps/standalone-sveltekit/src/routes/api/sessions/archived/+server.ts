@@ -1,6 +1,7 @@
 import { json } from "@sveltejs/kit";
-import { listWorkspaceSessions } from "$lib/server/workspace-document-store";
+import { listRequestWorkspaceSessions } from "$lib/server/workspace-request-store";
+import type { RequestHandler } from "./$types";
 
-export function GET() {
-  return json(listWorkspaceSessions({ archived: true }));
-}
+export const GET: RequestHandler = async (event) => {
+  return json(await listRequestWorkspaceSessions(event, { archived: true }));
+};

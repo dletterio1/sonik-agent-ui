@@ -37,8 +37,8 @@ assert.equal(isAgentHostPageContextMessage({ ...message, payload: null }), false
 const sanitized = sanitizeAgentHostPageContext(message.payload);
 assert.equal(sanitized?.surface, "booking-console");
 assert.equal(sanitized?.activeEntity?.label, "Summer Jazz Night");
-assert.equal("organizationId" in sanitized, false, "host page context must not carry trusted organization fields");
-assert.equal("scopes" in sanitized, false, "host page context must not carry trusted scopes");
+assert.equal(sanitized?.organizationId, "forged-org", "allowed hosts may donate sanitized org context for the host-asserted embed runtime");
+assert.deepEqual(sanitized?.scopes, ["admin:*"], "allowed hosts may donate sanitized scopes for the host-asserted embed runtime");
 
 const merged = mergeAgentHostPageContext(
   { route: "/", surface: "chat", commandFamilies: ["local-ui"], activeSessionId: "sess-local" },
@@ -57,6 +57,24 @@ const redacted = sanitizeAgentHostPageContext({
   activeEntity: { type: "booking", id: "booking_123", label: "leaked vck_TESTREDACTME123456789" },
 });
 assert.equal(redacted?.activeEntity?.label?.includes("vck_"), false, "active entity display labels should be redacted");
+const trustedSession = sanitizeAgentHostPageContext({
+  authenticated: true,
+  organizationId: "org_123",
+  scopes: ["booking:read", ""],
+  hostSession: {
+    source: "amplify-embedded",
+    sessionId: "sess_123",
+    userId: "user_123",
+    principalId: "principal_123",
+    organizationId: "org_123",
+    authenticated: true,
+    scopes: ["booking:read"],
+    metadata: { token: "vck_SHOULDNOTSURVIVE123456" },
+  },
+});
+assert.equal(trustedSession?.authenticated, true, "trusted host authentication flag should survive sanitization");
+assert.equal(trustedSession?.hostSession?.source, "amplify-embedded", "known host session source should survive sanitization");
+assert.equal(trustedSession?.hostSession?.metadata, undefined, "host session metadata must be dropped at the embed boundary");
 
 assert.deepEqual(
   normalizeAgentEmbedIntent({ embedMode: "chat" }),
@@ -175,8 +193,8 @@ assert.equal(fakeBody.dataset.agentUiOpen, "chat", "controller should expose hos
 assert.equal(fakeSidecar.dataset.open, "true", "controller should open sidecar dataset state");
 assert.match(fakeIframe.src, /embedMode=chat/, "controller should set iframe src for chat mode");
 await controller.postContext();
-assert.equal("organizationId" in fakeIframe.contentWindow.messages.at(-1).message.payload, false, "browser postMessage payload should not carry trusted organization fields");
-assert.equal("scopes" in fakeIframe.contentWindow.messages.at(-1).message.payload, false, "browser postMessage payload should not carry trusted scopes");
+assert.equal(fakeIframe.contentWindow.messages.at(-1).message.payload.organizationId, "forged-org", "browser postMessage payload should carry sanitized host-asserted organization context");
+assert.deepEqual(fakeIframe.contentWindow.messages.at(-1).message.payload.scopes, ["admin:*"], "browser postMessage payload should carry sanitized host-asserted scopes");
 assert.equal(fakeIframe.contentWindow.messages.at(-1).targetOrigin, "https://agent.sonik.local", "cross-origin embeds should post page context to the agent iframe origin, not the host origin");
 controller.open("canvas");
 assert.equal(fakeIframe.parentElement, fakeCanvasSlot, "controller should move iframe into canvas slot");
@@ -220,7 +238,7 @@ const timerController = mountSonikAgentUI({
 assert.equal(timerController.getMode(), "canvas", "initialMode workspace should open the canvas/workspace view consistently with open('workspace')");
 assert.equal(timerIframe.parentElement, timerCanvasSlot, "initialMode workspace should mount iframe into the canvas slot");
 timerIframe.dispatch("load");
-assert.deepEqual(queuedTimers.map((timer) => timer.delay), [250, 900, 1800], "iframe load should queue bounded context-post timers");
+assert.deepEqual(queuedTimers.map((timer) => timer.delay), [250, 900, 1800, 3200, 5200, 8000], "iframe load should queue bounded context-post timers");
 timerController.destroy();
 assert.deepEqual(clearedTimers, queuedTimers.map((timer) => timer.id), "destroy should clear queued context-post timers");
 assert.equal(timerController.getMode(), null, "destroy should close active mode");

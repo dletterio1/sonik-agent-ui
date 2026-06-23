@@ -1,13 +1,14 @@
 import { json } from "@sveltejs/kit";
-import { listWorkspaceDocumentLibrary } from "$lib/server/workspace-document-store";
+import { listRequestWorkspaceDocumentLibrary } from "$lib/server/workspace-request-store";
+import type { RequestHandler } from "./$types";
 
-export function GET({ url }) {
-  return json(listWorkspaceDocumentLibrary({
-    search: url.searchParams.get("search") ?? url.searchParams.get("q"),
-    language: url.searchParams.get("language"),
-    sort: url.searchParams.get("sort"),
-    offset: Number(url.searchParams.get("offset") ?? 0),
-    limit: Number(url.searchParams.get("limit") ?? 20),
-    archived: url.searchParams.get("archived") === "true",
+export const GET: RequestHandler = async (event) => {
+  return json(await listRequestWorkspaceDocumentLibrary(event, {
+    search: event.url.searchParams.get("search") ?? event.url.searchParams.get("q"),
+    language: event.url.searchParams.get("language"),
+    sort: event.url.searchParams.get("sort"),
+    offset: Number(event.url.searchParams.get("offset") ?? 0),
+    limit: Number(event.url.searchParams.get("limit") ?? 20),
+    archived: event.url.searchParams.get("archived") === "true",
   }));
-}
+};

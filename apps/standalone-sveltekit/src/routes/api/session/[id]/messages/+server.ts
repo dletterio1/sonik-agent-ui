@@ -1,20 +1,20 @@
 import { error, json } from "@sveltejs/kit";
-import { getWorkspaceSession } from "$lib/server/workspace-document-store";
-import { appendWorkspaceMessage, listWorkspaceMessages } from "$lib/server/workspace-store";
+import { appendRequestWorkspaceMessage, getRequestWorkspaceSession, listRequestWorkspaceMessages } from "$lib/server/workspace-request-store";
 import { routeString, WORKSPACE_CONTENT_MAX_CHARS, WORKSPACE_SESSION_ID_MAX_CHARS } from "$lib/server/workspace-route-limits";
+import type { RequestHandler } from "./$types";
 
-export function GET({ params }) {
-  const session = getWorkspaceSession(params.id);
+export const GET: RequestHandler = async (event) => {
+  const session = await getRequestWorkspaceSession(event, event.params.id);
   if (!session) error(404, "Session not found");
-  return json(listWorkspaceMessages(session.id));
-}
+  return json(await listRequestWorkspaceMessages(event, session.id));
+};
 
-export async function POST({ params, request }) {
-  const session = getWorkspaceSession(params.id);
+export const POST: RequestHandler = async (event) => {
+  const session = await getRequestWorkspaceSession(event, event.params.id);
   if (!session) error(404, "Session not found");
   let body: Record<string, unknown>;
   try {
-    const parsed = await request.json();
+    const parsed = await event.request.json();
     if (!isRecord(parsed)) error(400, "Message payload must be a JSON object");
     body = parsed;
   } catch (caught) {
@@ -25,7 +25,7 @@ export async function POST({ params, request }) {
   const role = normalizeRole(body.role);
   const content = routeString(body.content, "content", WORKSPACE_CONTENT_MAX_CHARS, "");
   const id = routeString(body.id, "id", WORKSPACE_SESSION_ID_MAX_CHARS, "");
-  const record = appendWorkspaceMessage({
+  const record = await appendRequestWorkspaceMessage(event, {
     session_id: session.id,
     id: id || undefined,
     role,
@@ -33,7 +33,7 @@ export async function POST({ params, request }) {
     parts: Array.isArray(body.parts) ? body.parts : null,
   });
   return json(record);
-}
+};
 
 function normalizeRole(value: unknown): "system" | "user" | "assistant" | "tool" {
   if (value === "system" || value === "user" || value === "assistant" || value === "tool") return value;

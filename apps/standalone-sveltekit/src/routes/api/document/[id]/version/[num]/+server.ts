@@ -1,8 +1,9 @@
 import { error, json } from "@sveltejs/kit";
-import { getWorkspaceDocumentVersion } from "$lib/server/workspace-document-store";
+import { getRequestWorkspaceDocumentVersion } from "$lib/server/workspace-request-store";
+import type { RequestHandler } from "./$types";
 
-export function GET({ params }) {
-  const version = getWorkspaceDocumentVersion(params.id, Number(params.num));
+export const GET: RequestHandler = async (event) => {
+  const version = await getRequestWorkspaceDocumentVersion(event, event.params.id, Number(event.params.num));
   if (!version) error(404, "Document version not found");
   return json(version);
-}
+};

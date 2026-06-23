@@ -8,6 +8,7 @@ import {
   updateWorkspaceDocument,
   type WorkspaceDocumentRecord,
 } from "../server/workspace-store";
+import type { AsyncWorkspacePersistenceAdapter } from "@sonik-agent-ui/workspace-session";
 
 const documentLanguageSchema = z.string().default("markdown");
 const preferredDocumentViewSchema = z.enum(["auto", "edit", "preview"]).default("auto");
@@ -17,6 +18,7 @@ export type PreferredDocumentView = z.infer<typeof preferredDocumentViewSchema>;
 export interface DocumentToolContext {
   activeDocument?: WorkspaceDocumentRecord | null;
   sessionId?: string | null;
+  persistence?: AsyncWorkspacePersistenceAdapter | null;
 }
 
 interface DocumentToolRuntime {
@@ -25,8 +27,13 @@ interface DocumentToolRuntime {
   sessionId: string | null;
 }
 
-function resolveDocumentSnapshot(document: WorkspaceDocumentRecord | null | undefined): WorkspaceDocumentRecord | null {
+async function resolveDocumentSnapshot(document: WorkspaceDocumentRecord | null | undefined, persistence?: AsyncWorkspacePersistenceAdapter | null): Promise<WorkspaceDocumentRecord | null> {
   if (!document?.id) return null;
+  if (persistence) {
+    const stored = await persistence.getDocument(document.id);
+    if (!stored) return document;
+    return persistence.syncActiveDocumentSnapshot({ ...stored, ...document });
+  }
   const stored = getWorkspaceDocument(document.id);
   if (!stored) return document;
   return syncActiveWorkspaceDocumentSnapshot({ ...stored, ...document });
@@ -42,11 +49,12 @@ function isPreviewableDocumentLanguage(language?: string): boolean {
 }
 
 export function createDocumentTools(context: DocumentToolContext = {}) {
-  const activeDocument = resolveDocumentSnapshot(context.activeDocument);
+  const persistence = context.persistence ?? null;
+  const initialDocument = context.activeDocument ?? null;
   const runtime: DocumentToolRuntime = {
-    activeDocument,
-    preferredView: normalizePreferredView("auto", activeDocument?.language),
-    sessionId: activeDocument?.session_id ?? context.sessionId ?? null,
+    activeDocument: initialDocument,
+    preferredView: normalizePreferredView("auto", initialDocument?.language),
+    sessionId: initialDocument?.session_id ?? context.sessionId ?? null,
   };
 
   return {
@@ -54,7 +62,7 @@ export function createDocumentTools(context: DocumentToolContext = {}) {
       description: "Read the current active Workspace/Sonik document that is open in the canvas document editor.",
       inputSchema: z.object({}),
       execute: async () => {
-        const document = resolveDocumentSnapshot(runtime.activeDocument);
+        const document = await resolveDocumentSnapshot(runtime.activeDocument, persistence);
         if (!document) {
           return { ok: false, error: "NO_ACTIVE_DOCUMENT", message: "No active document is open in the workspace." };
         }
@@ -70,7 +78,9 @@ export function createDocumentTools(context: DocumentToolContext = {}) {
         documentId: z.string().optional().describe("Document id to read. Defaults to the current active document."),
       }),
       execute: async ({ documentId }) => {
-        const document = documentId ? getWorkspaceDocument(documentId) : resolveDocumentSnapshot(runtime.activeDocument);
+        const document = documentId
+          ? (persistence ? await persistence.getDocument(documentId) : getWorkspaceDocument(documentId))
+          : await resolveDocumentSnapshot(runtime.activeDocument, persistence);
         if (!document) {
           return { ok: false, error: "DOCUMENT_NOT_FOUND", message: documentId ? `Document ${documentId} was not found.` : "No active document is open in the workspace." };
         }
@@ -89,23 +99,39 @@ export function createDocumentTools(context: DocumentToolContext = {}) {
         preferredView: preferredDocumentViewSchema.describe("Initial editor view. Use preview for HTML/Markdown/SVG/XML when the user asks to see the rendered document; use edit for code/source-first work; auto lets the app infer from language."),
       }),
       execute: async ({ title, language, content, preferredView }) => {
-        const document = createWorkspaceDocument({
-          session_id: runtime.sessionId,
-          title,
-          language,
-          content,
-          source: "ai",
-          summary: "Created by agent",
-        });
+        const document = persistence
+          ? await persistence.createDocument({
+              session_id: runtime.sessionId,
+              title,
+              language,
+              content,
+              source: "ai",
+              summary: "Created by agent",
+            })
+          : createWorkspaceDocument({
+              session_id: runtime.sessionId,
+              title,
+              language,
+              content,
+              source: "ai",
+              summary: "Created by agent",
+            });
         runtime.activeDocument = document;
         runtime.sessionId = document.session_id ?? runtime.sessionId;
         runtime.preferredView = normalizePreferredView(preferredView, document.language);
-        const artifact = createWorkspaceArtifact({
-          session_id: document.session_id,
-          kind: "document",
-          title: document.title,
-          content: document,
-        });
+        const artifact = persistence
+          ? await persistence.createArtifact({
+              session_id: document.session_id,
+              kind: "document",
+              title: document.title,
+              content: document,
+            })
+          : createWorkspaceArtifact({
+              session_id: document.session_id,
+              kind: "document",
+              title: document.title,
+              content: document,
+            });
         return {
           kind: "document-artifact" as const,
           action: "create" as const,
@@ -130,13 +156,21 @@ export function createDocumentTools(context: DocumentToolContext = {}) {
         if (!targetId) {
           return { ok: false, error: "NO_ACTIVE_DOCUMENT", message: "No active document is available to update." };
         }
-        const document = updateWorkspaceDocument(targetId, {
-          title,
-          language,
-          content,
-          source: "ai",
-          summary: "Updated by agent",
-        });
+        const document = persistence
+          ? await persistence.updateDocument(targetId, {
+              title,
+              language,
+              content,
+              source: "ai",
+              summary: "Updated by agent",
+            })
+          : updateWorkspaceDocument(targetId, {
+              title,
+              language,
+              content,
+              source: "ai",
+              summary: "Updated by agent",
+            });
         if (!document) {
           return { ok: false, error: "DOCUMENT_NOT_FOUND", message: `Document ${targetId} was not found.` };
         }

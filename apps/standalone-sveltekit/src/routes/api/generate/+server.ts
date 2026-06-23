@@ -15,7 +15,7 @@ import { writeAgentTelemetry } from "$lib/server/agent-telemetry";
 import { createTelemetryCorrelation, sanitizePageContext } from "@sonik-agent-ui/agent-observability";
 import { instrumentGenerateStream } from "$lib/server/stream-telemetry";
 import { createDevSmokeStream, readDevSmokeRunId, shouldUseDevSmokeStream, writeDevSmokeStreamTelemetry } from "$lib/server/dev-smoke-stream";
-import { summarizeWorkspaceContext, syncActiveWorkspaceDocumentSnapshot, type WorkspaceDocumentRecord } from "$lib/server/workspace-store";
+import { getRequestWorkspacePersistence, syncRequestActiveWorkspaceDocumentSnapshot, type WorkspaceDocumentRecord } from "$lib/server/workspace-request-store";
 import { createStandaloneCommandIndexSummary } from "$lib/server/tool-manifest";
 import { createBookingRuntimeAuthContextFromEnv, hasBookingRuntimeCredential } from "$lib/server/host-command-runtime";
 import type { AgentPageContext } from "@sonik-agent-ui/tool-contracts";
@@ -27,6 +27,7 @@ import {
   WORKSPACE_SESSION_ID_MAX_CHARS,
   WORKSPACE_TITLE_MAX_CHARS,
 } from "$lib/server/workspace-route-limits";
+import type { RequestEvent } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
 
 const PAGE_CONTEXT_FIELD_MAX_CHARS = 160;
@@ -119,7 +120,8 @@ function createCorrelationHeaders(input: { requestId: string; traceId: string; t
   };
 }
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+  const { request } = event;
   const correlation = createTelemetryCorrelation({
     requestId: request.headers.get("x-sonik-request-id") ?? request.headers.get("x-request-id"),
     traceId: request.headers.get("x-sonik-trace-id"),
@@ -152,7 +154,8 @@ export const POST: RequestHandler = async ({ request }) => {
 
   const body = await request.json();
   const uiMessages: UIMessage[] = body.messages;
-  const activeDocument = _resolveActiveDocument(body?.workspace?.activeDocument);
+  const requestPersistence = getRequestWorkspacePersistence(event);
+  const activeDocument = await resolveActiveDocumentForRequest(event, body?.workspace?.activeDocument);
   const requestId = correlation.requestId;
   const traceId = correlation.traceId;
   const traceparent = correlation.traceparent;
@@ -242,7 +245,7 @@ export const POST: RequestHandler = async ({ request }) => {
     return response;
   }
 
-  const agent = createAgent({ activeDocument, sessionId: telemetrySessionId, pageContext, bookingServiceBaseUrl, bookingRuntimeAuth });
+  const agent = createAgent({ activeDocument, sessionId: telemetrySessionId, pageContext, bookingServiceBaseUrl, bookingRuntimeAuth, persistence: requestPersistence });
 
   try {
     const result = await agent.stream({ messages: contextualModelMessages });
@@ -345,7 +348,12 @@ export const POST: RequestHandler = async ({ request }) => {
 };
 
 
-export function _resolveActiveDocument(value: unknown): WorkspaceDocumentRecord | null {
+async function resolveActiveDocumentForRequest(event: RequestEvent, value: unknown): Promise<WorkspaceDocumentRecord | null> {
+  const snapshot = _resolveActiveDocument(value, { sync: false });
+  return snapshot?.id ? syncRequestActiveWorkspaceDocumentSnapshot(event, snapshot) : snapshot;
+}
+
+export function _resolveActiveDocument(value: unknown, options: { sync?: boolean } = {}): WorkspaceDocumentRecord | null {
   if (!isRecord(value)) return null;
   const id = routeString(value.id, "workspace.activeDocument.id", WORKSPACE_SESSION_ID_MAX_CHARS, "");
   if (typeof value.title !== "string" || typeof value.current_content !== "string") return null;
@@ -363,7 +371,27 @@ export function _resolveActiveDocument(value: unknown): WorkspaceDocumentRecord 
     updated_at: typeof value.updated_at === "string" ? value.updated_at : new Date().toISOString(),
   };
 
-  return id ? syncActiveWorkspaceDocumentSnapshot(snapshot) : snapshot;
+  return snapshot;
+}
+
+function summarizeWorkspaceContext(input: { activeDocument?: WorkspaceDocumentRecord | null; maxChars?: number } = {}): string | null {
+  const document = input.activeDocument;
+  if (!document) return null;
+  const maxChars = input.maxChars ?? 3000;
+  const content = document.current_content.length > maxChars
+    ? `${document.current_content.slice(0, maxChars)}\n... (${document.current_content.length} chars total)`
+    : document.current_content;
+  return [
+    "Active Workspace/Sonik document context:",
+    `- id: ${document.id}`,
+    `- title: ${document.title}`,
+    `- language: ${document.language}`,
+    `- version: ${document.version_count}`,
+    "Document content:",
+    "```" + document.language,
+    content,
+    "```",
+  ].join("\n");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

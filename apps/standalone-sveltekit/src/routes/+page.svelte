@@ -34,6 +34,7 @@
     normalizeAgentEmbedIntent,
     sanitizeAgentHostPageContext,
     isAgentOriginAllowed,
+    type AgentHostMergedPageContext,
     type AgentHostPageContext,
     type AgentEmbedMode,
     type AgentEmbedRailMode,
@@ -127,7 +128,7 @@
   let lastConversationTelemetrySignature = "";
   let lastPageContextSignature = "";
   let lastActivityTelemetrySignature = "";
-  let hostPageContext = $state<AgentHostPageContext | null>(null);
+  let hostPageContext = $state<AgentHostMergedPageContext | null>(null);
   let embedMode = $state<AgentEmbedMode>(getInitialEmbedIntent().mode);
   let embedRailMode = $state<AgentEmbedRailMode>(getInitialEmbedIntent().railMode);
   let streamStartedAt = $state<number | null>(null);
@@ -142,6 +143,7 @@
           headers: {
             ...headers,
             ...createDevSmokeHeaders(),
+            ...createWorkspaceRequestHeaders(),
           },
           body: {
             ...body,
@@ -630,6 +632,51 @@
     };
   }
 
+  function workspaceFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+    return fetch(input, {
+      ...init,
+      headers: {
+        ...headersToRecord(init.headers),
+        ...createWorkspaceRequestHeaders(),
+      },
+    });
+  }
+
+  function createWorkspaceRequestHeaders(): Record<string, string> {
+    const context = createTrustedHostRuntimeContext();
+    return context ? { "x-sonik-agent-ui-host-context": encodeHeaderJson(context) } : {};
+  }
+
+  function createTrustedHostRuntimeContext(): Record<string, unknown> | null {
+    const context = hostPageContext;
+    if (!context?.authenticated || !context.organizationId) return null;
+    return {
+      authenticated: true,
+      organizationId: context.organizationId,
+      scopes: Array.isArray(context.scopes) ? context.scopes : [],
+      hostSession: context.hostSession ?? {
+        source: "amplify-embedded",
+        sessionId: context.activeSessionId ?? activeSessionId ?? undefined,
+        userId: undefined,
+        principalId: undefined,
+        organizationId: context.organizationId,
+        authenticated: true,
+        scopes: Array.isArray(context.scopes) ? context.scopes : [],
+      },
+    };
+  }
+
+  function encodeHeaderJson(value: unknown): string {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(value)))).replace(/=+$/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+  }
+
+  function headersToRecord(headers: HeadersInit | undefined): Record<string, string> {
+    if (!headers) return {};
+    if (headers instanceof Headers) return Object.fromEntries(headers.entries());
+    if (Array.isArray(headers)) return Object.fromEntries(headers);
+    return { ...headers };
+  }
+
   function getAllowedAgentHostOrigins(): Set<string> {
     const origins = new Set<string>();
     if (typeof window === "undefined") return origins;
@@ -913,7 +960,7 @@
   async function loadSessions(): Promise<void> {
     sessionRailError = null;
     try {
-      const response = await fetch("/api/sessions");
+      const response = await workspaceFetch("/api/sessions");
       if (!response.ok) throw new Error(await response.text());
       sessions = (await response.json()) as WorkspaceSessionSummary[];
       void loadArchivedSessionCount();
@@ -924,7 +971,7 @@
 
   async function loadArchivedSessionCount(): Promise<void> {
     try {
-      const response = await fetch("/api/sessions?archived=true");
+      const response = await workspaceFetch("/api/sessions?archived=true");
       if (!response.ok) throw new Error(await response.text());
       archivedSessionCount = ((await response.json()) as WorkspaceSessionSummary[]).length;
     } catch (error) {
@@ -972,7 +1019,7 @@
     sessionRailError = null;
     try {
       await flushPendingDocumentPersistence();
-      const response = await fetch("/api/session", {
+      const response = await workspaceFetch("/api/session", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: DEFAULT_WORKSPACE_SESSION_NAME, mode: "chat" }),
@@ -1001,7 +1048,7 @@
     sessionRailError = null;
     try {
       await flushPendingDocumentPersistence();
-      const response = await fetch(`/api/session/${encodeURIComponent(sessionId)}`);
+      const response = await workspaceFetch(`/api/session/${encodeURIComponent(sessionId)}`);
       if (!response.ok) throw new Error(await response.text());
       const detail = (await response.json()) as WorkspaceSessionDetail;
       activeSessionId = detail.session.id;
@@ -1026,7 +1073,7 @@
     sessionRailError = null;
     try {
       await flushPendingDocumentPersistence();
-      const response = await fetch(`/api/session/${encodeURIComponent(sessionId)}/archive`, { method: "POST" });
+      const response = await workspaceFetch(`/api/session/${encodeURIComponent(sessionId)}/archive`, { method: "POST" });
       if (!response.ok) throw new Error(await response.text());
       await loadSessions();
       if (activeSessionId === sessionId) {
@@ -1059,7 +1106,7 @@
     sessionRailError = null;
     try {
       await flushPendingDocumentPersistence();
-      const response = await fetch(`/api/session/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
+      const response = await workspaceFetch(`/api/session/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
       if (!response.ok) throw new Error(await response.text());
       artifactWarehouse.deleteSession(sessionId);
       await loadSessions();
@@ -1084,7 +1131,7 @@
     const trimmed = name.trim();
     if (!trimmed) return;
     try {
-      const response = await fetch(`/api/session/${encodeURIComponent(sessionId)}`, {
+      const response = await workspaceFetch(`/api/session/${encodeURIComponent(sessionId)}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: trimmed }),
@@ -1165,7 +1212,7 @@
     try {
       for (const message of messagesToPersist) {
         const parts = snapshotDataParts(message.parts as DataPart[]);
-        const response = await fetch(`/api/session/${encodeURIComponent(sessionId)}/messages`, {
+        const response = await workspaceFetch(`/api/session/${encodeURIComponent(sessionId)}/messages`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -1257,7 +1304,7 @@
         continue;
       }
 
-      const response = await fetch(`/api/document/${encodeURIComponent(snapshot.id)}`, {
+      const response = await workspaceFetch(`/api/document/${encodeURIComponent(snapshot.id)}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

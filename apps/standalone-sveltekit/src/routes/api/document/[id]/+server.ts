@@ -1,5 +1,5 @@
 import { error, json } from "@sveltejs/kit";
-import { deleteWorkspaceDocument, getWorkspaceDocument, patchWorkspaceDocument, updateWorkspaceDocument } from "$lib/server/workspace-document-store";
+import { deleteRequestWorkspaceDocument, getRequestWorkspaceDocument, patchRequestWorkspaceDocument, updateRequestWorkspaceDocument } from "$lib/server/workspace-request-store";
 import {
   optionalRouteString,
   WORKSPACE_CONTENT_MAX_CHARS,
@@ -7,27 +7,28 @@ import {
   WORKSPACE_SESSION_ID_MAX_CHARS,
   WORKSPACE_TITLE_MAX_CHARS,
 } from "$lib/server/workspace-route-limits";
+import type { RequestHandler } from "./$types";
 
-export function GET({ params }) {
-  const document = getWorkspaceDocument(params.id);
+export const GET: RequestHandler = async (event) => {
+  const document = await getRequestWorkspaceDocument(event, event.params.id);
   if (!document) error(404, "Document not found");
   return json(document);
-}
+};
 
-export async function PUT({ params, request }) {
-  const body = await request.json();
-  const document = updateWorkspaceDocument(params.id, {
+export const PUT: RequestHandler = async (event) => {
+  const body = await event.request.json();
+  const document = await updateRequestWorkspaceDocument(event, event.params.id, {
     content: optionalRouteString(body.content, "content", WORKSPACE_CONTENT_MAX_CHARS),
     title: optionalRouteString(body.title, "title", WORKSPACE_TITLE_MAX_CHARS),
     language: optionalRouteString(body.language, "language", WORKSPACE_LANGUAGE_MAX_CHARS),
   });
   if (!document) error(404, "Document not found");
   return json(document);
-}
+};
 
-export async function PATCH({ params, request }) {
-  const body = await request.json();
-  const document = patchWorkspaceDocument(params.id, {
+export const PATCH: RequestHandler = async (event) => {
+  const body = await event.request.json();
+  const document = await patchRequestWorkspaceDocument(event, event.params.id, {
     content: optionalRouteString(body.content, "content", WORKSPACE_CONTENT_MAX_CHARS),
     title: optionalRouteString(body.title, "title", WORKSPACE_TITLE_MAX_CHARS),
     language: optionalRouteString(body.language, "language", WORKSPACE_LANGUAGE_MAX_CHARS),
@@ -35,9 +36,9 @@ export async function PATCH({ params, request }) {
   });
   if (!document) error(404, "Document not found");
   return json(document);
-}
+};
 
-export function DELETE({ params }) {
-  deleteWorkspaceDocument(params.id);
+export const DELETE: RequestHandler = async (event) => {
+  await deleteRequestWorkspaceDocument(event, event.params.id);
   return json({ ok: true });
-}
+};
