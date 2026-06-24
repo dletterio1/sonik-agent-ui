@@ -253,5 +253,7 @@ assert.equal(timerController.getMode(), null, "destroy should close active mode"
 const amplifySmokeSource = await readFile("scripts/agent-ui-amplify-smoke.mjs", "utf8");
 assert.equal(amplifySmokeSource.includes("page.mouse.click"), false, "authenticated release gate should not use coordinate-click fallback to open embeds");
 assert.equal(amplifySmokeSource.includes("__sonikAgentHost"), true, "authenticated release gate should prefer the deterministic host controller when available");
+assert.equal(amplifySmokeSource.includes("usedDeterministicHostController"), true, "authenticated release gate should report and require deterministic host-controller opening");
+assert.equal(amplifySmokeSource.includes("Amplify embed did not open through window.__sonikAgentHost"), true, "authenticated release gate should fail if the host controller is unavailable after Amplify consumes the SDK seam");
 
 console.log("agent-embed tests passed");

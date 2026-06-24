@@ -285,7 +285,12 @@ try {
   const artifacts = agentResponses.filter((entry) => entry.path === "/api/artifact");
   const sessions = agentResponses.filter((entry) => entry.path === "/api/sessions" || entry.path.startsWith("/api/session"));
   const unexpectedFailures = agentResponses.filter((entry) => entry.status >= 400 && !entry.path.includes("favicon"));
+  const agentOpenAttempts = evidence.steps.filter((entry) => entry.name === "agent-open-attempt");
+  const hostControllerOpenAttempts = agentOpenAttempts.filter((entry) => entry.openResult?.target === "host-controller-openChat");
   evidence.checks = {
+    usedDeterministicHostController: hostControllerOpenAttempts.length > 0,
+    hostControllerOpenCount: hostControllerOpenAttempts.length,
+    openTargets: agentOpenAttempts.map((entry) => entry.openResult?.target ?? "unknown"),
     freshSessionId: sessionId,
     afterSessionId: after.context?.activeSessionId ?? null,
     restoredSessionId: restored.context?.activeSessionId ?? null,
@@ -303,6 +308,7 @@ try {
     pipeBLineCount: evidence.pipeB.lineCount,
   };
   if (unexpectedFailures.length) await saveAndExit("FAIL", `Unexpected Agent UI API failures: ${evidence.checks.unexpectedFailures.join(", ")}`);
+  if (!evidence.checks.usedDeterministicHostController) await saveAndExit("FAIL", `Amplify embed did not open through window.__sonikAgentHost. Open targets: ${evidence.checks.openTargets.join(", ")}`);
   if (!evidence.checks.sameSessionAfterPrompt) await saveAndExit("FAIL", "Fresh session changed during prompt execution.");
   if (!evidence.checks.markerAfterPrompt) await saveAndExit("FAIL", "Marker was not visible after prompt completion.");
   if (evidence.checks.successfulGenerateCount < 1) await saveAndExit("FAIL", "No successful /api/generate response observed.");
