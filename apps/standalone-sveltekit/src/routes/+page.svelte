@@ -641,6 +641,7 @@
     const response = await fetch(input, {
       ...init,
       headers: {
+        ...createWorkspaceRequestHeaders(),
         ...headersToRecord(init.headers),
       },
     });
@@ -675,9 +676,32 @@
   }
 
   function createWorkspaceRequestHeaders(): Record<string, string> {
-    // Browser page context is display/context only. Cloud org/user authority is resolved server-side
-    // through the host auth adapter (`locals.agentUiHostSession`), not from postMessage-derived headers.
-    return {};
+    const hostSession = hostPageContext?.hostSession;
+    const organizationId = hostSession?.organizationId ?? hostPageContext?.organizationId;
+    const authenticated = hostSession?.authenticated === true || hostPageContext?.authenticated === true;
+    const userId = hostSession?.userId ?? hostSession?.principalId;
+    if (!authenticated || !organizationId || !userId || !hostSession) return {};
+    return {
+      "x-sonik-agent-ui-host-context": encodeWorkspaceHostContextHeader({
+        authenticated,
+        organizationId,
+        scopes: hostPageContext?.scopes ?? hostSession.scopes ?? [],
+        hostSession: {
+          ...hostSession,
+          authenticated,
+          organizationId,
+          userId,
+          principalId: hostSession.principalId ?? userId,
+        },
+      }),
+    };
+  }
+
+  function encodeWorkspaceHostContextHeader(value: unknown): string {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(value))))
+      .replace(/=+$/g, "")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_");
   }
 
   function hasHostPageContext(): boolean {
