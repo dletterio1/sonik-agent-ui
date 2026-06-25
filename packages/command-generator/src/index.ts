@@ -153,6 +153,39 @@ export type CommandGeneratorOutput = {
   projections: Partial<Record<CommandProjectionTarget, CommandProjectionManifest>>;
 };
 
+export type CommandProviderArtifacts = CommandGeneratorOutput & {
+  provider: string;
+  generatedAt?: string;
+  source?: unknown;
+  summary?: Record<string, unknown>;
+};
+
+export type GlobalCommandRegistryArtifact = {
+  version: "sonik-agent-ui.global-command-registry.v1";
+  provider: string;
+  generatedAt: string;
+  summary: {
+    providerCount: number;
+    commandCount: number;
+    familyCount: number;
+    toolCount: number;
+    cliProjectionCount: number;
+    mcpProjectionCount: number;
+  };
+  providers: Array<{
+    provider: string;
+    commandCount: number;
+    familyCount: number;
+    toolCount: number;
+    source?: unknown;
+    summary?: Record<string, unknown>;
+  }>;
+  manifest: ToolManifest;
+  registry: CommandFamilyRegistry;
+  catalog: CommandCatalog;
+  projections: Partial<Record<CommandProjectionTarget, CommandProjectionManifest>>;
+};
+
 const httpMethods = new Set(["get", "post", "put", "patch", "delete", "head", "options"]);
 const validProcedurePattern = /^[a-z][a-z0-9]*(?:[._:-][a-z0-9]+)+$/i;
 
@@ -207,6 +240,138 @@ export function createCliDescriptorSourceManifest(input: {
     generatedAt,
   }, generatedAt).cli!;
   return { catalog, registry, projection };
+}
+
+export function createGlobalCommandRegistryArtifact(input: {
+  provider: string;
+  generatedAt?: string;
+  providers: CommandProviderArtifacts[];
+}): GlobalCommandRegistryArtifact {
+  const generatedAt = input.generatedAt ?? newestGeneratedAt(input.providers) ?? new Date().toISOString();
+  if (input.providers.length === 0) throw new Error("Global command registry requires at least one provider artifact");
+
+  const manifestTools: ToolContractEntry[] = [];
+  const catalogCommands: CommandDescriptor[] = [];
+  const familiesById = new Map<string, CommandFamilyDefinition>();
+  const projections: Partial<Record<CommandProjectionTarget, CommandProjectionManifest>> = {};
+  const providerSummaries: GlobalCommandRegistryArtifact["providers"] = [];
+
+  for (const providerArtifact of input.providers) {
+    const provider = providerArtifact.provider || providerArtifact.catalog.provider || providerArtifact.manifest.provider;
+    const manifest = providerArtifact.manifest;
+    const catalog = providerArtifact.catalog;
+    const registry = providerArtifact.registry;
+    assertGeneratedCatalogFamilies(catalog, registry);
+
+    providerSummaries.push({
+      provider,
+      commandCount: catalog.commands.length,
+      familyCount: registry.families.length,
+      toolCount: manifest.tools.length,
+      source: providerArtifact.source,
+      summary: providerArtifact.summary,
+    });
+
+    manifestTools.push(...manifest.tools);
+    catalogCommands.push(...catalog.commands);
+    for (const family of registry.families) mergeFamilyDefinition(familiesById, family, provider);
+    for (const target of ["cli", "mcp"] as const) {
+      const projection = providerArtifact.projections[target];
+      if (!projection) continue;
+      const existing = projections[target];
+      projections[target] = {
+        version: "sonik-agent-ui.command-projection.v1",
+        provider: input.provider,
+        target,
+        generatedAt,
+        commands: [...(existing?.commands ?? []), ...projection.commands],
+      };
+    }
+  }
+
+  assertUniqueIds("global command ids", catalogCommands.map((command) => command.id));
+  assertUniqueIds("global tool ids", manifestTools.map((tool) => tool.id));
+  for (const target of ["cli", "mcp"] as const) {
+    const projection = projections[target];
+    if (!projection) continue;
+    assertUniqueIds(`global ${target} projection command ids`, projection.commands.map((entry) => entry.commandId));
+  }
+
+  const registry = commandFamilyRegistrySchema.parse(createCommandFamilyRegistry(input.provider, [...familiesById.values()], generatedAt));
+  const manifest = createToolManifest(input.provider, manifestTools, generatedAt);
+  const catalog = commandCatalogSchema.parse({ version: "sonik-agent-ui.command-catalog.v1", provider: input.provider, generatedAt, commands: catalogCommands });
+  assertGeneratedCatalogFamilies(catalog, registry);
+  assertProjectionTargetsKnown(catalog, projections);
+
+  return {
+    version: "sonik-agent-ui.global-command-registry.v1",
+    provider: input.provider,
+    generatedAt,
+    summary: {
+      providerCount: input.providers.length,
+      commandCount: catalog.commands.length,
+      familyCount: registry.families.length,
+      toolCount: manifest.tools.length,
+      cliProjectionCount: projections.cli?.commands.length ?? 0,
+      mcpProjectionCount: projections.mcp?.commands.length ?? 0,
+    },
+    providers: providerSummaries,
+    manifest,
+    registry,
+    catalog,
+    projections,
+  };
+}
+
+function newestGeneratedAt(providers: CommandProviderArtifacts[]): string | undefined {
+  const values = providers.map((provider) => provider.generatedAt ?? provider.catalog.generatedAt ?? provider.manifest.generatedAt).filter(Boolean) as string[];
+  return values.sort().at(-1);
+}
+
+function mergeFamilyDefinition(target: Map<string, CommandFamilyDefinition>, family: CommandFamilyDefinition, provider: string): void {
+  const existing = target.get(family.id);
+  if (!existing) {
+    target.set(family.id, family);
+    return;
+  }
+  if (stableJson(existing) !== stableJson(family)) {
+    throw new Error(`Conflicting command family definition for ${family.id} from provider ${provider}`);
+  }
+}
+
+function assertUniqueIds(label: string, ids: string[]): void {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const id of ids) {
+    if (seen.has(id)) duplicates.add(id);
+    seen.add(id);
+  }
+  if (duplicates.size > 0) throw new Error(`Duplicate ${label}: ${[...duplicates].sort().join(", ")}`);
+}
+
+function assertProjectionTargetsKnown(catalog: CommandCatalog, projections: Partial<Record<CommandProjectionTarget, CommandProjectionManifest>>): void {
+  const knownCommandIds = new Set(catalog.commands.map((command) => command.id));
+  const unknown: string[] = [];
+  for (const projection of Object.values(projections)) {
+    for (const entry of projection?.commands ?? []) {
+      if (!knownCommandIds.has(entry.commandId)) unknown.push(`${projection?.target}:${entry.commandId}`);
+    }
+  }
+  if (unknown.length > 0) throw new Error(`Projection entries reference unknown command ids: ${unknown.sort().join(", ")}`);
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(canonicalizeJson(value));
+}
+
+function canonicalizeJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalizeJson);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, child]) => [key, canonicalizeJson(child)]),
+  );
 }
 
 function createGeneratorToolManifestFromOpenApi(document: OpenApiDocumentLike, config: CommandGeneratorConfig, generatedAt: string, registry: CommandFamilyRegistry): ToolManifest {
