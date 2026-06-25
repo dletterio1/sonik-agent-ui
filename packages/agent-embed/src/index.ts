@@ -524,6 +524,7 @@ function sanitizeTrustedHostContext(value: AgentTrustedHostContext | null | unde
   if (Array.isArray(value.scopes)) trusted.scopes = value.scopes.map(cleanText).filter((scope): scope is string => Boolean(scope)).slice(0, MAX_LIST_ITEMS);
   if (value.hostSession && typeof value.hostSession === "object" && !Array.isArray(value.hostSession)) {
     const session = value.hostSession as HostSessionEnvelope;
+    const metadata = sanitizeHostSessionMetadata(session.metadata);
     trusted.hostSession = {
       source: cleanText(session.source) === "amplify-embedded" ? "amplify-embedded" : cleanText(session.source) === "embedded-host" ? "embedded-host" : cleanText(session.source) === "standalone-demo" ? "standalone-demo" : "anonymous",
       sessionId: cleanText(session.sessionId) ?? null,
@@ -533,12 +534,28 @@ function sanitizeTrustedHostContext(value: AgentTrustedHostContext | null | unde
       authenticated: session.authenticated === true,
       scopes: Array.isArray(session.scopes) ? session.scopes.map(cleanText).filter((scope): scope is string => Boolean(scope)).slice(0, MAX_LIST_ITEMS) : [],
       expiresAt: cleanText(session.expiresAt) ?? null,
-      metadata: undefined,
+      ...(metadata ? { metadata } : {}),
     };
   }
   return trusted;
 }
 
+
+function sanitizeHostSessionMetadata(value: unknown): Record<string, string | number | boolean> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entries: Array<[string, string | number | boolean]> = [];
+  for (const [rawKey, rawValue] of Object.entries(value as Record<string, unknown>).slice(0, MAX_LIST_ITEMS)) {
+    const key = cleanText(rawKey);
+    if (!key) continue;
+    if (typeof rawValue === "boolean" || typeof rawValue === "number") {
+      entries.push([key, rawValue]);
+      continue;
+    }
+    const text = cleanText(rawValue);
+    if (text) entries.push([key, text]);
+  }
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
 
 function sanitizeSignedHostContextFields(value: Record<string, unknown>): AgentSignedHostContextFields {
   const signed: AgentSignedHostContextFields = {};

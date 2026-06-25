@@ -75,7 +75,7 @@ const trustedSession = sanitizeAgentHostPageContext({
 });
 assert.equal(trustedSession?.authenticated, true, "trusted host authentication flag should survive sanitization");
 assert.equal(trustedSession?.hostSession?.source, "amplify-embedded", "known host session source should survive sanitization");
-assert.equal(trustedSession?.hostSession?.metadata, undefined, "host session metadata must be dropped at the embed boundary");
+assert.deepEqual(trustedSession?.hostSession?.metadata, { token: "[REDACTED]" }, "host session metadata should preserve signed-envelope shape with redacted string values");
 
 
 const signedTrustedSession = sanitizeAgentHostPageContext({
@@ -98,6 +98,31 @@ assert.equal(signedTrustedSession?.signatureVersion, "sonik.agent_ui.host_contex
 assert.equal(signedTrustedSession?.signature, "abc123_signature", "signed host-context signature must survive postMessage donation");
 assert.equal(signedTrustedSession?.issuedAt, "2026-06-24T22:00:00.000Z", "signed host-context issuedAt must survive postMessage donation");
 assert.equal(signedTrustedSession?.expiresAt, "2026-06-24T22:10:00.000Z", "signed host-context expiresAt must survive postMessage donation");
+
+const signedTrustedSessionWithMetadata = sanitizeAgentHostPageContext({
+  authenticated: true,
+  organizationId: "org_signed",
+  scopes: ["agent-ui.workspace.persistence"],
+  signatureVersion: "sonik.agent_ui.host_context.hmac.v1",
+  issuedAt: "2026-06-24T22:00:00.000Z",
+  expiresAt: "2026-06-24T22:10:00.000Z",
+  signature: "abc123_signature",
+  hostSession: {
+    source: "amplify-embedded",
+    userId: "user_signed",
+    principalId: "user_signed",
+    organizationId: "org_signed",
+    authenticated: true,
+    scopes: ["agent-ui.workspace.persistence"],
+    expiresAt: "2026-06-24T22:10:00.000Z",
+    metadata: { authAuthority: "amplify-org-context", sessionMode: "production" },
+  },
+});
+assert.deepEqual(
+  signedTrustedSessionWithMetadata?.hostSession?.metadata,
+  { authAuthority: "amplify-org-context", sessionMode: "production" },
+  "signed host-context metadata must survive unchanged when it is part of the HMAC payload",
+);
 
 assert.deepEqual(
   normalizeAgentEmbedIntent({ embedMode: "chat" }),
