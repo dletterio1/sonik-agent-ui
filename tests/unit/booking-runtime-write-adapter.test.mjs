@@ -214,6 +214,27 @@ assert.equal(mismatchedPrincipal.policy.reasons.includes("host_runtime_error"), 
 assert.match(mismatchedPrincipal.errors?.[0]?.message ?? "", /trusted-principal-mismatch/);
 assert.equal(calls.length, 0, "mismatched userId fails before calling booking API");
 
+const beforeNoUserHold = calls.length;
+const noUserHoldReceipt = await executeHostCatalogCommand({
+  catalog: bundle.catalog,
+  runtimeAdapters: bundle.runtimeAdapters,
+  commandId: GENERATED_BOOKING_CREATE_HOLD_COMMAND_ID,
+  commandInput: {
+    contextId: CONTEXT_ID,
+    window: { startsAt: "2026-07-01T18:00:00.000Z", endsAt: "2026-07-01T18:30:00.000Z" },
+    partySize: 2,
+    source: "admin",
+    clientRequestId: "agent-ui-v02-demo-hold-no-user-001",
+    resourceUnitId: RESOURCE_UNIT_ID,
+  },
+  execution: { ...bundle.executionContext, action: "commit", approved: true, requestId: "req_create_hold_no_user" },
+});
+assert.equal(noUserHoldReceipt.ok, true, "create hold can omit booking userId when host principal is not a bookable guest identity");
+const noUserHoldCall = calls.slice(beforeNoUserHold).find((call) => call.method === "POST" && call.url.endsWith("/api/v1/booking/holds"));
+assert.ok(noUserHoldCall, "create hold without userId still calls POST /holds");
+assert.equal(Object.hasOwn(noUserHoldCall.body, "userId"), false, "create hold does not force trusted principal into booking userId when omitted");
+assert.equal(noUserHoldCall.headers["x-sonik-agent-principal-id"], USER_ID, "trusted principal remains available as an audit header");
+
 const availabilityReceipt = await executeHostCatalogCommand({
   catalog: bundle.catalog,
   runtimeAdapters: bundle.runtimeAdapters,
@@ -251,7 +272,12 @@ assert.equal(createReceipt.summary.receipt.idempotencyKey, "agent-ui-v02-demo-ho
 assert.equal(createReceipt.summary.receipt.confirmation.id, HOLD_ID);
 assert.equal(createReceipt.summary.receipt.confirmation.status, "active");
 assert.equal(JSON.stringify(createReceipt).includes(TOKEN), false, "receipts redact bearer tokens and secret-like response fields");
-const createCall = calls.find((call) => call.method === "POST" && call.url.endsWith("/api/v1/booking/holds"));
+const createCall = calls.find(
+  (call) =>
+    call.method === "POST" &&
+    call.url.endsWith("/api/v1/booking/holds") &&
+    call.body?.clientRequestId === "agent-ui-v02-demo-hold-001",
+);
 assert.ok(createCall, "create hold calls POST /holds");
 assert.equal(createCall.headers.authorization, `Bearer ${TOKEN}`);
 assert.equal(createCall.headers["x-sonik-agent-ui-host-context"], undefined, "bearer runtime does not synthesize a signed host context");

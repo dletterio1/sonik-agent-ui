@@ -384,7 +384,7 @@ function normalizeCreateHoldInput(input: Record<string, unknown>, execution: Com
   if (requestedUserId && trustedUserId && requestedUserId !== trustedUserId) throw new Error("trusted-principal-mismatch: userId must match the trusted host principal");
   if (requestedUserId && !trustedUserId) throw new Error("trusted-principal-required: userId cannot be supplied without a trusted host principal");
   const customerId = optionalGeneratedBookingUuidParam("customerId", input.customerId);
-  if (trustedUserId) body.userId = trustedUserId;
+  if (requestedUserId) body.userId = requestedUserId;
   if (customerId) body.customerId = customerId;
   if (resourceUnitId) body.resourceUnitId = resourceUnitId;
   if (resourceCombinationId) body.resourceCombinationId = resourceCombinationId;

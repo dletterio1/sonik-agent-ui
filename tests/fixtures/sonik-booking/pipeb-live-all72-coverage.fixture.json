@@ -1,0 +1,164 @@
+{
+  "schemaVersion": "sonik.agent_ui.test.booking_live_coverage_fixture.v1",
+  "sourceRunId": "pipeb-all72-20260629171926",
+  "sourceEvidence": "redacted Pipe B all-72 ultratest evidence; full local artifact stays under .omx/logs",
+  "environment": "pipe_b",
+  "commandCount": 72,
+  "successCommandIds": [
+    "booking.ping",
+    "booking.list.contexts",
+    "booking.create.context",
+    "booking.project.event.context",
+    "booking.get.context",
+    "booking.update.context",
+    "booking.create.schedule.rule",
+    "booking.list.schedule.rules",
+    "booking.update.schedule.rule",
+    "booking.get.availability",
+    "booking.create.resource.type",
+    "booking.list.resource.types",
+    "booking.create.resource.unit",
+    "booking.list.resource.units",
+    "booking.create.resource.block",
+    "booking.list.resource.blocks",
+    "booking.create.resource.combination",
+    "booking.list.resource.combinations",
+    "booking.search.guests",
+    "booking.create.guest",
+    "booking.list.bookings",
+    "booking.create.policy",
+    "booking.list.policies",
+    "booking.update.policy",
+    "booking.create.rate.plan",
+    "booking.list.rate.plans",
+    "booking.update.rate.plan",
+    "booking.create.hold",
+    "booking.get.hold",
+    "booking.extend.hold",
+    "booking.release.hold",
+    "booking.list.organizer.templates",
+    "booking.get.organizer.template",
+    "booking.dry.run.organizer.template",
+    "booking.get.organizer.template.browser.handoff",
+    "booking.list.media.assets",
+    "booking.delete.schedule.rule"
+  ],
+  "failedCommandIds": [
+    "booking.get.customer",
+    "booking.update.customer",
+    "booking.get.customer.profile",
+    "booking.update.customer.profile",
+    "booking.get.customer.insights",
+    "booking.open.house.account",
+    "booking.get.house.account",
+    "booking.add.house.account.entry",
+    "booking.list.house.account.entries",
+    "booking.get.house.account.statement",
+    "booking.create.booking",
+    "booking.get.booking",
+    "booking.confirm.booking",
+    "booking.reschedule.booking",
+    "booking.list.party.members",
+    "booking.add.party.member",
+    "booking.list.resource.assignments",
+    "booking.assign.resource",
+    "booking.create.waitlist.entry",
+    "booking.list.waitlist.entries",
+    "booking.get.waitlist.entry",
+    "booking.offer.waitlist.entry",
+    "booking.claim.waitlist.offer",
+    "booking.expire.waitlist.entry",
+    "booking.commit.hold",
+    "booking.create.quote",
+    "booking.get.quote",
+    "booking.upload.media.asset",
+    "booking.get.media.asset",
+    "booking.get.media.asset.variant",
+    "booking.cancel.booking",
+    "booking.remove.party.member",
+    "booking.unassign.resource",
+    "booking.delete.waitlist.entry",
+    "booking.delete.media.asset"
+  ],
+  "knownBlockers": [
+    {
+      "id": "missing-rest-customers",
+      "kind": "missing-rest-route-group",
+      "commands": [
+        "booking.get.customer",
+        "booking.update.customer",
+        "booking.get.customer.profile",
+        "booking.update.customer.profile",
+        "booking.get.customer.insights"
+      ]
+    },
+    {
+      "id": "missing-rest-house-accounts",
+      "kind": "missing-rest-route-group",
+      "commands": [
+        "booking.open.house.account",
+        "booking.get.house.account",
+        "booking.add.house.account.entry",
+        "booking.list.house.account.entries",
+        "booking.get.house.account.statement"
+      ]
+    },
+    {
+      "id": "missing-rest-waitlist",
+      "kind": "missing-rest-route-group",
+      "commands": [
+        "booking.create.waitlist.entry",
+        "booking.list.waitlist.entries",
+        "booking.get.waitlist.entry",
+        "booking.offer.waitlist.entry",
+        "booking.claim.waitlist.offer",
+        "booking.expire.waitlist.entry",
+        "booking.delete.waitlist.entry"
+      ]
+    },
+    {
+      "id": "missing-rest-quotes",
+      "kind": "missing-rest-route-group",
+      "commands": [
+        "booking.create.quote",
+        "booking.get.quote"
+      ]
+    },
+    {
+      "id": "booking-lifecycle-needs-bookable-user",
+      "kind": "seed-or-identity-gap",
+      "commands": [
+        "booking.create.booking",
+        "booking.get.booking",
+        "booking.confirm.booking",
+        "booking.reschedule.booking",
+        "booking.list.party.members",
+        "booking.add.party.member",
+        "booking.list.resource.assignments",
+        "booking.assign.resource",
+        "booking.cancel.booking",
+        "booking.remove.party.member",
+        "booking.unassign.resource"
+      ]
+    },
+    {
+      "id": "media-upload-cross-site-post",
+      "kind": "upload-transport-gap",
+      "commands": [
+        "booking.upload.media.asset",
+        "booking.get.media.asset",
+        "booking.get.media.asset.variant",
+        "booking.delete.media.asset"
+      ]
+    },
+    {
+      "id": "hold-commit-sequencing",
+      "kind": "test-harness-sequencing-gap",
+      "commands": [
+        "booking.commit.hold"
+      ]
+    }
+  ],
+  "sourceEvidenceFile": ".omx/logs/pipeb-all72-20260629171926-live-all72-booking-commands-fixture-v2.json",
+  "sourceEvidenceSha256": "a0ed5331489e5a426e3b43cdf5fc94b29e84ce435e3bc12f88f7895b6f75e5f1"
+}
