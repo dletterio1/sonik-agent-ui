@@ -4,7 +4,7 @@ import {
   GENERATED_BOOKING_CREATE_HOLD_COMMAND_ID,
   GENERATED_BOOKING_GET_HOLD_COMMAND_ID,
   GENERATED_BOOKING_RELEASE_HOLD_COMMAND_ID,
-  GENERATED_BOOKING_DEMO_RUNTIME_PROVIDER,
+  GENERATED_BOOKING_RUNTIME_PROVIDER,
 } from "../../apps/standalone-sveltekit/src/lib/server/host-command-runtime.ts";
 import { createCommandCatalogTools } from "../../apps/standalone-sveltekit/src/lib/tools/command-catalog.ts";
 
@@ -79,10 +79,10 @@ const tools = createCommandCatalogTools({
   bookingRuntimeFetcher: fetcher,
 });
 
-const search = await tools.searchCommandCatalog.execute({ query: "hold availability", limit: 10 });
-for (const commandId of [GENERATED_BOOKING_AVAILABILITY_COMMAND_ID, GENERATED_BOOKING_CREATE_HOLD_COMMAND_ID, GENERATED_BOOKING_GET_HOLD_COMMAND_ID, GENERATED_BOOKING_RELEASE_HOLD_COMMAND_ID]) {
-  assert.equal(search.contextLoadedCommandIds.includes(commandId), true, `${commandId} is context-loaded in the trusted host command search`);
-}
+const search = await tools.searchCommandCatalog.execute({ query: "booking", limit: 20 });
+assert.ok(search.contextLoadedCommandIds.length >= 20, "trusted host search exposes a bounded page-context command summary set");
+assert.ok(search.totalMatches >= 72, "trusted host search can discover the generated booking command catalog");
+assert.equal(search.truncated, true, "generated booking catalog remains bounded instead of flooding context");
 
 const learnedCreate = await tools.learnCommand.execute({ commandId: GENERATED_BOOKING_CREATE_HOLD_COMMAND_ID, aspects: ["policy", "transport", "auth", "schema"] });
 assert.equal(learnedCreate.ok, true, "agent-facing learnCommand resolves the create-hold descriptor");
@@ -104,7 +104,7 @@ const availability = await tools.executeCommand.execute({
   input: { contextId: CONTEXT_ID, from: "2026-07-01T18:00:00.000Z", to: "2026-07-01T19:00:00.000Z", partySize: 2, source: "admin", resourceUnitId: RESOURCE_UNIT_ID },
 });
 assert.equal(availability.receipt.ok, true, "agent-facing executeCommand can read availability through the trusted runtime");
-assert.equal(availability.receipt.trace.provider, GENERATED_BOOKING_DEMO_RUNTIME_PROVIDER);
+assert.equal(availability.receipt.trace.provider, GENERATED_BOOKING_RUNTIME_PROVIDER);
 assert.equal(calls.at(-1).method, "GET");
 
 const create = await tools.commitCommand.execute({
@@ -167,6 +167,6 @@ console.log(JSON.stringify({
   selectedMutation: GENERATED_BOOKING_CREATE_HOLD_COMMAND_ID,
   confirmationRead: GENERATED_BOOKING_GET_HOLD_COMMAND_ID,
   cleanupMutation: GENERATED_BOOKING_RELEASE_HOLD_COMMAND_ID,
-  runtimeProvider: GENERATED_BOOKING_DEMO_RUNTIME_PROVIDER,
+  runtimeProvider: GENERATED_BOOKING_RUNTIME_PROVIDER,
   fetchCalls: calls.length,
 }));

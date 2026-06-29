@@ -801,7 +801,7 @@ const anonymousHostRuntimeBundle = createStandaloneHostCommandRuntimeBundle({
 }, "2026-06-20T00:00:00.000Z");
 assert.equal(anonymousHostRuntimeBundle.catalog.commands.some((command) => command.id === STANDALONE_DEMO_BOOKING_CONTEXTS_COMMAND_ID), false, "anonymous host runtime bundle should not compose host-scoped booking commands");
 assert.equal(anonymousHostRuntimeBundle.runtimeAdapters.some((adapter) => adapter.bindings.some((binding) => binding.commandId === STANDALONE_DEMO_BOOKING_CONTEXTS_COMMAND_ID)), false, "anonymous host runtime bundle should not mount scoped demo booking adapters");
-assert.equal(anonymousHostRuntimeBundle.catalog.commands.some((command) => command.id === GENERATED_BOOKING_PING_COMMAND_ID), true, "anonymous host runtime bundle may expose public generated booking health commands");
+assert.equal(anonymousHostRuntimeBundle.catalog.commands.some((command) => command.id === GENERATED_BOOKING_PING_COMMAND_ID), false, "anonymous host runtime bundle should not expose generated booking runtime commands without trusted auth/org context");
 assert.equal(createStandaloneHostCommandIndex({
   sessionId: "s-anon",
   pageContext: { surface: "booking-console", commandFamilies: ["booking"], skillFamilies: ["booking-ops"] },
@@ -841,6 +841,7 @@ const generatedLiveBundle = createStandaloneHostCommandRuntimeBundle({
   sessionId: "s-generated-live",
   hostSessionMode: "standalone-demo",
   bookingServiceBaseUrl: "https://booking.test/root/",
+  bookingRuntimeAuth: { mode: "bearer", token: "generated-live-token", source: "test" },
   fetcher: async (url, init) => new Response(JSON.stringify({ service: "sonik-booking-service", ok: true, url: String(url), requestId: init?.headers?.["x-sonik-request-id"] }), { status: 200, headers: { "content-type": "application/json" } }),
   pageContext: { surface: "booking-console", commandFamilies: ["booking"], skillFamilies: ["booking-ops"] },
 }, "2026-06-20T00:00:00.000Z");
@@ -873,8 +874,8 @@ const generatedContextsReceipt = await executeHostCatalogCommand({
   runtimeAdapters: generatedLiveBundle.runtimeAdapters,
   execution: { ...generatedLiveBundle.executionContext, requestId: "req_generated_contexts" },
 });
-assert.equal(generatedContextsReceipt.ok, false, "protected generated booking reads need configured runtime auth credentials");
-assert.equal(generatedContextsReceipt.policy.reasons.includes("runtime_unavailable"), true);
+assert.equal(generatedContextsReceipt.ok, true, "credentialed generated booking reads execute through generated runtime bindings");
+assert.equal(generatedContextsReceipt.trace.provider, GENERATED_BOOKING_RUNTIME_PROVIDER);
 const generatedCookieOnlyBundle = createStandaloneHostCommandRuntimeBundle({
   sessionId: "s-generated-cookie-only",
   hostSessionMode: "standalone-demo",
