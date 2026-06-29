@@ -6,6 +6,9 @@ import {
   GENERATED_BOOKING_AVAILABILITY_COMMAND_ID,
   GENERATED_BOOKING_CREATE_HOLD_COMMAND_ID,
   GENERATED_BOOKING_DEMO_RUNTIME_PROVIDER,
+  GENERATED_BOOKING_LIST_CONTEXTS_COMMAND_ID,
+  GENERATED_BOOKING_PING_COMMAND_ID,
+  GENERATED_BOOKING_TEMPLATES_COMMAND_ID,
   GENERATED_BOOKING_GET_HOLD_COMMAND_ID,
   GENERATED_BOOKING_RELEASE_HOLD_COMMAND_ID,
   createStandaloneHostCommandIndex,
@@ -239,6 +242,33 @@ const signedHeaderBundle = createStandaloneHostCommandRuntimeBundle({
     return Response.json([{ startsAt: "2026-07-01T18:00:00.000Z", endsAt: "2026-07-01T18:30:00.000Z", capacityRemaining: 4 }]);
   },
 });
+const signedCommandIds = signedHeaderBundle.catalog.commands
+  .filter((command) => command.metadata?.runtimeAdapterProvider === GENERATED_BOOKING_DEMO_RUNTIME_PROVIDER)
+  .map((command) => command.id)
+  .sort();
+assert.deepEqual(signedCommandIds, [
+  GENERATED_BOOKING_AVAILABILITY_COMMAND_ID,
+  GENERATED_BOOKING_CREATE_HOLD_COMMAND_ID,
+  GENERATED_BOOKING_GET_HOLD_COMMAND_ID,
+  GENERATED_BOOKING_RELEASE_HOLD_COMMAND_ID,
+].sort(), "signed host-context catalog mounts exactly the four approved hold-demo commands");
+assert.equal(
+  signedHeaderBundle.runtimeAdapters.every((adapter) => adapter.provider === GENERATED_BOOKING_DEMO_RUNTIME_PROVIDER),
+  true,
+  "signed host-context runtime excludes the broad generated booking adapter",
+);
+for (const broadReadCommandId of [
+  GENERATED_BOOKING_PING_COMMAND_ID,
+  GENERATED_BOOKING_LIST_CONTEXTS_COMMAND_ID,
+  GENERATED_BOOKING_TEMPLATES_COMMAND_ID,
+]) {
+  assert.equal(
+    signedHeaderBundle.catalog.commands.some((command) => command.id === broadReadCommandId),
+    false,
+    `${broadReadCommandId} is not mounted for signed host-context execution`,
+  );
+}
+
 const signedHeaderReceipt = await executeHostCatalogCommand({
   catalog: signedHeaderBundle.catalog,
   runtimeAdapters: signedHeaderBundle.runtimeAdapters,

@@ -894,11 +894,21 @@ function canonicalCommandFamily(family: NonNullable<HostCommandAdapter["families
 }
 
 function resolveStandaloneHostCommandAdapters(input: StandaloneHostRuntimeInput): HostCommandAdapter[] {
-  return input.hostCommandAdapters ?? createStandaloneHostCommandAdapters();
+  if (input.hostCommandAdapters) return input.hostCommandAdapters;
+  const authContext = resolveBookingRuntimeAuthContext(input.bookingRuntimeAuth);
+  if (authContext.mode === "signed-host-context") {
+    return [createGeneratedBookingDemoReadHostAdapter(), createGeneratedBookingDemoWriteHostAdapter()];
+  }
+  return createStandaloneHostCommandAdapters();
 }
 
 function resolveStandaloneHostRuntimeAdapters(input: StandaloneHostRuntimeInput): HostCommandRuntimeAdapter[] {
-  return input.hostRuntimeAdapters ?? createStandaloneHostRuntimeAdapters(input);
+  if (input.hostRuntimeAdapters) return input.hostRuntimeAdapters;
+  const authContext = resolveBookingRuntimeAuthContext(input.bookingRuntimeAuth);
+  if (authContext.mode === "signed-host-context") {
+    return [createGeneratedBookingDemoRuntimeAdapter(input)];
+  }
+  return createStandaloneHostRuntimeAdapters(input);
 }
 
 function selectRuntimeAdaptersForCatalog(adapters: HostCommandRuntimeAdapter[], catalog: CommandCatalog): HostCommandRuntimeAdapter[] {
