@@ -34,11 +34,14 @@ const regeneratedFixture = {
 };
 
 assert.deepEqual(JSON.parse(JSON.stringify(regeneratedFixture)), checkedFixture, "checked Sonik booking command artifact fixture must be generator-derived and deterministic");
-assert.equal(operationCount, 71, "fixture represents the real branch OpenAPI operation count");
-assert.equal(checkedFixture.summary.commandCount, 71);
+assert.equal(operationCount, 72, "fixture represents the full copied OpenAPI operation count");
+assert.equal(checkedFixture.summary.commandCount, 72);
 assert.equal(checkedFixture.summary.familyCount, 12);
-assert.equal(checkedFixture.source.sourceRef, "emdash/major-schools-raise-3zsc2");
-assert.equal(checkedFixture.source.sourceSha256, "5baf5b0a9588fea0c0349ca3fe1f25342b29c342d0cb749607acfd913ae8060f");
+assert.equal(checkedFixture.source.sourceRef, "codex/booking-agent-ui-runtime-bridge");
+assert.equal(checkedFixture.source.sourceRevision, "f68e20b5f450ef86ab2f64d95a3fe93c7e88f0aa");
+assert.equal(checkedFixture.source.sourceSha256, "936f732d40a9dada43bc6986b9871e8e3c4ee538c4547c5199f66646b0951955");
+assert.equal(checkedFixture.source.sourceOperationCount, 72, "full copied OpenAPI source has 72 operations");
+assert.equal(checkedFixture.source.extractedOperationCount, 72, "generator fixture uses the full copied OpenAPI operation set");
 
 const catalog = checkedFixture.catalog;
 const registry = checkedFixture.registry;
@@ -63,7 +66,7 @@ const sourcePostureCounts = commands.reduce((counts, command) => {
   counts[command.metadata.sourceRuntimeStatus] = (counts[command.metadata.sourceRuntimeStatus] ?? 0) + 1;
   return counts;
 }, {});
-assert.deepEqual(sourcePostureCounts, { mounted: 50, shadow: 21 }, "generated commands preserve source service mounted/shadow posture separately from executable runtime status");
+assert.deepEqual(sourcePostureCounts, { mounted: 53, shadow: 19 }, "generated commands preserve source service mounted/shadow posture separately from executable runtime status");
 assert.equal(commands.some((command) => command.familyId === "booking-media"), true, "host config can inject product families outside core");
 assert.equal(registry.families.every((family) => family.source === "host"), true, "Sonik booking families are host-provided");
 
@@ -75,7 +78,8 @@ assert.equal(ping.auth.required, false, "public OpenAPI security remains public"
 assert.equal(ping.metadata.sourceRuntimeStatus, "mounted");
 assert.equal(ping.metadata.sourceRuntimeAdapter, "mounted");
 assert.equal(ping.metadata.sourceMounted, true);
-assert.equal(command("booking.search.customers").metadata.sourceRuntimeStatus, "shadow", "future customer contracts remain marked as source shadow");
+assert.equal(command("booking.search.guests").metadata.sourceRuntimeStatus, "mounted", "current guest search contract is mounted in the copied OpenAPI source");
+assert.equal(command("booking.get.customer").metadata.sourceRuntimeStatus, "shadow", "future customer detail contracts remain marked as source shadow");
 assert.equal(listTemplates.auth.required, false, "public template endpoints remain public");
 assert.equal(createBooking.auth.required, true, "Better Auth session operations require auth");
 assert.equal(createBooking.auth.orgScoped, true, "authenticated booking operations remain org-scoped");
@@ -96,7 +100,7 @@ const surfaceIndex = createSurfaceCommandIndex(catalog, {
   organizationId: "org_booking",
   scopes: [],
 }, { registry, limit: 100 });
-assert.equal(surfaceIndex.totalMatches, 71, "authenticated booking-admin surface can see the generated booking catalog");
+assert.equal(surfaceIndex.totalMatches, 72, "authenticated booking-admin surface can see the generated booking catalog");
 assert.equal(surfaceIndex.commands.every((entry) => !Object.hasOwn(entry, "input") && !Object.hasOwn(entry, "inputSchemaJson")), true, "surface command index remains schema-free");
 
 const learned = learnCommandDescriptor(catalog, "booking.create.booking", ["schema", "policy", "transport", "auth", "surfaces"]);

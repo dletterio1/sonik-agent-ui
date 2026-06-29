@@ -4,33 +4,38 @@
   "generatedAt": "2026-06-21T00:00:00.000Z",
   "summary": {
     "providerCount": 1,
-    "commandCount": 71,
+    "commandCount": 72,
     "familyCount": 12,
-    "toolCount": 71,
-    "cliProjectionCount": 71,
-    "mcpProjectionCount": 71
+    "toolCount": 72,
+    "cliProjectionCount": 72,
+    "mcpProjectionCount": 72
   },
   "providers": [
     {
       "provider": "sonik-booking-openapi-fixture",
-      "commandCount": 71,
+      "commandCount": 72,
       "familyCount": 12,
-      "toolCount": 71,
+      "toolCount": 72,
       "source": {
         "sourceRepo": "sonik-booking-service",
-        "sourceRef": "emdash/major-schools-raise-3zsc2",
+        "sourceRef": "codex/booking-agent-ui-runtime-bridge",
+        "sourceRevision": "f68e20b5f450ef86ab2f64d95a3fe93c7e88f0aa",
         "sourcePath": "packages/sonik-sdk/docs/booking-openapi.generated.json",
-        "sourceSha256": "5baf5b0a9588fea0c0349ca3fe1f25342b29c342d0cb749607acfd913ae8060f",
-        "sourceOperationCount": 71,
-        "extractedFor": "sonik-agent-ui command-generator fixture",
-        "note": "Operation metadata only; request/response schemas are intentionally replaced with refs because generator v0 only needs presence and path/method provenance."
+        "sourceSha256": "936f732d40a9dada43bc6986b9871e8e3c4ee538c4547c5199f66646b0951955",
+        "sourceOperationCount": 72,
+        "extractedOperationCount": 72,
+        "generatedBy": "packages/service/src/generated/booking-openapi.generated.ts",
+        "copiedAt": "2026-06-29T00:00:00.000Z",
+        "notes": [
+          "Direct copy of the full booking OpenAPI used as the authoritative command-generation source for Sonik Agent UI. The sibling copied booking SDK command registry is retained as upstream proof but may lag this OpenAPI; scripts/check-booking-command-copy-retrofit.mjs gates the known drift explicitly."
+        ]
       },
       "summary": {
-        "operationCount": 71,
-        "commandCount": 71,
+        "operationCount": 72,
+        "commandCount": 72,
         "familyCount": 12,
-        "cliProjectionCount": 71,
-        "mcpProjectionCount": 71
+        "cliProjectionCount": 72,
+        "mcpProjectionCount": 72
       }
     }
   ],
@@ -1280,7 +1285,7 @@
         "id": "booking.create.booking",
         "source": "openapi",
         "title": "Create a booking",
-        "description": "Creates a booking against a bookable context for a customer over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
+        "description": "Creates a booking against a bookable context for a persistent user/guest over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
         "effect": "write",
         "approval": "required",
         "uiTargets": [
@@ -1338,7 +1343,7 @@
           },
           "accessibility": {
             "label": "Create a booking",
-            "description": "Creates a booking against a bookable context for a customer over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
+            "description": "Creates a booking against a bookable context for a persistent user/guest over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
             "actionLabel": "Create a booking"
           },
           "searchTerms": [
@@ -1349,7 +1354,9 @@
             "against",
             "bookable",
             "context",
-            "customer",
+            "persistent",
+            "user",
+            "guest",
             "over",
             "time",
             "window",
@@ -1408,7 +1415,7 @@
         "id": "booking.list.bookings",
         "source": "openapi",
         "title": "List bookings",
-        "description": "Lists bookings in your organization, optionally filtered by context, customer, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
+        "description": "Lists bookings in your organization, optionally filtered by context, persistent user/guest, deprecated customer-context id, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
         "effect": "read",
         "approval": "none",
         "uiTargets": [
@@ -1466,7 +1473,7 @@
           },
           "accessibility": {
             "label": "List bookings",
-            "description": "Lists bookings in your organization, optionally filtered by context, customer, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
+            "description": "Lists bookings in your organization, optionally filtered by context, persistent user/guest, deprecated customer-context id, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
             "actionLabel": "List bookings"
           },
           "searchTerms": [
@@ -1480,7 +1487,12 @@
             "filtered",
             "by",
             "context",
-            "customer",
+            "persistent",
+            "user",
+            "guest",
+            "deprecated",
+            "customer-context",
+            "id",
             "status",
             "start-time",
             "date",
@@ -1998,7 +2010,7 @@
         "id": "booking.add.party.member",
         "source": "openapi",
         "title": "Add a party member to a booking",
-        "description": "Adds a generic party member to a booking. Provide a customerId for a known guest, or omit it for a walk-in/guest — a guest without a customer record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
+        "description": "Adds a generic party member to a booking. Provide a userId for a known guest, or omit it for a walk-in/guest — a guest without a user record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
         "effect": "write",
         "approval": "required",
         "uiTargets": [
@@ -2056,7 +2068,7 @@
           },
           "accessibility": {
             "label": "Add a party member to a booking",
-            "description": "Adds a generic party member to a booking. Provide a customerId for a known guest, or omit it for a walk-in/guest — a guest without a customer record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
+            "description": "Adds a generic party member to a booking. Provide a userId for a known guest, or omit it for a walk-in/guest — a guest without a user record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
             "actionLabel": "Add a party member to a booking"
           },
           "searchTerms": [
@@ -2069,7 +2081,7 @@
             "adds",
             "generic",
             "provide",
-            "customerid",
+            "userid",
             "known",
             "guest",
             "or",
@@ -2077,7 +2089,7 @@
             "it",
             "walk-in",
             "without",
-            "customer",
+            "user",
             "record",
             "is",
             "identified",
@@ -2088,6 +2100,7 @@
             "written",
             "as",
             "crm",
+            "customer",
             "profile",
             "data",
             "supplying",
@@ -2521,10 +2534,10 @@
         }
       },
       {
-        "id": "booking.search.customers",
+        "id": "booking.search.guests",
         "source": "openapi",
-        "title": "Search the organizer's customers (the keystone identity lookup)",
-        "description": "THE keystone customer lookup. Searches the organizer's customers by free-text q over name, email, and phone, returning a paginated, org-scoped list. This is the SAME primitive everywhere: the Sonik MCP uses it to resolve a member booking a tee time, and the admin console uses it to find a customer when adding a charge to a house tab. Org scope is derived from your Better Auth session (RLS) — it is never a parameter. With no q, returns your most recent customers. Shadow contract: no adapter is mounted yet.",
+        "title": "Search guests/users for a reservation",
+        "description": "Searches persistent auth/user records already claimed into the current organization by name/email for reservation creation. This is the booking holder identity lookup; it does not search or create org-scoped customer marketing rows.",
         "effect": "read",
         "approval": "none",
         "uiTargets": [
@@ -2532,15 +2545,16 @@
           "artifact"
         ],
         "capabilities": [
-          "booking-customers"
+          "booking",
+          "booking-guests"
         ],
         "input": {
           "kind": "openapi",
-          "ref": "GET /api/v1/booking/customers request"
+          "ref": "GET /api/v1/booking/guests request"
         },
         "output": {
           "kind": "openapi",
-          "ref": "GET /api/v1/booking/customers responses"
+          "ref": "GET /api/v1/booking/guests responses"
         },
         "auth": {
           "required": true,
@@ -2548,16 +2562,16 @@
           "orgScoped": true
         },
         "transport": {
-          "procedure": "bookingSearchCustomers",
+          "procedure": "bookingSearchGuests",
           "method": "GET",
-          "path": "/api/v1/booking/customers",
+          "path": "/api/v1/booking/guests",
           "runtimeStatus": "shadow"
         },
         "metadata": {
           "generated": true,
           "generatorProvider": "sonik-booking-openapi-fixture",
           "sourceAdapter": "openapi",
-          "familyId": "booking-customers",
+          "familyId": "booking",
           "loadPolicy": {
             "mode": "surface-eager",
             "priority": 20,
@@ -2575,91 +2589,62 @@
               "sonik-booking"
             ],
             "commandFamilies": [
-              "booking",
-              "booking-customers"
+              "booking"
             ],
             "requiredScopes": []
           },
           "accessibility": {
-            "label": "Search the organizer's customers (the keystone identity lookup)",
-            "description": "THE keystone customer lookup. Searches the organizer's customers by free-text q over name, email, and phone, returning a paginated, org-scoped list. This is the SAME primitive everywhere: the Sonik MCP uses it to resolve a member booking a tee time, and the admin console uses it to find a customer when adding a charge to a house tab. Org scope is derived from your Better Auth session (RLS) — it is never a parameter. With no q, returns your most recent customers. Shadow contract: no adapter is mounted yet.",
-            "actionLabel": "Search the organizer's customers (the keystone identity lookup)"
+            "label": "Search guests/users for a reservation",
+            "description": "Searches persistent auth/user records already claimed into the current organization by name/email for reservation creation. This is the booking holder identity lookup; it does not search or create org-scoped customer marketing rows.",
+            "actionLabel": "Search guests/users for a reservation"
           },
           "searchTerms": [
-            "booking-customers",
+            "booking",
+            "booking-guests",
             "search",
-            "organizer",
-            "customers",
-            "keystone",
-            "identity",
-            "lookup",
-            "customer",
+            "guests",
+            "users",
+            "reservation",
             "searches",
+            "persistent",
+            "auth",
+            "user",
+            "records",
+            "already",
+            "claimed",
+            "current",
+            "organization",
             "by",
-            "free-text",
-            "over",
             "name",
             "email",
-            "phone",
-            "returning",
-            "paginated",
-            "org-scoped",
-            "list",
+            "creation",
             "this",
             "is",
-            "same",
-            "primitive",
-            "everywhere:",
-            "sonik",
-            "mcp",
-            "uses",
+            "holder",
+            "identity",
+            "lookup",
             "it",
-            "to",
-            "resolve",
-            "member",
-            "booking",
-            "tee",
-            "time",
-            "admin",
-            "console",
-            "find",
-            "when",
-            "adding",
-            "charge",
-            "house",
-            "tab",
-            "org",
-            "scope",
-            "derived",
-            "your",
-            "better",
-            "auth",
-            "session",
-            "rls",
-            "never",
-            "parameter",
-            "no",
-            "returns",
-            "most",
-            "recent",
-            "shadow",
-            "contract:",
-            "adapter",
-            "mounted",
-            "yet"
+            "does",
+            "not",
+            "or",
+            "create",
+            "org-scoped",
+            "customer",
+            "marketing",
+            "rows"
           ],
           "examples": [],
-          "sourceOperationId": "bookingSearchCustomers",
-          "sourceRuntimeStatus": "shadow",
-          "sourceRuntimeAdapter": "not-mounted",
-          "sourceMounted": false
+          "sourceOperationId": "bookingSearchGuests",
+          "sourceRuntimeStatus": "mounted",
+          "sourceRuntimeAdapter": "mounted",
+          "sourceMounted": true
         }
       },
       {
-        "id": "booking.create.customer",
+        "id": "booking.create.guest",
         "source": "openapi",
-        "title": "Create a customer",
-        "description": "Creates a customer for your organization. name and phone are required (the spine `phone_number` column is NOT NULL); email is optional. organizationId is NOT accepted — it is derived from your session. This writes a CUSTOMER record only; it never creates or mutates a user (organizers edit customers, never users). No uniqueness is enforced on phone/email, so creating a second customer with the same contact succeeds (dedup is a tooling concern, not a constraint) — there is no 409. A person with no phone cannot be a customer; capture them as a booking_party on the booking instead. Shadow contract: no adapter is mounted yet.",
+        "title": "Create or return a guest/user",
+        "description": "Creates a persistent auth/user record for a reservation holder, or returns the existing user for the submitted email, then claims that user into the current organization. This writes booking identity, not customer CRM context.",
         "effect": "write",
         "approval": "required",
         "uiTargets": [
@@ -2667,15 +2652,16 @@
           "artifact"
         ],
         "capabilities": [
-          "booking-customers"
+          "booking",
+          "booking-guests"
         ],
         "input": {
           "kind": "openapi",
-          "ref": "POST /api/v1/booking/customers request"
+          "ref": "POST /api/v1/booking/guests request"
         },
         "output": {
           "kind": "openapi",
-          "ref": "POST /api/v1/booking/customers responses"
+          "ref": "POST /api/v1/booking/guests responses"
         },
         "auth": {
           "required": true,
@@ -2683,16 +2669,16 @@
           "orgScoped": true
         },
         "transport": {
-          "procedure": "bookingCreateCustomer",
+          "procedure": "bookingCreateGuest",
           "method": "POST",
-          "path": "/api/v1/booking/customers",
+          "path": "/api/v1/booking/guests",
           "runtimeStatus": "shadow"
         },
         "metadata": {
           "generated": true,
           "generatorProvider": "sonik-booking-openapi-fixture",
           "sourceAdapter": "openapi",
-          "familyId": "booking-customers",
+          "familyId": "booking",
           "loadPolicy": {
             "mode": "surface-eager",
             "priority": 20,
@@ -2710,95 +2696,58 @@
               "sonik-booking"
             ],
             "commandFamilies": [
-              "booking",
-              "booking-customers"
+              "booking"
             ],
             "requiredScopes": []
           },
           "accessibility": {
-            "label": "Create a customer",
-            "description": "Creates a customer for your organization. name and phone are required (the spine `phone_number` column is NOT NULL); email is optional. organizationId is NOT accepted — it is derived from your session. This writes a CUSTOMER record only; it never creates or mutates a user (organizers edit customers, never users). No uniqueness is enforced on phone/email, so creating a second customer with the same contact succeeds (dedup is a tooling concern, not a constraint) — there is no 409. A person with no phone cannot be a customer; capture them as a booking_party on the booking instead. Shadow contract: no adapter is mounted yet.",
-            "actionLabel": "Create a customer"
+            "label": "Create or return a guest/user",
+            "description": "Creates a persistent auth/user record for a reservation holder, or returns the existing user for the submitted email, then claims that user into the current organization. This writes booking identity, not customer CRM context.",
+            "actionLabel": "Create or return a guest/user"
           },
           "searchTerms": [
-            "booking-customers",
+            "booking",
+            "booking-guests",
             "create",
-            "customer",
+            "or",
+            "return",
+            "guest",
+            "user",
             "creates",
-            "your",
-            "organization",
-            "name",
-            "phone",
-            "are",
-            "required",
-            "spine",
-            "phone_number",
-            "column",
-            "is",
-            "not",
-            "null",
+            "persistent",
+            "auth",
+            "record",
+            "reservation",
+            "holder",
+            "returns",
+            "existing",
+            "submitted",
             "email",
-            "optional",
-            "organizationid",
-            "accepted",
-            "it",
-            "derived",
-            "session",
+            "then",
+            "claims",
+            "that",
+            "current",
+            "organization",
             "this",
             "writes",
-            "record",
-            "only",
-            "never",
-            "or",
-            "mutates",
-            "user",
-            "organizers",
-            "edit",
-            "customers",
-            "users",
-            "no",
-            "uniqueness",
-            "enforced",
-            "on",
-            "so",
-            "creating",
-            "second",
-            "same",
-            "contact",
-            "succeeds",
-            "dedup",
-            "tooling",
-            "concern",
-            "constraint",
-            "there",
-            "409",
-            "person",
-            "cannot",
-            "be",
-            "capture",
-            "them",
-            "as",
-            "booking_party",
-            "booking",
-            "instead",
-            "shadow",
-            "contract:",
-            "adapter",
-            "mounted",
-            "yet"
+            "identity",
+            "not",
+            "customer",
+            "crm",
+            "context"
           ],
           "examples": [],
-          "sourceOperationId": "bookingCreateCustomer",
-          "sourceRuntimeStatus": "shadow",
-          "sourceRuntimeAdapter": "not-mounted",
-          "sourceMounted": false
+          "sourceOperationId": "bookingCreateGuest",
+          "sourceRuntimeStatus": "mounted",
+          "sourceRuntimeAdapter": "mounted",
+          "sourceMounted": true
         }
       },
       {
         "id": "booking.get.customer",
         "source": "openapi",
-        "title": "Get one customer by id",
-        "description": "Returns a single org-scoped customer by id. 404 if the customer does not exist within your organization (org scope is session-derived; cross-org ids resolve as not-found, never as a leak). Shadow contract: no adapter is mounted yet.",
+        "title": "Get one customer context by id",
+        "description": "Shadow CRM/customer context route. Customer rows are optional per-organization marketing/import records, not the reservation holder identity.",
         "effect": "read",
         "approval": "none",
         "uiTargets": [
@@ -2855,45 +2804,32 @@
             "requiredScopes": []
           },
           "accessibility": {
-            "label": "Get one customer by id",
-            "description": "Returns a single org-scoped customer by id. 404 if the customer does not exist within your organization (org scope is session-derived; cross-org ids resolve as not-found, never as a leak). Shadow contract: no adapter is mounted yet.",
-            "actionLabel": "Get one customer by id"
+            "label": "Get one customer context by id",
+            "description": "Shadow CRM/customer context route. Customer rows are optional per-organization marketing/import records, not the reservation holder identity.",
+            "actionLabel": "Get one customer context by id"
           },
           "searchTerms": [
             "booking-customers",
             "get",
             "one",
             "customer",
+            "context",
             "by",
             "id",
-            "returns",
-            "single",
-            "org-scoped",
-            "404",
-            "if",
-            "does",
-            "not",
-            "exist",
-            "within",
-            "your",
-            "organization",
-            "org",
-            "scope",
-            "is",
-            "session-derived",
-            "cross-org",
-            "ids",
-            "resolve",
-            "as",
-            "not-found",
-            "never",
-            "leak",
             "shadow",
-            "contract:",
-            "no",
-            "adapter",
-            "mounted",
-            "yet"
+            "crm",
+            "route",
+            "rows",
+            "are",
+            "optional",
+            "per-organization",
+            "marketing",
+            "import",
+            "records",
+            "not",
+            "reservation",
+            "holder",
+            "identity"
           ],
           "examples": [],
           "sourceOperationId": "bookingGetCustomer",
@@ -2905,8 +2841,8 @@
       {
         "id": "booking.update.customer",
         "source": "openapi",
-        "title": "Update a customer's contact fields",
-        "description": "Updates the contact fields (name, phone, email) on one of your customers. Send only the fields you want to change. phone, if supplied, must stay non-empty — the spine column is NOT NULL and cannot be cleared; email may be set to null to clear it. This edits the CUSTOMER row only — it never mutates a user (organizers edit customers, never users). 404 if the customer is not in your organization. Shadow contract: no adapter is mounted yet.",
+        "title": "Update a customer context",
+        "description": "Shadow CRM/customer context update. Does not mutate auth/user identity.",
         "effect": "write",
         "approval": "required",
         "uiTargets": [
@@ -2963,66 +2899,23 @@
             "requiredScopes": []
           },
           "accessibility": {
-            "label": "Update a customer's contact fields",
-            "description": "Updates the contact fields (name, phone, email) on one of your customers. Send only the fields you want to change. phone, if supplied, must stay non-empty — the spine column is NOT NULL and cannot be cleared; email may be set to null to clear it. This edits the CUSTOMER row only — it never mutates a user (organizers edit customers, never users). 404 if the customer is not in your organization. Shadow contract: no adapter is mounted yet.",
-            "actionLabel": "Update a customer's contact fields"
+            "label": "Update a customer context",
+            "description": "Shadow CRM/customer context update. Does not mutate auth/user identity.",
+            "actionLabel": "Update a customer context"
           },
           "searchTerms": [
             "booking-customers",
             "update",
             "customer",
-            "contact",
-            "fields",
-            "updates",
-            "name",
-            "phone",
-            "email",
-            "on",
-            "one",
-            "of",
-            "your",
-            "customers",
-            "send",
-            "only",
-            "you",
-            "want",
-            "to",
-            "change",
-            "if",
-            "supplied",
-            "must",
-            "stay",
-            "non-empty",
-            "spine",
-            "column",
-            "is",
-            "not",
-            "null",
-            "cannot",
-            "be",
-            "cleared",
-            "may",
-            "set",
-            "clear",
-            "it",
-            "this",
-            "edits",
-            "row",
-            "never",
-            "mutates",
-            "user",
-            "organizers",
-            "edit",
-            "users",
-            "404",
-            "in",
-            "organization",
+            "context",
             "shadow",
-            "contract:",
-            "no",
-            "adapter",
-            "mounted",
-            "yet"
+            "crm",
+            "does",
+            "not",
+            "mutate",
+            "auth",
+            "user",
+            "identity"
           ],
           "examples": [],
           "sourceOperationId": "bookingUpdateCustomer",
@@ -6028,7 +5921,7 @@
         "id": "booking.commit.hold",
         "source": "openapi",
         "title": "Commit a booking hold",
-        "description": "Atomically converts an active unexpired hold into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
+        "description": "Atomically converts an active unexpired hold with a claimed guest/user identity into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
         "effect": "write",
         "approval": "required",
         "uiTargets": [
@@ -6086,7 +5979,7 @@
           },
           "accessibility": {
             "label": "Commit a booking hold",
-            "description": "Atomically converts an active unexpired hold into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
+            "description": "Atomically converts an active unexpired hold with a claimed guest/user identity into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
             "actionLabel": "Commit a booking hold"
           },
           "searchTerms": [
@@ -6099,6 +5992,10 @@
             "an",
             "active",
             "unexpired",
+            "claimed",
+            "guest",
+            "user",
+            "identity",
             "durable",
             "copies",
             "constrained",
@@ -6927,7 +6824,7 @@
         "id": "booking.list.media.assets",
         "source": "openapi",
         "title": "List booking media assets",
-        "description": "Lists private R2-backed media assets for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
+        "description": "Lists durable booking.media_asset catalog rows for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
         "effect": "read",
         "approval": "none",
         "uiTargets": [
@@ -6985,7 +6882,7 @@
           },
           "accessibility": {
             "label": "List booking media assets",
-            "description": "Lists private R2-backed media assets for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
+            "description": "Lists durable booking.media_asset catalog rows for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
             "actionLabel": "List booking media assets"
           },
           "searchTerms": [
@@ -6995,8 +6892,10 @@
             "media",
             "assets",
             "lists",
-            "private",
-            "r2-backed",
+            "durable",
+            "media_asset",
+            "catalog",
+            "rows",
             "caller",
             "organization",
             "optionally",
@@ -7026,7 +6925,7 @@
         "id": "booking.upload.media.asset",
         "source": "openapi",
         "title": "Upload booking media asset",
-        "description": "Uploads a private context-scoped media asset into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
+        "description": "Creates a durable booking.media_asset catalog row and uploads private context-scoped bytes into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
         "effect": "write",
         "approval": "required",
         "uiTargets": [
@@ -7084,7 +6983,7 @@
           },
           "accessibility": {
             "label": "Upload booking media asset",
-            "description": "Uploads a private context-scoped media asset into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
+            "description": "Creates a durable booking.media_asset catalog row and uploads private context-scoped bytes into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
             "actionLabel": "Upload booking media asset"
           },
           "searchTerms": [
@@ -7093,9 +6992,15 @@
             "booking",
             "media",
             "asset",
+            "creates",
+            "durable",
+            "media_asset",
+            "catalog",
+            "row",
             "uploads",
             "private",
             "context-scoped",
+            "bytes",
             "booking_media_bucket",
             "mounted",
             "endpoint",
@@ -7128,7 +7033,7 @@
         "id": "booking.get.media.asset",
         "source": "openapi",
         "title": "Read booking media asset",
-        "description": "Streams a private media asset for the caller organization. Passing metadata=true returns the same JSON asset summary used by list/upload, which keeps Scalar and SDK verification JSON-safe while the default route streams bytes.",
+        "description": "Returns durable JSON metadata for a private media asset after catalog org/context ownership checks. The mounted authenticated REST href can stream bytes when called directly without metadata=true; generated clients use this JSON-safe metadata operation.",
         "effect": "read",
         "approval": "none",
         "uiTargets": [
@@ -7186,7 +7091,7 @@
           },
           "accessibility": {
             "label": "Read booking media asset",
-            "description": "Streams a private media asset for the caller organization. Passing metadata=true returns the same JSON asset summary used by list/upload, which keeps Scalar and SDK verification JSON-safe while the default route streams bytes.",
+            "description": "Returns durable JSON metadata for a private media asset after catalog org/context ownership checks. The mounted authenticated REST href can stream bytes when called directly without metadata=true; generated clients use this JSON-safe metadata operation.",
             "actionLabel": "Read booking media asset"
           },
           "searchTerms": [
@@ -7195,31 +7100,35 @@
             "booking",
             "media",
             "asset",
-            "streams",
-            "private",
-            "caller",
-            "organization",
-            "passing",
-            "metadata",
-            "true",
             "returns",
-            "same",
+            "durable",
             "json",
-            "summary",
-            "used",
-            "by",
-            "list",
-            "upload",
-            "which",
-            "keeps",
-            "scalar",
-            "sdk",
-            "verification",
+            "metadata",
+            "private",
+            "after",
+            "catalog",
+            "org",
+            "context",
+            "ownership",
+            "checks",
+            "mounted",
+            "authenticated",
+            "rest",
+            "href",
+            "can",
+            "stream",
+            "bytes",
+            "when",
+            "called",
+            "directly",
+            "without",
+            "true",
+            "generated",
+            "clients",
+            "use",
+            "this",
             "json-safe",
-            "while",
-            "default",
-            "route",
-            "bytes"
+            "operation"
           ],
           "examples": [],
           "sourceOperationId": "bookingGetMediaAsset",
@@ -7232,7 +7141,7 @@
         "id": "booking.delete.media.asset",
         "source": "openapi",
         "title": "Delete booking media asset",
-        "description": "Deletes a private R2-backed media asset after verifying the asset id belongs to the caller organization prefix.",
+        "description": "Soft-deletes the durable booking.media_asset catalog row and deletes the private R2 object after verifying the asset belongs to the caller organization.",
         "effect": "destructive",
         "approval": "required",
         "uiTargets": [
@@ -7290,7 +7199,7 @@
           },
           "accessibility": {
             "label": "Delete booking media asset",
-            "description": "Deletes a private R2-backed media asset after verifying the asset id belongs to the caller organization prefix.",
+            "description": "Soft-deletes the durable booking.media_asset catalog row and deletes the private R2 object after verifying the asset belongs to the caller organization.",
             "actionLabel": "Delete booking media asset"
           },
           "searchTerms": [
@@ -7299,20 +7208,128 @@
             "booking",
             "media",
             "asset",
+            "soft-deletes",
+            "durable",
+            "media_asset",
+            "catalog",
+            "row",
             "deletes",
             "private",
-            "r2-backed",
+            "r2",
+            "object",
             "after",
             "verifying",
-            "id",
             "belongs",
             "to",
             "caller",
-            "organization",
-            "prefix"
+            "organization"
           ],
           "examples": [],
           "sourceOperationId": "bookingDeleteMediaAsset",
+          "sourceRuntimeStatus": "mounted",
+          "sourceRuntimeAdapter": "mounted",
+          "sourceMounted": true
+        }
+      },
+      {
+        "id": "booking.get.media.asset.variant",
+        "source": "openapi",
+        "title": "Read booking media image variant",
+        "description": "Streams an authenticated, org-scoped Cloudflare Images variant for an image asset stored privately in BOOKING_MEDIA_BUCKET. The catalog row and session are checked before the Worker reads R2 bytes or returns a cached variant.",
+        "effect": "read",
+        "approval": "none",
+        "uiTargets": [
+          "chat",
+          "artifact"
+        ],
+        "capabilities": [
+          "booking-media"
+        ],
+        "input": {
+          "kind": "openapi",
+          "ref": "GET /api/v1/booking/media/assets/{assetId}/variants/{variant} request"
+        },
+        "output": {
+          "kind": "openapi",
+          "ref": "GET /api/v1/booking/media/assets/{assetId}/variants/{variant} responses"
+        },
+        "auth": {
+          "required": true,
+          "scopes": [],
+          "orgScoped": true
+        },
+        "transport": {
+          "procedure": "bookingGetMediaAssetVariant",
+          "method": "GET",
+          "path": "/api/v1/booking/media/assets/{assetId}/variants/{variant}",
+          "runtimeStatus": "shadow"
+        },
+        "metadata": {
+          "generated": true,
+          "generatorProvider": "sonik-booking-openapi-fixture",
+          "sourceAdapter": "openapi",
+          "familyId": "booking-media",
+          "loadPolicy": {
+            "mode": "surface-eager",
+            "priority": 20,
+            "profile": "sonik-booking-openapi"
+          },
+          "contextHints": {
+            "routes": [],
+            "surfaces": [
+              "booking-admin",
+              "agent-ui"
+            ],
+            "pageTypes": [],
+            "artifactTypes": [],
+            "skillFamilies": [
+              "sonik-booking"
+            ],
+            "commandFamilies": [
+              "booking",
+              "booking-media"
+            ],
+            "requiredScopes": []
+          },
+          "accessibility": {
+            "label": "Read booking media image variant",
+            "description": "Streams an authenticated, org-scoped Cloudflare Images variant for an image asset stored privately in BOOKING_MEDIA_BUCKET. The catalog row and session are checked before the Worker reads R2 bytes or returns a cached variant.",
+            "actionLabel": "Read booking media image variant"
+          },
+          "searchTerms": [
+            "booking-media",
+            "read",
+            "booking",
+            "media",
+            "image",
+            "variant",
+            "streams",
+            "an",
+            "authenticated",
+            "org-scoped",
+            "cloudflare",
+            "images",
+            "asset",
+            "stored",
+            "privately",
+            "in",
+            "booking_media_bucket",
+            "catalog",
+            "row",
+            "session",
+            "are",
+            "checked",
+            "before",
+            "worker",
+            "reads",
+            "r2",
+            "bytes",
+            "or",
+            "returns",
+            "cached"
+          ],
+          "examples": [],
+          "sourceOperationId": "bookingGetMediaAssetVariant",
           "sourceRuntimeStatus": "mounted",
           "sourceRuntimeAdapter": "mounted",
           "sourceMounted": true
@@ -9619,7 +9636,7 @@
       {
         "id": "booking.create.booking",
         "title": "Create a booking",
-        "description": "Creates a booking against a bookable context for a customer over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
+        "description": "Creates a booking against a bookable context for a persistent user/guest over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
         "familyId": "bookings",
         "source": "openapi",
         "effect": "write",
@@ -9657,7 +9674,9 @@
           "against",
           "bookable",
           "context",
-          "customer",
+          "persistent",
+          "user",
+          "guest",
           "over",
           "time",
           "window",
@@ -9712,7 +9731,7 @@
           "ref": "POST /api/v1/booking/bookings request"
         },
         "output": {
-          "summary": "Creates a booking against a bookable context for a customer over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
+          "summary": "Creates a booking against a bookable context for a persistent user/guest over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
           "schema": {
             "kind": "openapi",
             "ref": "POST /api/v1/booking/bookings responses"
@@ -9781,7 +9800,7 @@
           },
           "accessibility": {
             "label": "Create a booking",
-            "description": "Creates a booking against a bookable context for a customer over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
+            "description": "Creates a booking against a bookable context for a persistent user/guest over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
             "actionLabel": "Create a booking"
           },
           "searchTerms": [
@@ -9792,7 +9811,9 @@
             "against",
             "bookable",
             "context",
-            "customer",
+            "persistent",
+            "user",
+            "guest",
             "over",
             "time",
             "window",
@@ -9850,7 +9871,7 @@
       {
         "id": "booking.list.bookings",
         "title": "List bookings",
-        "description": "Lists bookings in your organization, optionally filtered by context, customer, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
+        "description": "Lists bookings in your organization, optionally filtered by context, persistent user/guest, deprecated customer-context id, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
         "familyId": "bookings",
         "source": "openapi",
         "effect": "read",
@@ -9893,7 +9914,12 @@
           "filtered",
           "by",
           "context",
-          "customer",
+          "persistent",
+          "user",
+          "guest",
+          "deprecated",
+          "customer-context",
+          "id",
           "status",
           "start-time",
           "date",
@@ -9914,7 +9940,7 @@
           "ref": "GET /api/v1/booking/bookings request"
         },
         "output": {
-          "summary": "Lists bookings in your organization, optionally filtered by context, customer, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
+          "summary": "Lists bookings in your organization, optionally filtered by context, persistent user/guest, deprecated customer-context id, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
           "schema": {
             "kind": "openapi",
             "ref": "GET /api/v1/booking/bookings responses"
@@ -9983,7 +10009,7 @@
           },
           "accessibility": {
             "label": "List bookings",
-            "description": "Lists bookings in your organization, optionally filtered by context, customer, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
+            "description": "Lists bookings in your organization, optionally filtered by context, persistent user/guest, deprecated customer-context id, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
             "actionLabel": "List bookings"
           },
           "searchTerms": [
@@ -9997,7 +10023,12 @@
             "filtered",
             "by",
             "context",
-            "customer",
+            "persistent",
+            "user",
+            "guest",
+            "deprecated",
+            "customer-context",
+            "id",
             "status",
             "start-time",
             "date",
@@ -10881,7 +10912,7 @@
       {
         "id": "booking.add.party.member",
         "title": "Add a party member to a booking",
-        "description": "Adds a generic party member to a booking. Provide a customerId for a known guest, or omit it for a walk-in/guest — a guest without a customer record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
+        "description": "Adds a generic party member to a booking. Provide a userId for a known guest, or omit it for a walk-in/guest — a guest without a user record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
         "familyId": "bookings",
         "source": "openapi",
         "effect": "write",
@@ -10921,7 +10952,7 @@
           "adds",
           "generic",
           "provide",
-          "customerid",
+          "userid",
           "known",
           "guest",
           "or",
@@ -10929,7 +10960,7 @@
           "it",
           "walk-in",
           "without",
-          "customer",
+          "user",
           "record",
           "is",
           "identified",
@@ -10940,6 +10971,7 @@
           "written",
           "as",
           "crm",
+          "customer",
           "profile",
           "data",
           "supplying",
@@ -10964,7 +10996,7 @@
           "ref": "POST /api/v1/booking/bookings/{bookingId}/party request"
         },
         "output": {
-          "summary": "Adds a generic party member to a booking. Provide a customerId for a known guest, or omit it for a walk-in/guest — a guest without a customer record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
+          "summary": "Adds a generic party member to a booking. Provide a userId for a known guest, or omit it for a walk-in/guest — a guest without a user record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
           "schema": {
             "kind": "openapi",
             "ref": "POST /api/v1/booking/bookings/{bookingId}/party responses"
@@ -11033,7 +11065,7 @@
           },
           "accessibility": {
             "label": "Add a party member to a booking",
-            "description": "Adds a generic party member to a booking. Provide a customerId for a known guest, or omit it for a walk-in/guest — a guest without a customer record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
+            "description": "Adds a generic party member to a booking. Provide a userId for a known guest, or omit it for a walk-in/guest — a guest without a user record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
             "actionLabel": "Add a party member to a booking"
           },
           "searchTerms": [
@@ -11046,7 +11078,7 @@
             "adds",
             "generic",
             "provide",
-            "customerid",
+            "userid",
             "known",
             "guest",
             "or",
@@ -11054,7 +11086,7 @@
             "it",
             "walk-in",
             "without",
-            "customer",
+            "user",
             "record",
             "is",
             "identified",
@@ -11065,6 +11097,7 @@
             "written",
             "as",
             "crm",
+            "customer",
             "profile",
             "data",
             "supplying",
@@ -11806,10 +11839,10 @@
         }
       },
       {
-        "id": "booking.search.customers",
-        "title": "Search the organizer's customers (the keystone identity lookup)",
-        "description": "THE keystone customer lookup. Searches the organizer's customers by free-text q over name, email, and phone, returning a paginated, org-scoped list. This is the SAME primitive everywhere: the Sonik MCP uses it to resolve a member booking a tee time, and the admin console uses it to find a customer when adding a charge to a house tab. Org scope is derived from your Better Auth session (RLS) — it is never a parameter. With no q, returns your most recent customers. Shadow contract: no adapter is mounted yet.",
-        "familyId": "booking-customers",
+        "id": "booking.search.guests",
+        "title": "Search guests/users for a reservation",
+        "description": "Searches persistent auth/user records already claimed into the current organization by name/email for reservation creation. This is the booking holder identity lookup; it does not search or create org-scoped customer marketing rows.",
+        "familyId": "booking",
         "source": "openapi",
         "effect": "read",
         "approval": "none",
@@ -11831,87 +11864,59 @@
             "sonik-booking"
           ],
           "commandFamilies": [
-            "booking",
-            "booking-customers"
+            "booking"
           ],
           "requiredScopes": []
         },
         "capabilities": [
-          "booking-customers"
+          "booking",
+          "booking-guests"
         ],
         "searchTerms": [
           "booking",
           "search",
-          "customers",
-          "organizer",
-          "keystone",
-          "identity",
-          "lookup",
-          "customer",
+          "guests",
+          "users",
+          "reservation",
           "searches",
+          "persistent",
+          "auth",
+          "user",
+          "records",
+          "already",
+          "claimed",
+          "current",
+          "organization",
           "by",
-          "free-text",
-          "over",
           "name",
           "email",
-          "phone",
-          "returning",
-          "paginated",
-          "org-scoped",
-          "list",
+          "creation",
           "this",
           "is",
-          "same",
-          "primitive",
-          "everywhere:",
-          "sonik",
-          "mcp",
-          "uses",
+          "holder",
+          "identity",
+          "lookup",
           "it",
-          "to",
-          "resolve",
-          "member",
-          "tee",
-          "time",
-          "admin",
-          "console",
-          "find",
-          "when",
-          "adding",
-          "charge",
-          "house",
-          "tab",
-          "org",
-          "scope",
-          "derived",
-          "your",
-          "better",
-          "auth",
-          "session",
-          "rls",
-          "never",
-          "parameter",
-          "no",
-          "returns",
-          "most",
-          "recent",
-          "shadow",
-          "contract:",
-          "adapter",
-          "mounted",
-          "yet",
-          "booking-customers"
+          "does",
+          "not",
+          "or",
+          "create",
+          "org-scoped",
+          "customer",
+          "marketing",
+          "rows",
+          "booking-guests"
         ],
         "examples": [],
         "input": {
           "kind": "openapi",
-          "ref": "GET /api/v1/booking/customers request"
+          "ref": "GET /api/v1/booking/guests request"
         },
         "output": {
-          "summary": "THE keystone customer lookup. Searches the organizer's customers by free-text q over name, email, and phone, returning a paginated, org-scoped list. This is the SAME primitive everywhere: the Sonik MCP uses it to resolve a member booking a tee time, and the admin console uses it to find a customer when adding a charge to a house tab. Org scope is derived from your Better Auth session (RLS) — it is never a parameter. With no q, returns your most recent customers. Shadow contract: no adapter is mounted yet.",
+          "summary": "Searches persistent auth/user records already claimed into the current organization by name/email for reservation creation. This is the booking holder identity lookup; it does not search or create org-scoped customer marketing rows.",
           "schema": {
             "kind": "openapi",
-            "ref": "GET /api/v1/booking/customers responses"
+            "ref": "GET /api/v1/booking/guests responses"
           },
           "resources": []
         },
@@ -11926,7 +11931,8 @@
             "read",
             "none",
             "shadow",
-            "booking-customers"
+            "booking",
+            "booking-guests"
           ],
           "hostProfiles": [
             "local",
@@ -11935,9 +11941,9 @@
           "readOnly": true
         },
         "transport": {
-          "procedure": "bookingSearchCustomers",
+          "procedure": "bookingSearchGuests",
           "method": "GET",
-          "path": "/api/v1/booking/customers",
+          "path": "/api/v1/booking/guests",
           "runtimeStatus": "shadow"
         },
         "surfaces": [
@@ -11952,7 +11958,7 @@
           "generated": true,
           "generatorProvider": "sonik-booking-openapi-fixture",
           "sourceAdapter": "openapi",
-          "familyId": "booking-customers",
+          "familyId": "booking",
           "loadPolicy": {
             "mode": "surface-eager",
             "priority": 20,
@@ -11970,91 +11976,62 @@
               "sonik-booking"
             ],
             "commandFamilies": [
-              "booking",
-              "booking-customers"
+              "booking"
             ],
             "requiredScopes": []
           },
           "accessibility": {
-            "label": "Search the organizer's customers (the keystone identity lookup)",
-            "description": "THE keystone customer lookup. Searches the organizer's customers by free-text q over name, email, and phone, returning a paginated, org-scoped list. This is the SAME primitive everywhere: the Sonik MCP uses it to resolve a member booking a tee time, and the admin console uses it to find a customer when adding a charge to a house tab. Org scope is derived from your Better Auth session (RLS) — it is never a parameter. With no q, returns your most recent customers. Shadow contract: no adapter is mounted yet.",
-            "actionLabel": "Search the organizer's customers (the keystone identity lookup)"
+            "label": "Search guests/users for a reservation",
+            "description": "Searches persistent auth/user records already claimed into the current organization by name/email for reservation creation. This is the booking holder identity lookup; it does not search or create org-scoped customer marketing rows.",
+            "actionLabel": "Search guests/users for a reservation"
           },
           "searchTerms": [
-            "booking-customers",
+            "booking",
+            "booking-guests",
             "search",
-            "organizer",
-            "customers",
-            "keystone",
-            "identity",
-            "lookup",
-            "customer",
+            "guests",
+            "users",
+            "reservation",
             "searches",
+            "persistent",
+            "auth",
+            "user",
+            "records",
+            "already",
+            "claimed",
+            "current",
+            "organization",
             "by",
-            "free-text",
-            "over",
             "name",
             "email",
-            "phone",
-            "returning",
-            "paginated",
-            "org-scoped",
-            "list",
+            "creation",
             "this",
             "is",
-            "same",
-            "primitive",
-            "everywhere:",
-            "sonik",
-            "mcp",
-            "uses",
+            "holder",
+            "identity",
+            "lookup",
             "it",
-            "to",
-            "resolve",
-            "member",
-            "booking",
-            "tee",
-            "time",
-            "admin",
-            "console",
-            "find",
-            "when",
-            "adding",
-            "charge",
-            "house",
-            "tab",
-            "org",
-            "scope",
-            "derived",
-            "your",
-            "better",
-            "auth",
-            "session",
-            "rls",
-            "never",
-            "parameter",
-            "no",
-            "returns",
-            "most",
-            "recent",
-            "shadow",
-            "contract:",
-            "adapter",
-            "mounted",
-            "yet"
+            "does",
+            "not",
+            "or",
+            "create",
+            "org-scoped",
+            "customer",
+            "marketing",
+            "rows"
           ],
           "examples": [],
-          "sourceOperationId": "bookingSearchCustomers",
-          "sourceRuntimeStatus": "shadow",
-          "sourceRuntimeAdapter": "not-mounted",
-          "sourceMounted": false
+          "sourceOperationId": "bookingSearchGuests",
+          "sourceRuntimeStatus": "mounted",
+          "sourceRuntimeAdapter": "mounted",
+          "sourceMounted": true
         }
       },
       {
-        "id": "booking.create.customer",
-        "title": "Create a customer",
-        "description": "Creates a customer for your organization. name and phone are required (the spine `phone_number` column is NOT NULL); email is optional. organizationId is NOT accepted — it is derived from your session. This writes a CUSTOMER record only; it never creates or mutates a user (organizers edit customers, never users). No uniqueness is enforced on phone/email, so creating a second customer with the same contact succeeds (dedup is a tooling concern, not a constraint) — there is no 409. A person with no phone cannot be a customer; capture them as a booking_party on the booking instead. Shadow contract: no adapter is mounted yet.",
-        "familyId": "booking-customers",
+        "id": "booking.create.guest",
+        "title": "Create or return a guest/user",
+        "description": "Creates a persistent auth/user record for a reservation holder, or returns the existing user for the submitted email, then claims that user into the current organization. This writes booking identity, not customer CRM context.",
+        "familyId": "booking",
         "source": "openapi",
         "effect": "write",
         "approval": "required",
@@ -12076,91 +12053,55 @@
             "sonik-booking"
           ],
           "commandFamilies": [
-            "booking",
-            "booking-customers"
+            "booking"
           ],
           "requiredScopes": []
         },
         "capabilities": [
-          "booking-customers"
+          "booking",
+          "booking-guests"
         ],
         "searchTerms": [
           "booking",
           "create",
-          "customer",
+          "guest",
+          "or",
+          "return",
+          "user",
           "creates",
-          "your",
-          "organization",
-          "name",
-          "phone",
-          "are",
-          "required",
-          "spine",
-          "phone_number",
-          "column",
-          "is",
-          "not",
-          "null",
+          "persistent",
+          "auth",
+          "record",
+          "reservation",
+          "holder",
+          "returns",
+          "existing",
+          "submitted",
           "email",
-          "optional",
-          "organizationid",
-          "accepted",
-          "it",
-          "derived",
-          "session",
+          "then",
+          "claims",
+          "that",
+          "current",
+          "organization",
           "this",
           "writes",
-          "record",
-          "only",
-          "never",
-          "or",
-          "mutates",
-          "user",
-          "organizers",
-          "edit",
-          "customers",
-          "users",
-          "no",
-          "uniqueness",
-          "enforced",
-          "on",
-          "so",
-          "creating",
-          "second",
-          "same",
-          "contact",
-          "succeeds",
-          "dedup",
-          "tooling",
-          "concern",
-          "constraint",
-          "there",
-          "409",
-          "person",
-          "cannot",
-          "be",
-          "capture",
-          "them",
-          "as",
-          "booking_party",
-          "instead",
-          "shadow",
-          "contract:",
-          "adapter",
-          "mounted",
-          "yet",
-          "booking-customers"
+          "identity",
+          "not",
+          "customer",
+          "crm",
+          "context",
+          "booking-guests"
         ],
         "examples": [],
         "input": {
           "kind": "openapi",
-          "ref": "POST /api/v1/booking/customers request"
+          "ref": "POST /api/v1/booking/guests request"
         },
         "output": {
-          "summary": "Creates a customer for your organization. name and phone are required (the spine `phone_number` column is NOT NULL); email is optional. organizationId is NOT accepted — it is derived from your session. This writes a CUSTOMER record only; it never creates or mutates a user (organizers edit customers, never users). No uniqueness is enforced on phone/email, so creating a second customer with the same contact succeeds (dedup is a tooling concern, not a constraint) — there is no 409. A person with no phone cannot be a customer; capture them as a booking_party on the booking instead. Shadow contract: no adapter is mounted yet.",
+          "summary": "Creates a persistent auth/user record for a reservation holder, or returns the existing user for the submitted email, then claims that user into the current organization. This writes booking identity, not customer CRM context.",
           "schema": {
             "kind": "openapi",
-            "ref": "POST /api/v1/booking/customers responses"
+            "ref": "POST /api/v1/booking/guests responses"
           },
           "resources": []
         },
@@ -12175,7 +12116,8 @@
             "write",
             "required",
             "shadow",
-            "booking-customers"
+            "booking",
+            "booking-guests"
           ],
           "hostProfiles": [
             "local",
@@ -12184,9 +12126,9 @@
           "readOnly": false
         },
         "transport": {
-          "procedure": "bookingCreateCustomer",
+          "procedure": "bookingCreateGuest",
           "method": "POST",
-          "path": "/api/v1/booking/customers",
+          "path": "/api/v1/booking/guests",
           "runtimeStatus": "shadow"
         },
         "surfaces": [
@@ -12201,7 +12143,7 @@
           "generated": true,
           "generatorProvider": "sonik-booking-openapi-fixture",
           "sourceAdapter": "openapi",
-          "familyId": "booking-customers",
+          "familyId": "booking",
           "loadPolicy": {
             "mode": "surface-eager",
             "priority": 20,
@@ -12219,94 +12161,57 @@
               "sonik-booking"
             ],
             "commandFamilies": [
-              "booking",
-              "booking-customers"
+              "booking"
             ],
             "requiredScopes": []
           },
           "accessibility": {
-            "label": "Create a customer",
-            "description": "Creates a customer for your organization. name and phone are required (the spine `phone_number` column is NOT NULL); email is optional. organizationId is NOT accepted — it is derived from your session. This writes a CUSTOMER record only; it never creates or mutates a user (organizers edit customers, never users). No uniqueness is enforced on phone/email, so creating a second customer with the same contact succeeds (dedup is a tooling concern, not a constraint) — there is no 409. A person with no phone cannot be a customer; capture them as a booking_party on the booking instead. Shadow contract: no adapter is mounted yet.",
-            "actionLabel": "Create a customer"
+            "label": "Create or return a guest/user",
+            "description": "Creates a persistent auth/user record for a reservation holder, or returns the existing user for the submitted email, then claims that user into the current organization. This writes booking identity, not customer CRM context.",
+            "actionLabel": "Create or return a guest/user"
           },
           "searchTerms": [
-            "booking-customers",
+            "booking",
+            "booking-guests",
             "create",
-            "customer",
+            "or",
+            "return",
+            "guest",
+            "user",
             "creates",
-            "your",
-            "organization",
-            "name",
-            "phone",
-            "are",
-            "required",
-            "spine",
-            "phone_number",
-            "column",
-            "is",
-            "not",
-            "null",
+            "persistent",
+            "auth",
+            "record",
+            "reservation",
+            "holder",
+            "returns",
+            "existing",
+            "submitted",
             "email",
-            "optional",
-            "organizationid",
-            "accepted",
-            "it",
-            "derived",
-            "session",
+            "then",
+            "claims",
+            "that",
+            "current",
+            "organization",
             "this",
             "writes",
-            "record",
-            "only",
-            "never",
-            "or",
-            "mutates",
-            "user",
-            "organizers",
-            "edit",
-            "customers",
-            "users",
-            "no",
-            "uniqueness",
-            "enforced",
-            "on",
-            "so",
-            "creating",
-            "second",
-            "same",
-            "contact",
-            "succeeds",
-            "dedup",
-            "tooling",
-            "concern",
-            "constraint",
-            "there",
-            "409",
-            "person",
-            "cannot",
-            "be",
-            "capture",
-            "them",
-            "as",
-            "booking_party",
-            "booking",
-            "instead",
-            "shadow",
-            "contract:",
-            "adapter",
-            "mounted",
-            "yet"
+            "identity",
+            "not",
+            "customer",
+            "crm",
+            "context"
           ],
           "examples": [],
-          "sourceOperationId": "bookingCreateCustomer",
-          "sourceRuntimeStatus": "shadow",
-          "sourceRuntimeAdapter": "not-mounted",
-          "sourceMounted": false
+          "sourceOperationId": "bookingCreateGuest",
+          "sourceRuntimeStatus": "mounted",
+          "sourceRuntimeAdapter": "mounted",
+          "sourceMounted": true
         }
       },
       {
         "id": "booking.get.customer",
-        "title": "Get one customer by id",
-        "description": "Returns a single org-scoped customer by id. 404 if the customer does not exist within your organization (org scope is session-derived; cross-org ids resolve as not-found, never as a leak). Shadow contract: no adapter is mounted yet.",
+        "title": "Get one customer context by id",
+        "description": "Shadow CRM/customer context route. Customer rows are optional per-organization marketing/import records, not the reservation holder identity.",
         "familyId": "booking-customers",
         "source": "openapi",
         "effect": "read",
@@ -12342,36 +12247,23 @@
           "get",
           "customer",
           "one",
+          "context",
           "by",
           "id",
-          "returns",
-          "single",
-          "org-scoped",
-          "404",
-          "if",
-          "does",
-          "not",
-          "exist",
-          "within",
-          "your",
-          "organization",
-          "org",
-          "scope",
-          "is",
-          "session-derived",
-          "cross-org",
-          "ids",
-          "resolve",
-          "as",
-          "not-found",
-          "never",
-          "leak",
           "shadow",
-          "contract:",
-          "no",
-          "adapter",
-          "mounted",
-          "yet",
+          "crm",
+          "route",
+          "rows",
+          "are",
+          "optional",
+          "per-organization",
+          "marketing",
+          "import",
+          "records",
+          "not",
+          "reservation",
+          "holder",
+          "identity",
           "booking-customers"
         ],
         "examples": [],
@@ -12380,7 +12272,7 @@
           "ref": "GET /api/v1/booking/customers/{customerId} request"
         },
         "output": {
-          "summary": "Returns a single org-scoped customer by id. 404 if the customer does not exist within your organization (org scope is session-derived; cross-org ids resolve as not-found, never as a leak). Shadow contract: no adapter is mounted yet.",
+          "summary": "Shadow CRM/customer context route. Customer rows are optional per-organization marketing/import records, not the reservation holder identity.",
           "schema": {
             "kind": "openapi",
             "ref": "GET /api/v1/booking/customers/{customerId} responses"
@@ -12448,45 +12340,32 @@
             "requiredScopes": []
           },
           "accessibility": {
-            "label": "Get one customer by id",
-            "description": "Returns a single org-scoped customer by id. 404 if the customer does not exist within your organization (org scope is session-derived; cross-org ids resolve as not-found, never as a leak). Shadow contract: no adapter is mounted yet.",
-            "actionLabel": "Get one customer by id"
+            "label": "Get one customer context by id",
+            "description": "Shadow CRM/customer context route. Customer rows are optional per-organization marketing/import records, not the reservation holder identity.",
+            "actionLabel": "Get one customer context by id"
           },
           "searchTerms": [
             "booking-customers",
             "get",
             "one",
             "customer",
+            "context",
             "by",
             "id",
-            "returns",
-            "single",
-            "org-scoped",
-            "404",
-            "if",
-            "does",
-            "not",
-            "exist",
-            "within",
-            "your",
-            "organization",
-            "org",
-            "scope",
-            "is",
-            "session-derived",
-            "cross-org",
-            "ids",
-            "resolve",
-            "as",
-            "not-found",
-            "never",
-            "leak",
             "shadow",
-            "contract:",
-            "no",
-            "adapter",
-            "mounted",
-            "yet"
+            "crm",
+            "route",
+            "rows",
+            "are",
+            "optional",
+            "per-organization",
+            "marketing",
+            "import",
+            "records",
+            "not",
+            "reservation",
+            "holder",
+            "identity"
           ],
           "examples": [],
           "sourceOperationId": "bookingGetCustomer",
@@ -12497,8 +12376,8 @@
       },
       {
         "id": "booking.update.customer",
-        "title": "Update a customer's contact fields",
-        "description": "Updates the contact fields (name, phone, email) on one of your customers. Send only the fields you want to change. phone, if supplied, must stay non-empty — the spine column is NOT NULL and cannot be cleared; email may be set to null to clear it. This edits the CUSTOMER row only — it never mutates a user (organizers edit customers, never users). 404 if the customer is not in your organization. Shadow contract: no adapter is mounted yet.",
+        "title": "Update a customer context",
+        "description": "Shadow CRM/customer context update. Does not mutate auth/user identity.",
         "familyId": "booking-customers",
         "source": "openapi",
         "effect": "write",
@@ -12533,58 +12412,15 @@
           "booking",
           "update",
           "customer",
-          "contact",
-          "fields",
-          "updates",
-          "name",
-          "phone",
-          "email",
-          "on",
-          "one",
-          "of",
-          "your",
-          "customers",
-          "send",
-          "only",
-          "you",
-          "want",
-          "to",
-          "change",
-          "if",
-          "supplied",
-          "must",
-          "stay",
-          "non-empty",
-          "spine",
-          "column",
-          "is",
-          "not",
-          "null",
-          "cannot",
-          "be",
-          "cleared",
-          "may",
-          "set",
-          "clear",
-          "it",
-          "this",
-          "edits",
-          "row",
-          "never",
-          "mutates",
-          "user",
-          "organizers",
-          "edit",
-          "users",
-          "404",
-          "in",
-          "organization",
+          "context",
           "shadow",
-          "contract:",
-          "no",
-          "adapter",
-          "mounted",
-          "yet",
+          "crm",
+          "does",
+          "not",
+          "mutate",
+          "auth",
+          "user",
+          "identity",
           "booking-customers"
         ],
         "examples": [],
@@ -12593,7 +12429,7 @@
           "ref": "PATCH /api/v1/booking/customers/{customerId} request"
         },
         "output": {
-          "summary": "Updates the contact fields (name, phone, email) on one of your customers. Send only the fields you want to change. phone, if supplied, must stay non-empty — the spine column is NOT NULL and cannot be cleared; email may be set to null to clear it. This edits the CUSTOMER row only — it never mutates a user (organizers edit customers, never users). 404 if the customer is not in your organization. Shadow contract: no adapter is mounted yet.",
+          "summary": "Shadow CRM/customer context update. Does not mutate auth/user identity.",
           "schema": {
             "kind": "openapi",
             "ref": "PATCH /api/v1/booking/customers/{customerId} responses"
@@ -12661,66 +12497,23 @@
             "requiredScopes": []
           },
           "accessibility": {
-            "label": "Update a customer's contact fields",
-            "description": "Updates the contact fields (name, phone, email) on one of your customers. Send only the fields you want to change. phone, if supplied, must stay non-empty — the spine column is NOT NULL and cannot be cleared; email may be set to null to clear it. This edits the CUSTOMER row only — it never mutates a user (organizers edit customers, never users). 404 if the customer is not in your organization. Shadow contract: no adapter is mounted yet.",
-            "actionLabel": "Update a customer's contact fields"
+            "label": "Update a customer context",
+            "description": "Shadow CRM/customer context update. Does not mutate auth/user identity.",
+            "actionLabel": "Update a customer context"
           },
           "searchTerms": [
             "booking-customers",
             "update",
             "customer",
-            "contact",
-            "fields",
-            "updates",
-            "name",
-            "phone",
-            "email",
-            "on",
-            "one",
-            "of",
-            "your",
-            "customers",
-            "send",
-            "only",
-            "you",
-            "want",
-            "to",
-            "change",
-            "if",
-            "supplied",
-            "must",
-            "stay",
-            "non-empty",
-            "spine",
-            "column",
-            "is",
-            "not",
-            "null",
-            "cannot",
-            "be",
-            "cleared",
-            "may",
-            "set",
-            "clear",
-            "it",
-            "this",
-            "edits",
-            "row",
-            "never",
-            "mutates",
-            "user",
-            "organizers",
-            "edit",
-            "users",
-            "404",
-            "in",
-            "organization",
+            "context",
             "shadow",
-            "contract:",
-            "no",
-            "adapter",
-            "mounted",
-            "yet"
+            "crm",
+            "does",
+            "not",
+            "mutate",
+            "auth",
+            "user",
+            "identity"
           ],
           "examples": [],
           "sourceOperationId": "bookingUpdateCustomer",
@@ -17968,7 +17761,7 @@
       {
         "id": "booking.commit.hold",
         "title": "Commit a booking hold",
-        "description": "Atomically converts an active unexpired hold into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
+        "description": "Atomically converts an active unexpired hold with a claimed guest/user identity into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
         "familyId": "booking-holds",
         "source": "openapi",
         "effect": "write",
@@ -18008,6 +17801,10 @@
           "an",
           "active",
           "unexpired",
+          "claimed",
+          "guest",
+          "user",
+          "identity",
           "durable",
           "copies",
           "constrained",
@@ -18048,7 +17845,7 @@
           "ref": "POST /api/v1/booking/holds/{holdId}/commit request"
         },
         "output": {
-          "summary": "Atomically converts an active unexpired hold into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
+          "summary": "Atomically converts an active unexpired hold with a claimed guest/user identity into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
           "schema": {
             "kind": "openapi",
             "ref": "POST /api/v1/booking/holds/{holdId}/commit responses"
@@ -18117,7 +17914,7 @@
           },
           "accessibility": {
             "label": "Commit a booking hold",
-            "description": "Atomically converts an active unexpired hold into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
+            "description": "Atomically converts an active unexpired hold with a claimed guest/user identity into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
             "actionLabel": "Commit a booking hold"
           },
           "searchTerms": [
@@ -18130,6 +17927,10 @@
             "an",
             "active",
             "unexpired",
+            "claimed",
+            "guest",
+            "user",
+            "identity",
             "durable",
             "copies",
             "constrained",
@@ -19548,7 +19349,7 @@
       {
         "id": "booking.list.media.assets",
         "title": "List booking media assets",
-        "description": "Lists private R2-backed media assets for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
+        "description": "Lists durable booking.media_asset catalog rows for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
         "familyId": "booking-media",
         "source": "openapi",
         "effect": "read",
@@ -19585,8 +19386,10 @@
           "media",
           "assets",
           "lists",
-          "private",
-          "r2-backed",
+          "durable",
+          "media_asset",
+          "catalog",
+          "rows",
           "caller",
           "organization",
           "optionally",
@@ -19612,7 +19415,7 @@
           "ref": "GET /api/v1/booking/media/assets request"
         },
         "output": {
-          "summary": "Lists private R2-backed media assets for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
+          "summary": "Lists durable booking.media_asset catalog rows for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
           "schema": {
             "kind": "openapi",
             "ref": "GET /api/v1/booking/media/assets responses"
@@ -19681,7 +19484,7 @@
           },
           "accessibility": {
             "label": "List booking media assets",
-            "description": "Lists private R2-backed media assets for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
+            "description": "Lists durable booking.media_asset catalog rows for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
             "actionLabel": "List booking media assets"
           },
           "searchTerms": [
@@ -19691,8 +19494,10 @@
             "media",
             "assets",
             "lists",
-            "private",
-            "r2-backed",
+            "durable",
+            "media_asset",
+            "catalog",
+            "rows",
             "caller",
             "organization",
             "optionally",
@@ -19721,7 +19526,7 @@
       {
         "id": "booking.upload.media.asset",
         "title": "Upload booking media asset",
-        "description": "Uploads a private context-scoped media asset into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
+        "description": "Creates a durable booking.media_asset catalog row and uploads private context-scoped bytes into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
         "familyId": "booking-media",
         "source": "openapi",
         "effect": "write",
@@ -19757,9 +19562,15 @@
           "upload",
           "media",
           "asset",
+          "creates",
+          "durable",
+          "media_asset",
+          "catalog",
+          "row",
           "uploads",
           "private",
           "context-scoped",
+          "bytes",
           "booking_media_bucket",
           "mounted",
           "endpoint",
@@ -19788,7 +19599,7 @@
           "ref": "POST /api/v1/booking/media/assets request"
         },
         "output": {
-          "summary": "Uploads a private context-scoped media asset into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
+          "summary": "Creates a durable booking.media_asset catalog row and uploads private context-scoped bytes into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
           "schema": {
             "kind": "openapi",
             "ref": "POST /api/v1/booking/media/assets responses"
@@ -19857,7 +19668,7 @@
           },
           "accessibility": {
             "label": "Upload booking media asset",
-            "description": "Uploads a private context-scoped media asset into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
+            "description": "Creates a durable booking.media_asset catalog row and uploads private context-scoped bytes into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
             "actionLabel": "Upload booking media asset"
           },
           "searchTerms": [
@@ -19866,9 +19677,15 @@
             "booking",
             "media",
             "asset",
+            "creates",
+            "durable",
+            "media_asset",
+            "catalog",
+            "row",
             "uploads",
             "private",
             "context-scoped",
+            "bytes",
             "booking_media_bucket",
             "mounted",
             "endpoint",
@@ -19900,7 +19717,7 @@
       {
         "id": "booking.get.media.asset",
         "title": "Read booking media asset",
-        "description": "Streams a private media asset for the caller organization. Passing metadata=true returns the same JSON asset summary used by list/upload, which keeps Scalar and SDK verification JSON-safe while the default route streams bytes.",
+        "description": "Returns durable JSON metadata for a private media asset after catalog org/context ownership checks. The mounted authenticated REST href can stream bytes when called directly without metadata=true; generated clients use this JSON-safe metadata operation.",
         "familyId": "booking-media",
         "source": "openapi",
         "effect": "read",
@@ -19937,31 +19754,35 @@
           "media",
           "asset",
           "read",
-          "streams",
-          "private",
-          "caller",
-          "organization",
-          "passing",
-          "metadata",
-          "true",
           "returns",
-          "same",
+          "durable",
           "json",
-          "summary",
-          "used",
-          "by",
-          "list",
-          "upload",
-          "which",
-          "keeps",
-          "scalar",
-          "sdk",
-          "verification",
-          "json-safe",
-          "while",
-          "default",
-          "route",
+          "metadata",
+          "private",
+          "after",
+          "catalog",
+          "org",
+          "context",
+          "ownership",
+          "checks",
+          "mounted",
+          "authenticated",
+          "rest",
+          "href",
+          "can",
+          "stream",
           "bytes",
+          "when",
+          "called",
+          "directly",
+          "without",
+          "true",
+          "generated",
+          "clients",
+          "use",
+          "this",
+          "json-safe",
+          "operation",
           "booking-media"
         ],
         "examples": [],
@@ -19970,7 +19791,7 @@
           "ref": "GET /api/v1/booking/media/assets/{assetId} request"
         },
         "output": {
-          "summary": "Streams a private media asset for the caller organization. Passing metadata=true returns the same JSON asset summary used by list/upload, which keeps Scalar and SDK verification JSON-safe while the default route streams bytes.",
+          "summary": "Returns durable JSON metadata for a private media asset after catalog org/context ownership checks. The mounted authenticated REST href can stream bytes when called directly without metadata=true; generated clients use this JSON-safe metadata operation.",
           "schema": {
             "kind": "openapi",
             "ref": "GET /api/v1/booking/media/assets/{assetId} responses"
@@ -20039,7 +19860,7 @@
           },
           "accessibility": {
             "label": "Read booking media asset",
-            "description": "Streams a private media asset for the caller organization. Passing metadata=true returns the same JSON asset summary used by list/upload, which keeps Scalar and SDK verification JSON-safe while the default route streams bytes.",
+            "description": "Returns durable JSON metadata for a private media asset after catalog org/context ownership checks. The mounted authenticated REST href can stream bytes when called directly without metadata=true; generated clients use this JSON-safe metadata operation.",
             "actionLabel": "Read booking media asset"
           },
           "searchTerms": [
@@ -20048,31 +19869,35 @@
             "booking",
             "media",
             "asset",
-            "streams",
-            "private",
-            "caller",
-            "organization",
-            "passing",
-            "metadata",
-            "true",
             "returns",
-            "same",
+            "durable",
             "json",
-            "summary",
-            "used",
-            "by",
-            "list",
-            "upload",
-            "which",
-            "keeps",
-            "scalar",
-            "sdk",
-            "verification",
+            "metadata",
+            "private",
+            "after",
+            "catalog",
+            "org",
+            "context",
+            "ownership",
+            "checks",
+            "mounted",
+            "authenticated",
+            "rest",
+            "href",
+            "can",
+            "stream",
+            "bytes",
+            "when",
+            "called",
+            "directly",
+            "without",
+            "true",
+            "generated",
+            "clients",
+            "use",
+            "this",
             "json-safe",
-            "while",
-            "default",
-            "route",
-            "bytes"
+            "operation"
           ],
           "examples": [],
           "sourceOperationId": "bookingGetMediaAsset",
@@ -20084,7 +19909,7 @@
       {
         "id": "booking.delete.media.asset",
         "title": "Delete booking media asset",
-        "description": "Deletes a private R2-backed media asset after verifying the asset id belongs to the caller organization prefix.",
+        "description": "Soft-deletes the durable booking.media_asset catalog row and deletes the private R2 object after verifying the asset belongs to the caller organization.",
         "familyId": "booking-media",
         "source": "openapi",
         "effect": "destructive",
@@ -20120,17 +19945,21 @@
           "delete",
           "media",
           "asset",
+          "soft-deletes",
+          "durable",
+          "media_asset",
+          "catalog",
+          "row",
           "deletes",
           "private",
-          "r2-backed",
+          "r2",
+          "object",
           "after",
           "verifying",
-          "id",
           "belongs",
           "to",
           "caller",
           "organization",
-          "prefix",
           "booking-media"
         ],
         "examples": [],
@@ -20139,7 +19968,7 @@
           "ref": "DELETE /api/v1/booking/media/assets/{assetId} request"
         },
         "output": {
-          "summary": "Deletes a private R2-backed media asset after verifying the asset id belongs to the caller organization prefix.",
+          "summary": "Soft-deletes the durable booking.media_asset catalog row and deletes the private R2 object after verifying the asset belongs to the caller organization.",
           "schema": {
             "kind": "openapi",
             "ref": "DELETE /api/v1/booking/media/assets/{assetId} responses"
@@ -20208,7 +20037,7 @@
           },
           "accessibility": {
             "label": "Delete booking media asset",
-            "description": "Deletes a private R2-backed media asset after verifying the asset id belongs to the caller organization prefix.",
+            "description": "Soft-deletes the durable booking.media_asset catalog row and deletes the private R2 object after verifying the asset belongs to the caller organization.",
             "actionLabel": "Delete booking media asset"
           },
           "searchTerms": [
@@ -20217,20 +20046,208 @@
             "booking",
             "media",
             "asset",
+            "soft-deletes",
+            "durable",
+            "media_asset",
+            "catalog",
+            "row",
             "deletes",
             "private",
-            "r2-backed",
+            "r2",
+            "object",
             "after",
             "verifying",
-            "id",
             "belongs",
             "to",
             "caller",
-            "organization",
-            "prefix"
+            "organization"
           ],
           "examples": [],
           "sourceOperationId": "bookingDeleteMediaAsset",
+          "sourceRuntimeStatus": "mounted",
+          "sourceRuntimeAdapter": "mounted",
+          "sourceMounted": true
+        }
+      },
+      {
+        "id": "booking.get.media.asset.variant",
+        "title": "Read booking media image variant",
+        "description": "Streams an authenticated, org-scoped Cloudflare Images variant for an image asset stored privately in BOOKING_MEDIA_BUCKET. The catalog row and session are checked before the Worker reads R2 bytes or returns a cached variant.",
+        "familyId": "booking-media",
+        "source": "openapi",
+        "effect": "read",
+        "approval": "none",
+        "shape": "record",
+        "loadPolicy": {
+          "mode": "surface-eager",
+          "priority": 20,
+          "profile": "sonik-booking-openapi"
+        },
+        "contextHints": {
+          "routes": [],
+          "surfaces": [
+            "booking-admin",
+            "agent-ui"
+          ],
+          "pageTypes": [],
+          "artifactTypes": [],
+          "skillFamilies": [
+            "sonik-booking"
+          ],
+          "commandFamilies": [
+            "booking",
+            "booking-media"
+          ],
+          "requiredScopes": []
+        },
+        "capabilities": [
+          "booking-media"
+        ],
+        "searchTerms": [
+          "booking",
+          "get",
+          "media",
+          "asset",
+          "variant",
+          "read",
+          "image",
+          "streams",
+          "an",
+          "authenticated",
+          "org-scoped",
+          "cloudflare",
+          "images",
+          "stored",
+          "privately",
+          "in",
+          "booking_media_bucket",
+          "catalog",
+          "row",
+          "session",
+          "are",
+          "checked",
+          "before",
+          "worker",
+          "reads",
+          "r2",
+          "bytes",
+          "or",
+          "returns",
+          "cached",
+          "booking-media"
+        ],
+        "examples": [],
+        "input": {
+          "kind": "openapi",
+          "ref": "GET /api/v1/booking/media/assets/{assetId}/variants/{variant} request"
+        },
+        "output": {
+          "summary": "Streams an authenticated, org-scoped Cloudflare Images variant for an image asset stored privately in BOOKING_MEDIA_BUCKET. The catalog row and session are checked before the Worker reads R2 bytes or returns a cached variant.",
+          "schema": {
+            "kind": "openapi",
+            "ref": "GET /api/v1/booking/media/assets/{assetId}/variants/{variant} responses"
+          },
+          "resources": []
+        },
+        "auth": {
+          "required": true,
+          "scopes": [],
+          "orgScoped": true
+        },
+        "policy": {
+          "tags": [
+            "openapi",
+            "read",
+            "none",
+            "shadow",
+            "booking-media"
+          ],
+          "hostProfiles": [
+            "local",
+            "agent-ui"
+          ],
+          "readOnly": true
+        },
+        "transport": {
+          "procedure": "bookingGetMediaAssetVariant",
+          "method": "GET",
+          "path": "/api/v1/booking/media/assets/{assetId}/variants/{variant}",
+          "runtimeStatus": "shadow"
+        },
+        "surfaces": [
+          "chat",
+          "artifact"
+        ],
+        "uiTargets": [
+          "chat",
+          "artifact"
+        ],
+        "metadata": {
+          "generated": true,
+          "generatorProvider": "sonik-booking-openapi-fixture",
+          "sourceAdapter": "openapi",
+          "familyId": "booking-media",
+          "loadPolicy": {
+            "mode": "surface-eager",
+            "priority": 20,
+            "profile": "sonik-booking-openapi"
+          },
+          "contextHints": {
+            "routes": [],
+            "surfaces": [
+              "booking-admin",
+              "agent-ui"
+            ],
+            "pageTypes": [],
+            "artifactTypes": [],
+            "skillFamilies": [
+              "sonik-booking"
+            ],
+            "commandFamilies": [
+              "booking",
+              "booking-media"
+            ],
+            "requiredScopes": []
+          },
+          "accessibility": {
+            "label": "Read booking media image variant",
+            "description": "Streams an authenticated, org-scoped Cloudflare Images variant for an image asset stored privately in BOOKING_MEDIA_BUCKET. The catalog row and session are checked before the Worker reads R2 bytes or returns a cached variant.",
+            "actionLabel": "Read booking media image variant"
+          },
+          "searchTerms": [
+            "booking-media",
+            "read",
+            "booking",
+            "media",
+            "image",
+            "variant",
+            "streams",
+            "an",
+            "authenticated",
+            "org-scoped",
+            "cloudflare",
+            "images",
+            "asset",
+            "stored",
+            "privately",
+            "in",
+            "booking_media_bucket",
+            "catalog",
+            "row",
+            "session",
+            "are",
+            "checked",
+            "before",
+            "worker",
+            "reads",
+            "r2",
+            "bytes",
+            "or",
+            "returns",
+            "cached"
+          ],
+          "examples": [],
+          "sourceOperationId": "bookingGetMediaAssetVariant",
           "sourceRuntimeStatus": "mounted",
           "sourceRuntimeAdapter": "mounted",
           "sourceMounted": true
@@ -20688,7 +20705,7 @@
         {
           "commandId": "booking.create.booking",
           "title": "Create a booking",
-          "description": "Creates a booking against a bookable context for a customer over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
+          "description": "Creates a booking against a bookable context for a persistent user/guest over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
           "familyId": "bookings",
           "source": "openapi",
           "effect": "write",
@@ -20698,7 +20715,7 @@
           "outputResources": [],
           "accessible": {
             "label": "Create a booking",
-            "description": "Creates a booking against a bookable context for a customer over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
+            "description": "Creates a booking against a bookable context for a persistent user/guest over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
             "actionLabel": "Create a booking"
           },
           "invocation": {
@@ -20728,7 +20745,7 @@
         {
           "commandId": "booking.list.bookings",
           "title": "List bookings",
-          "description": "Lists bookings in your organization, optionally filtered by context, customer, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
+          "description": "Lists bookings in your organization, optionally filtered by context, persistent user/guest, deprecated customer-context id, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
           "familyId": "bookings",
           "source": "openapi",
           "effect": "read",
@@ -20738,7 +20755,7 @@
           "outputResources": [],
           "accessible": {
             "label": "List bookings",
-            "description": "Lists bookings in your organization, optionally filtered by context, customer, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
+            "description": "Lists bookings in your organization, optionally filtered by context, persistent user/guest, deprecated customer-context id, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
             "actionLabel": "List bookings"
           },
           "invocation": {
@@ -20968,7 +20985,7 @@
         {
           "commandId": "booking.add.party.member",
           "title": "Add a party member to a booking",
-          "description": "Adds a generic party member to a booking. Provide a customerId for a known guest, or omit it for a walk-in/guest — a guest without a customer record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
+          "description": "Adds a generic party member to a booking. Provide a userId for a known guest, or omit it for a walk-in/guest — a guest without a user record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
           "familyId": "bookings",
           "source": "openapi",
           "effect": "write",
@@ -20978,7 +20995,7 @@
           "outputResources": [],
           "accessible": {
             "label": "Add a party member to a booking",
-            "description": "Adds a generic party member to a booking. Provide a customerId for a known guest, or omit it for a walk-in/guest — a guest without a customer record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
+            "description": "Adds a generic party member to a booking. Provide a userId for a known guest, or omit it for a walk-in/guest — a guest without a user record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
             "actionLabel": "Add a party member to a booking"
           },
           "invocation": {
@@ -21166,24 +21183,24 @@
           }
         },
         {
-          "commandId": "booking.search.customers",
-          "title": "Search the organizer's customers (the keystone identity lookup)",
-          "description": "THE keystone customer lookup. Searches the organizer's customers by free-text q over name, email, and phone, returning a paginated, org-scoped list. This is the SAME primitive everywhere: the Sonik MCP uses it to resolve a member booking a tee time, and the admin console uses it to find a customer when adding a charge to a house tab. Org scope is derived from your Better Auth session (RLS) — it is never a parameter. With no q, returns your most recent customers. Shadow contract: no adapter is mounted yet.",
-          "familyId": "booking-customers",
+          "commandId": "booking.search.guests",
+          "title": "Search guests/users for a reservation",
+          "description": "Searches persistent auth/user records already claimed into the current organization by name/email for reservation creation. This is the booking holder identity lookup; it does not search or create org-scoped customer marketing rows.",
+          "familyId": "booking",
           "source": "openapi",
           "effect": "read",
           "approval": "none",
           "readOnly": true,
-          "schemaRef": "GET /api/v1/booking/customers request",
+          "schemaRef": "GET /api/v1/booking/guests request",
           "outputResources": [],
           "accessible": {
-            "label": "Search the organizer's customers (the keystone identity lookup)",
-            "description": "THE keystone customer lookup. Searches the organizer's customers by free-text q over name, email, and phone, returning a paginated, org-scoped list. This is the SAME primitive everywhere: the Sonik MCP uses it to resolve a member booking a tee time, and the admin console uses it to find a customer when adding a charge to a house tab. Org scope is derived from your Better Auth session (RLS) — it is never a parameter. With no q, returns your most recent customers. Shadow contract: no adapter is mounted yet.",
-            "actionLabel": "Search the organizer's customers (the keystone identity lookup)"
+            "label": "Search guests/users for a reservation",
+            "description": "Searches persistent auth/user records already claimed into the current organization by name/email for reservation creation. This is the booking holder identity lookup; it does not search or create org-scoped customer marketing rows.",
+            "actionLabel": "Search guests/users for a reservation"
           },
           "invocation": {
             "kind": "catalog-command",
-            "commandId": "booking.search.customers",
+            "commandId": "booking.search.guests",
             "executeTool": "executeCommand",
             "commitTool": "commitCommand",
             "learnTool": "learnCommand",
@@ -21191,39 +21208,39 @@
               "command": "sonik booking command execute",
               "args": [
                 "--command-id",
-                "booking.search.customers"
+                "booking.search.guests"
               ]
             }
           },
           "provenance": {
             "generated": true,
             "sourceAdapter": "openapi",
-            "transportProcedure": "bookingSearchCustomers",
+            "transportProcedure": "bookingSearchGuests",
             "method": "GET",
-            "path": "/api/v1/booking/customers",
-            "sourceRuntimeStatus": "shadow",
-            "sourceRuntimeAdapter": "not-mounted"
+            "path": "/api/v1/booking/guests",
+            "sourceRuntimeStatus": "mounted",
+            "sourceRuntimeAdapter": "mounted"
           }
         },
         {
-          "commandId": "booking.create.customer",
-          "title": "Create a customer",
-          "description": "Creates a customer for your organization. name and phone are required (the spine `phone_number` column is NOT NULL); email is optional. organizationId is NOT accepted — it is derived from your session. This writes a CUSTOMER record only; it never creates or mutates a user (organizers edit customers, never users). No uniqueness is enforced on phone/email, so creating a second customer with the same contact succeeds (dedup is a tooling concern, not a constraint) — there is no 409. A person with no phone cannot be a customer; capture them as a booking_party on the booking instead. Shadow contract: no adapter is mounted yet.",
-          "familyId": "booking-customers",
+          "commandId": "booking.create.guest",
+          "title": "Create or return a guest/user",
+          "description": "Creates a persistent auth/user record for a reservation holder, or returns the existing user for the submitted email, then claims that user into the current organization. This writes booking identity, not customer CRM context.",
+          "familyId": "booking",
           "source": "openapi",
           "effect": "write",
           "approval": "required",
           "readOnly": false,
-          "schemaRef": "POST /api/v1/booking/customers request",
+          "schemaRef": "POST /api/v1/booking/guests request",
           "outputResources": [],
           "accessible": {
-            "label": "Create a customer",
-            "description": "Creates a customer for your organization. name and phone are required (the spine `phone_number` column is NOT NULL); email is optional. organizationId is NOT accepted — it is derived from your session. This writes a CUSTOMER record only; it never creates or mutates a user (organizers edit customers, never users). No uniqueness is enforced on phone/email, so creating a second customer with the same contact succeeds (dedup is a tooling concern, not a constraint) — there is no 409. A person with no phone cannot be a customer; capture them as a booking_party on the booking instead. Shadow contract: no adapter is mounted yet.",
-            "actionLabel": "Create a customer"
+            "label": "Create or return a guest/user",
+            "description": "Creates a persistent auth/user record for a reservation holder, or returns the existing user for the submitted email, then claims that user into the current organization. This writes booking identity, not customer CRM context.",
+            "actionLabel": "Create or return a guest/user"
           },
           "invocation": {
             "kind": "catalog-command",
-            "commandId": "booking.create.customer",
+            "commandId": "booking.create.guest",
             "executeTool": "executeCommand",
             "commitTool": "commitCommand",
             "learnTool": "learnCommand",
@@ -21231,24 +21248,24 @@
               "command": "sonik booking command execute",
               "args": [
                 "--command-id",
-                "booking.create.customer"
+                "booking.create.guest"
               ]
             }
           },
           "provenance": {
             "generated": true,
             "sourceAdapter": "openapi",
-            "transportProcedure": "bookingCreateCustomer",
+            "transportProcedure": "bookingCreateGuest",
             "method": "POST",
-            "path": "/api/v1/booking/customers",
-            "sourceRuntimeStatus": "shadow",
-            "sourceRuntimeAdapter": "not-mounted"
+            "path": "/api/v1/booking/guests",
+            "sourceRuntimeStatus": "mounted",
+            "sourceRuntimeAdapter": "mounted"
           }
         },
         {
           "commandId": "booking.get.customer",
-          "title": "Get one customer by id",
-          "description": "Returns a single org-scoped customer by id. 404 if the customer does not exist within your organization (org scope is session-derived; cross-org ids resolve as not-found, never as a leak). Shadow contract: no adapter is mounted yet.",
+          "title": "Get one customer context by id",
+          "description": "Shadow CRM/customer context route. Customer rows are optional per-organization marketing/import records, not the reservation holder identity.",
           "familyId": "booking-customers",
           "source": "openapi",
           "effect": "read",
@@ -21257,9 +21274,9 @@
           "schemaRef": "GET /api/v1/booking/customers/{customerId} request",
           "outputResources": [],
           "accessible": {
-            "label": "Get one customer by id",
-            "description": "Returns a single org-scoped customer by id. 404 if the customer does not exist within your organization (org scope is session-derived; cross-org ids resolve as not-found, never as a leak). Shadow contract: no adapter is mounted yet.",
-            "actionLabel": "Get one customer by id"
+            "label": "Get one customer context by id",
+            "description": "Shadow CRM/customer context route. Customer rows are optional per-organization marketing/import records, not the reservation holder identity.",
+            "actionLabel": "Get one customer context by id"
           },
           "invocation": {
             "kind": "catalog-command",
@@ -21287,8 +21304,8 @@
         },
         {
           "commandId": "booking.update.customer",
-          "title": "Update a customer's contact fields",
-          "description": "Updates the contact fields (name, phone, email) on one of your customers. Send only the fields you want to change. phone, if supplied, must stay non-empty — the spine column is NOT NULL and cannot be cleared; email may be set to null to clear it. This edits the CUSTOMER row only — it never mutates a user (organizers edit customers, never users). 404 if the customer is not in your organization. Shadow contract: no adapter is mounted yet.",
+          "title": "Update a customer context",
+          "description": "Shadow CRM/customer context update. Does not mutate auth/user identity.",
           "familyId": "booking-customers",
           "source": "openapi",
           "effect": "write",
@@ -21297,9 +21314,9 @@
           "schemaRef": "PATCH /api/v1/booking/customers/{customerId} request",
           "outputResources": [],
           "accessible": {
-            "label": "Update a customer's contact fields",
-            "description": "Updates the contact fields (name, phone, email) on one of your customers. Send only the fields you want to change. phone, if supplied, must stay non-empty — the spine column is NOT NULL and cannot be cleared; email may be set to null to clear it. This edits the CUSTOMER row only — it never mutates a user (organizers edit customers, never users). 404 if the customer is not in your organization. Shadow contract: no adapter is mounted yet.",
-            "actionLabel": "Update a customer's contact fields"
+            "label": "Update a customer context",
+            "description": "Shadow CRM/customer context update. Does not mutate auth/user identity.",
+            "actionLabel": "Update a customer context"
           },
           "invocation": {
             "kind": "catalog-command",
@@ -22568,7 +22585,7 @@
         {
           "commandId": "booking.commit.hold",
           "title": "Commit a booking hold",
-          "description": "Atomically converts an active unexpired hold into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
+          "description": "Atomically converts an active unexpired hold with a claimed guest/user identity into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
           "familyId": "booking-holds",
           "source": "openapi",
           "effect": "write",
@@ -22578,7 +22595,7 @@
           "outputResources": [],
           "accessible": {
             "label": "Commit a booking hold",
-            "description": "Atomically converts an active unexpired hold into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
+            "description": "Atomically converts an active unexpired hold with a claimed guest/user identity into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
             "actionLabel": "Commit a booking hold"
           },
           "invocation": {
@@ -22928,7 +22945,7 @@
         {
           "commandId": "booking.list.media.assets",
           "title": "List booking media assets",
-          "description": "Lists private R2-backed media assets for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
+          "description": "Lists durable booking.media_asset catalog rows for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
           "familyId": "booking-media",
           "source": "openapi",
           "effect": "read",
@@ -22938,7 +22955,7 @@
           "outputResources": [],
           "accessible": {
             "label": "List booking media assets",
-            "description": "Lists private R2-backed media assets for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
+            "description": "Lists durable booking.media_asset catalog rows for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
             "actionLabel": "List booking media assets"
           },
           "invocation": {
@@ -22968,7 +22985,7 @@
         {
           "commandId": "booking.upload.media.asset",
           "title": "Upload booking media asset",
-          "description": "Uploads a private context-scoped media asset into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
+          "description": "Creates a durable booking.media_asset catalog row and uploads private context-scoped bytes into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
           "familyId": "booking-media",
           "source": "openapi",
           "effect": "write",
@@ -22978,7 +22995,7 @@
           "outputResources": [],
           "accessible": {
             "label": "Upload booking media asset",
-            "description": "Uploads a private context-scoped media asset into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
+            "description": "Creates a durable booking.media_asset catalog row and uploads private context-scoped bytes into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
             "actionLabel": "Upload booking media asset"
           },
           "invocation": {
@@ -23008,7 +23025,7 @@
         {
           "commandId": "booking.get.media.asset",
           "title": "Read booking media asset",
-          "description": "Streams a private media asset for the caller organization. Passing metadata=true returns the same JSON asset summary used by list/upload, which keeps Scalar and SDK verification JSON-safe while the default route streams bytes.",
+          "description": "Returns durable JSON metadata for a private media asset after catalog org/context ownership checks. The mounted authenticated REST href can stream bytes when called directly without metadata=true; generated clients use this JSON-safe metadata operation.",
           "familyId": "booking-media",
           "source": "openapi",
           "effect": "read",
@@ -23018,7 +23035,7 @@
           "outputResources": [],
           "accessible": {
             "label": "Read booking media asset",
-            "description": "Streams a private media asset for the caller organization. Passing metadata=true returns the same JSON asset summary used by list/upload, which keeps Scalar and SDK verification JSON-safe while the default route streams bytes.",
+            "description": "Returns durable JSON metadata for a private media asset after catalog org/context ownership checks. The mounted authenticated REST href can stream bytes when called directly without metadata=true; generated clients use this JSON-safe metadata operation.",
             "actionLabel": "Read booking media asset"
           },
           "invocation": {
@@ -23048,7 +23065,7 @@
         {
           "commandId": "booking.delete.media.asset",
           "title": "Delete booking media asset",
-          "description": "Deletes a private R2-backed media asset after verifying the asset id belongs to the caller organization prefix.",
+          "description": "Soft-deletes the durable booking.media_asset catalog row and deletes the private R2 object after verifying the asset belongs to the caller organization.",
           "familyId": "booking-media",
           "source": "openapi",
           "effect": "destructive",
@@ -23058,7 +23075,7 @@
           "outputResources": [],
           "accessible": {
             "label": "Delete booking media asset",
-            "description": "Deletes a private R2-backed media asset after verifying the asset id belongs to the caller organization prefix.",
+            "description": "Soft-deletes the durable booking.media_asset catalog row and deletes the private R2 object after verifying the asset belongs to the caller organization.",
             "actionLabel": "Delete booking media asset"
           },
           "invocation": {
@@ -23081,6 +23098,46 @@
             "transportProcedure": "bookingDeleteMediaAsset",
             "method": "DELETE",
             "path": "/api/v1/booking/media/assets/{assetId}",
+            "sourceRuntimeStatus": "mounted",
+            "sourceRuntimeAdapter": "mounted"
+          }
+        },
+        {
+          "commandId": "booking.get.media.asset.variant",
+          "title": "Read booking media image variant",
+          "description": "Streams an authenticated, org-scoped Cloudflare Images variant for an image asset stored privately in BOOKING_MEDIA_BUCKET. The catalog row and session are checked before the Worker reads R2 bytes or returns a cached variant.",
+          "familyId": "booking-media",
+          "source": "openapi",
+          "effect": "read",
+          "approval": "none",
+          "readOnly": true,
+          "schemaRef": "GET /api/v1/booking/media/assets/{assetId}/variants/{variant} request",
+          "outputResources": [],
+          "accessible": {
+            "label": "Read booking media image variant",
+            "description": "Streams an authenticated, org-scoped Cloudflare Images variant for an image asset stored privately in BOOKING_MEDIA_BUCKET. The catalog row and session are checked before the Worker reads R2 bytes or returns a cached variant.",
+            "actionLabel": "Read booking media image variant"
+          },
+          "invocation": {
+            "kind": "catalog-command",
+            "commandId": "booking.get.media.asset.variant",
+            "executeTool": "executeCommand",
+            "commitTool": "commitCommand",
+            "learnTool": "learnCommand",
+            "cli": {
+              "command": "sonik booking command execute",
+              "args": [
+                "--command-id",
+                "booking.get.media.asset.variant"
+              ]
+            }
+          },
+          "provenance": {
+            "generated": true,
+            "sourceAdapter": "openapi",
+            "transportProcedure": "bookingGetMediaAssetVariant",
+            "method": "GET",
+            "path": "/api/v1/booking/media/assets/{assetId}/variants/{variant}",
             "sourceRuntimeStatus": "mounted",
             "sourceRuntimeAdapter": "mounted"
           }
@@ -23492,7 +23549,7 @@
         {
           "commandId": "booking.create.booking",
           "title": "Create a booking",
-          "description": "Creates a booking against a bookable context for a customer over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
+          "description": "Creates a booking against a bookable context for a persistent user/guest over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
           "familyId": "bookings",
           "source": "openapi",
           "effect": "write",
@@ -23502,7 +23559,7 @@
           "outputResources": [],
           "accessible": {
             "label": "Create a booking",
-            "description": "Creates a booking against a bookable context for a customer over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
+            "description": "Creates a booking against a bookable context for a persistent user/guest over a time window. The same shape backs a tee time, a dinner reservation, or any other booking — the context decides what it means. Supply a clientRequestId to make the create idempotent: retrying with the same key returns the existing booking with 200 rather than creating a duplicate (the Worker-retry defense). The organization is taken from your session. Emits a v4 attribution signal carrying the source channel at capture time.",
             "actionLabel": "Create a booking"
           },
           "invocation": {
@@ -23528,7 +23585,7 @@
         {
           "commandId": "booking.list.bookings",
           "title": "List bookings",
-          "description": "Lists bookings in your organization, optionally filtered by context, customer, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
+          "description": "Lists bookings in your organization, optionally filtered by context, persistent user/guest, deprecated customer-context id, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
           "familyId": "bookings",
           "source": "openapi",
           "effect": "read",
@@ -23538,7 +23595,7 @@
           "outputResources": [],
           "accessible": {
             "label": "List bookings",
-            "description": "Lists bookings in your organization, optionally filtered by context, customer, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
+            "description": "Lists bookings in your organization, optionally filtered by context, persistent user/guest, deprecated customer-context id, status, and a start-time date range. Org scoping is implicit — you only ever see your own organization's bookings.",
             "actionLabel": "List bookings"
           },
           "invocation": {
@@ -23744,7 +23801,7 @@
         {
           "commandId": "booking.add.party.member",
           "title": "Add a party member to a booking",
-          "description": "Adds a generic party member to a booking. Provide a customerId for a known guest, or omit it for a walk-in/guest — a guest without a customer record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
+          "description": "Adds a generic party member to a booking. Provide a userId for a known guest, or omit it for a walk-in/guest — a guest without a user record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
           "familyId": "bookings",
           "source": "openapi",
           "effect": "write",
@@ -23754,7 +23811,7 @@
           "outputResources": [],
           "accessible": {
             "label": "Add a party member to a booking",
-            "description": "Adds a generic party member to a booking. Provide a customerId for a known guest, or omit it for a walk-in/guest — a guest without a customer record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
+            "description": "Adds a generic party member to a booking. Provide a userId for a known guest, or omit it for a walk-in/guest — a guest without a user record is identified by displayName alone and is never written as CRM/customer profile data. Supplying clientRequestId makes retried adds return the existing party row instead of duplicating the roster. Returns the booking's current active party roster.",
             "actionLabel": "Add a party member to a booking"
           },
           "invocation": {
@@ -23922,24 +23979,24 @@
           }
         },
         {
-          "commandId": "booking.search.customers",
-          "title": "Search the organizer's customers (the keystone identity lookup)",
-          "description": "THE keystone customer lookup. Searches the organizer's customers by free-text q over name, email, and phone, returning a paginated, org-scoped list. This is the SAME primitive everywhere: the Sonik MCP uses it to resolve a member booking a tee time, and the admin console uses it to find a customer when adding a charge to a house tab. Org scope is derived from your Better Auth session (RLS) — it is never a parameter. With no q, returns your most recent customers. Shadow contract: no adapter is mounted yet.",
-          "familyId": "booking-customers",
+          "commandId": "booking.search.guests",
+          "title": "Search guests/users for a reservation",
+          "description": "Searches persistent auth/user records already claimed into the current organization by name/email for reservation creation. This is the booking holder identity lookup; it does not search or create org-scoped customer marketing rows.",
+          "familyId": "booking",
           "source": "openapi",
           "effect": "read",
           "approval": "none",
           "readOnly": true,
-          "schemaRef": "GET /api/v1/booking/customers request",
+          "schemaRef": "GET /api/v1/booking/guests request",
           "outputResources": [],
           "accessible": {
-            "label": "Search the organizer's customers (the keystone identity lookup)",
-            "description": "THE keystone customer lookup. Searches the organizer's customers by free-text q over name, email, and phone, returning a paginated, org-scoped list. This is the SAME primitive everywhere: the Sonik MCP uses it to resolve a member booking a tee time, and the admin console uses it to find a customer when adding a charge to a house tab. Org scope is derived from your Better Auth session (RLS) — it is never a parameter. With no q, returns your most recent customers. Shadow contract: no adapter is mounted yet.",
-            "actionLabel": "Search the organizer's customers (the keystone identity lookup)"
+            "label": "Search guests/users for a reservation",
+            "description": "Searches persistent auth/user records already claimed into the current organization by name/email for reservation creation. This is the booking holder identity lookup; it does not search or create org-scoped customer marketing rows.",
+            "actionLabel": "Search guests/users for a reservation"
           },
           "invocation": {
             "kind": "catalog-command",
-            "commandId": "booking.search.customers",
+            "commandId": "booking.search.guests",
             "executeTool": "executeCommand",
             "commitTool": "commitCommand",
             "learnTool": "learnCommand",
@@ -23950,32 +24007,32 @@
           "provenance": {
             "generated": true,
             "sourceAdapter": "openapi",
-            "transportProcedure": "bookingSearchCustomers",
+            "transportProcedure": "bookingSearchGuests",
             "method": "GET",
-            "path": "/api/v1/booking/customers",
-            "sourceRuntimeStatus": "shadow",
-            "sourceRuntimeAdapter": "not-mounted"
+            "path": "/api/v1/booking/guests",
+            "sourceRuntimeStatus": "mounted",
+            "sourceRuntimeAdapter": "mounted"
           }
         },
         {
-          "commandId": "booking.create.customer",
-          "title": "Create a customer",
-          "description": "Creates a customer for your organization. name and phone are required (the spine `phone_number` column is NOT NULL); email is optional. organizationId is NOT accepted — it is derived from your session. This writes a CUSTOMER record only; it never creates or mutates a user (organizers edit customers, never users). No uniqueness is enforced on phone/email, so creating a second customer with the same contact succeeds (dedup is a tooling concern, not a constraint) — there is no 409. A person with no phone cannot be a customer; capture them as a booking_party on the booking instead. Shadow contract: no adapter is mounted yet.",
-          "familyId": "booking-customers",
+          "commandId": "booking.create.guest",
+          "title": "Create or return a guest/user",
+          "description": "Creates a persistent auth/user record for a reservation holder, or returns the existing user for the submitted email, then claims that user into the current organization. This writes booking identity, not customer CRM context.",
+          "familyId": "booking",
           "source": "openapi",
           "effect": "write",
           "approval": "required",
           "readOnly": false,
-          "schemaRef": "POST /api/v1/booking/customers request",
+          "schemaRef": "POST /api/v1/booking/guests request",
           "outputResources": [],
           "accessible": {
-            "label": "Create a customer",
-            "description": "Creates a customer for your organization. name and phone are required (the spine `phone_number` column is NOT NULL); email is optional. organizationId is NOT accepted — it is derived from your session. This writes a CUSTOMER record only; it never creates or mutates a user (organizers edit customers, never users). No uniqueness is enforced on phone/email, so creating a second customer with the same contact succeeds (dedup is a tooling concern, not a constraint) — there is no 409. A person with no phone cannot be a customer; capture them as a booking_party on the booking instead. Shadow contract: no adapter is mounted yet.",
-            "actionLabel": "Create a customer"
+            "label": "Create or return a guest/user",
+            "description": "Creates a persistent auth/user record for a reservation holder, or returns the existing user for the submitted email, then claims that user into the current organization. This writes booking identity, not customer CRM context.",
+            "actionLabel": "Create or return a guest/user"
           },
           "invocation": {
             "kind": "catalog-command",
-            "commandId": "booking.create.customer",
+            "commandId": "booking.create.guest",
             "executeTool": "executeCommand",
             "commitTool": "commitCommand",
             "learnTool": "learnCommand",
@@ -23986,17 +24043,17 @@
           "provenance": {
             "generated": true,
             "sourceAdapter": "openapi",
-            "transportProcedure": "bookingCreateCustomer",
+            "transportProcedure": "bookingCreateGuest",
             "method": "POST",
-            "path": "/api/v1/booking/customers",
-            "sourceRuntimeStatus": "shadow",
-            "sourceRuntimeAdapter": "not-mounted"
+            "path": "/api/v1/booking/guests",
+            "sourceRuntimeStatus": "mounted",
+            "sourceRuntimeAdapter": "mounted"
           }
         },
         {
           "commandId": "booking.get.customer",
-          "title": "Get one customer by id",
-          "description": "Returns a single org-scoped customer by id. 404 if the customer does not exist within your organization (org scope is session-derived; cross-org ids resolve as not-found, never as a leak). Shadow contract: no adapter is mounted yet.",
+          "title": "Get one customer context by id",
+          "description": "Shadow CRM/customer context route. Customer rows are optional per-organization marketing/import records, not the reservation holder identity.",
           "familyId": "booking-customers",
           "source": "openapi",
           "effect": "read",
@@ -24005,9 +24062,9 @@
           "schemaRef": "GET /api/v1/booking/customers/{customerId} request",
           "outputResources": [],
           "accessible": {
-            "label": "Get one customer by id",
-            "description": "Returns a single org-scoped customer by id. 404 if the customer does not exist within your organization (org scope is session-derived; cross-org ids resolve as not-found, never as a leak). Shadow contract: no adapter is mounted yet.",
-            "actionLabel": "Get one customer by id"
+            "label": "Get one customer context by id",
+            "description": "Shadow CRM/customer context route. Customer rows are optional per-organization marketing/import records, not the reservation holder identity.",
+            "actionLabel": "Get one customer context by id"
           },
           "invocation": {
             "kind": "catalog-command",
@@ -24031,8 +24088,8 @@
         },
         {
           "commandId": "booking.update.customer",
-          "title": "Update a customer's contact fields",
-          "description": "Updates the contact fields (name, phone, email) on one of your customers. Send only the fields you want to change. phone, if supplied, must stay non-empty — the spine column is NOT NULL and cannot be cleared; email may be set to null to clear it. This edits the CUSTOMER row only — it never mutates a user (organizers edit customers, never users). 404 if the customer is not in your organization. Shadow contract: no adapter is mounted yet.",
+          "title": "Update a customer context",
+          "description": "Shadow CRM/customer context update. Does not mutate auth/user identity.",
           "familyId": "booking-customers",
           "source": "openapi",
           "effect": "write",
@@ -24041,9 +24098,9 @@
           "schemaRef": "PATCH /api/v1/booking/customers/{customerId} request",
           "outputResources": [],
           "accessible": {
-            "label": "Update a customer's contact fields",
-            "description": "Updates the contact fields (name, phone, email) on one of your customers. Send only the fields you want to change. phone, if supplied, must stay non-empty — the spine column is NOT NULL and cannot be cleared; email may be set to null to clear it. This edits the CUSTOMER row only — it never mutates a user (organizers edit customers, never users). 404 if the customer is not in your organization. Shadow contract: no adapter is mounted yet.",
-            "actionLabel": "Update a customer's contact fields"
+            "label": "Update a customer context",
+            "description": "Shadow CRM/customer context update. Does not mutate auth/user identity.",
+            "actionLabel": "Update a customer context"
           },
           "invocation": {
             "kind": "catalog-command",
@@ -25184,7 +25241,7 @@
         {
           "commandId": "booking.commit.hold",
           "title": "Commit a booking hold",
-          "description": "Atomically converts an active unexpired hold into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
+          "description": "Atomically converts an active unexpired hold with a claimed guest/user identity into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
           "familyId": "booking-holds",
           "source": "openapi",
           "effect": "write",
@@ -25194,7 +25251,7 @@
           "outputResources": [],
           "accessible": {
             "label": "Commit a booking hold",
-            "description": "Atomically converts an active unexpired hold into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
+            "description": "Atomically converts an active unexpired hold with a claimed guest/user identity into a durable booking, copies the constrained resource target into booking_resource, marks the hold converted, and writes booking lifecycle audit evidence. 409 covers lifecycle/conflict failures, including expired holds at the oRPC boundary; REST keeps a 410 expired-hold response. No payment settlement is performed.",
             "actionLabel": "Commit a booking hold"
           },
           "invocation": {
@@ -25508,7 +25565,7 @@
         {
           "commandId": "booking.list.media.assets",
           "title": "List booking media assets",
-          "description": "Lists private R2-backed media assets for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
+          "description": "Lists durable booking.media_asset catalog rows for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
           "familyId": "booking-media",
           "source": "openapi",
           "effect": "read",
@@ -25518,7 +25575,7 @@
           "outputResources": [],
           "accessible": {
             "label": "List booking media assets",
-            "description": "Lists private R2-backed media assets for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
+            "description": "Lists durable booking.media_asset catalog rows for the caller organization, optionally scoped to one bookable context. Assets remain served through authenticated Worker routes, not a public CDN.",
             "actionLabel": "List booking media assets"
           },
           "invocation": {
@@ -25544,7 +25601,7 @@
         {
           "commandId": "booking.upload.media.asset",
           "title": "Upload booking media asset",
-          "description": "Uploads a private context-scoped media asset into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
+          "description": "Creates a durable booking.media_asset catalog row and uploads private context-scoped bytes into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
           "familyId": "booking-media",
           "source": "openapi",
           "effect": "write",
@@ -25554,7 +25611,7 @@
           "outputResources": [],
           "accessible": {
             "label": "Upload booking media asset",
-            "description": "Uploads a private context-scoped media asset into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
+            "description": "Creates a durable booking.media_asset catalog row and uploads private context-scoped bytes into BOOKING_MEDIA_BUCKET. The mounted endpoint accepts multipart/form-data with contextId, role, and file; it also supports application/octet-stream with contextId/fileName/role query params for SDK and CLI proof.",
             "actionLabel": "Upload booking media asset"
           },
           "invocation": {
@@ -25580,7 +25637,7 @@
         {
           "commandId": "booking.get.media.asset",
           "title": "Read booking media asset",
-          "description": "Streams a private media asset for the caller organization. Passing metadata=true returns the same JSON asset summary used by list/upload, which keeps Scalar and SDK verification JSON-safe while the default route streams bytes.",
+          "description": "Returns durable JSON metadata for a private media asset after catalog org/context ownership checks. The mounted authenticated REST href can stream bytes when called directly without metadata=true; generated clients use this JSON-safe metadata operation.",
           "familyId": "booking-media",
           "source": "openapi",
           "effect": "read",
@@ -25590,7 +25647,7 @@
           "outputResources": [],
           "accessible": {
             "label": "Read booking media asset",
-            "description": "Streams a private media asset for the caller organization. Passing metadata=true returns the same JSON asset summary used by list/upload, which keeps Scalar and SDK verification JSON-safe while the default route streams bytes.",
+            "description": "Returns durable JSON metadata for a private media asset after catalog org/context ownership checks. The mounted authenticated REST href can stream bytes when called directly without metadata=true; generated clients use this JSON-safe metadata operation.",
             "actionLabel": "Read booking media asset"
           },
           "invocation": {
@@ -25616,7 +25673,7 @@
         {
           "commandId": "booking.delete.media.asset",
           "title": "Delete booking media asset",
-          "description": "Deletes a private R2-backed media asset after verifying the asset id belongs to the caller organization prefix.",
+          "description": "Soft-deletes the durable booking.media_asset catalog row and deletes the private R2 object after verifying the asset belongs to the caller organization.",
           "familyId": "booking-media",
           "source": "openapi",
           "effect": "destructive",
@@ -25626,7 +25683,7 @@
           "outputResources": [],
           "accessible": {
             "label": "Delete booking media asset",
-            "description": "Deletes a private R2-backed media asset after verifying the asset id belongs to the caller organization prefix.",
+            "description": "Soft-deletes the durable booking.media_asset catalog row and deletes the private R2 object after verifying the asset belongs to the caller organization.",
             "actionLabel": "Delete booking media asset"
           },
           "invocation": {
@@ -25645,6 +25702,42 @@
             "transportProcedure": "bookingDeleteMediaAsset",
             "method": "DELETE",
             "path": "/api/v1/booking/media/assets/{assetId}",
+            "sourceRuntimeStatus": "mounted",
+            "sourceRuntimeAdapter": "mounted"
+          }
+        },
+        {
+          "commandId": "booking.get.media.asset.variant",
+          "title": "Read booking media image variant",
+          "description": "Streams an authenticated, org-scoped Cloudflare Images variant for an image asset stored privately in BOOKING_MEDIA_BUCKET. The catalog row and session are checked before the Worker reads R2 bytes or returns a cached variant.",
+          "familyId": "booking-media",
+          "source": "openapi",
+          "effect": "read",
+          "approval": "none",
+          "readOnly": true,
+          "schemaRef": "GET /api/v1/booking/media/assets/{assetId}/variants/{variant} request",
+          "outputResources": [],
+          "accessible": {
+            "label": "Read booking media image variant",
+            "description": "Streams an authenticated, org-scoped Cloudflare Images variant for an image asset stored privately in BOOKING_MEDIA_BUCKET. The catalog row and session are checked before the Worker reads R2 bytes or returns a cached variant.",
+            "actionLabel": "Read booking media image variant"
+          },
+          "invocation": {
+            "kind": "catalog-command",
+            "commandId": "booking.get.media.asset.variant",
+            "executeTool": "executeCommand",
+            "commitTool": "commitCommand",
+            "learnTool": "learnCommand",
+            "mcp": {
+              "toolName": "sonik_booking_command_execute"
+            }
+          },
+          "provenance": {
+            "generated": true,
+            "sourceAdapter": "openapi",
+            "transportProcedure": "bookingGetMediaAssetVariant",
+            "method": "GET",
+            "path": "/api/v1/booking/media/assets/{assetId}/variants/{variant}",
             "sourceRuntimeStatus": "mounted",
             "sourceRuntimeAdapter": "mounted"
           }
