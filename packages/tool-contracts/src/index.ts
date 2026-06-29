@@ -341,6 +341,10 @@ export const commandIndexSummarySchema = z.object({
   source: toolSourceSchema,
   effect: toolEffectSchema,
   approval: toolApprovalSchema,
+  execution: z.object({
+    runtimeStatus: z.enum(["mounted", "shadow", "unknown"]).default("unknown"),
+    executable: z.literal(false).default(false),
+  }),
   shape: commandShapeSchema,
   loadPolicy: commandLoadPolicySchema,
   capabilities: z.array(z.string()),
@@ -392,7 +396,12 @@ export type CommandExecutionContext = {
 
 export type CommandLearnAspect = "description" | "schema" | "examples" | "policy" | "output" | "surfaces" | "transport" | "auth";
 export type CommandCatalogSearchResult = {
-  commands: Array<Pick<CommandDescriptor, "id" | "title" | "description" | "familyId" | "capabilities" | "source" | "effect" | "approval" | "loadPolicy" | "surfaces" | "uiTargets">>;
+  commands: Array<Pick<CommandDescriptor, "id" | "title" | "description" | "familyId" | "capabilities" | "source" | "effect" | "approval" | "loadPolicy" | "surfaces" | "uiTargets"> & {
+    execution: {
+      runtimeStatus: CommandDescriptor["transport"]["runtimeStatus"];
+      executable: false;
+    };
+  }>;
   totalMatches: number;
   truncated: boolean;
   limit: number;
@@ -541,7 +550,7 @@ export function searchCommandCatalogWithMetadata(catalog: CommandCatalog, query 
   return {
     commands: matches
       .slice(0, boundedLimit)
-      .map(({ id, title, description, familyId, capabilities, source, effect, approval, surfaces, uiTargets, loadPolicy }) => ({
+      .map(({ id, title, description, familyId, capabilities, source, effect, approval, transport, surfaces, uiTargets, loadPolicy }) => ({
         id,
         title,
         description,
@@ -550,6 +559,7 @@ export function searchCommandCatalogWithMetadata(catalog: CommandCatalog, query 
         source,
         effect,
         approval,
+        execution: { runtimeStatus: transport.runtimeStatus, executable: false },
         surfaces,
         uiTargets,
         loadPolicy,
@@ -601,6 +611,12 @@ export function evaluateCommandPolicy(command: CommandDescriptor, context: Comma
   const reasons: string[] = [];
   if (command.transport.runtimeStatus !== "mounted") reasons.push(`runtime_not_mounted:${command.transport.runtimeStatus}`);
   if ((command.source === "orpc" || command.source === "openapi") && command.metadata.liveExecution !== true) reasons.push("orpc_execution_adapter_not_mounted");
+  if (
+    (command.source === "orpc" || command.source === "openapi")
+    && command.metadata.liveExecution === true
+    && command.transport.runtimeStatus === "mounted"
+    && (!context.hostSessionSource || context.hostSessionSource === "anonymous")
+  ) reasons.push("trusted_host_session_required");
   if (command.source === "mcp") reasons.push("mcp_projection_not_native_execution");
   if (command.source === "sandbox" && context.allowSandbox !== true) reasons.push("sandbox_execution_not_enabled");
   if (command.auth.required && context.authenticated !== true) reasons.push("auth_required");
@@ -681,6 +697,7 @@ function commandIndexSummary(command: CommandDescriptor): CommandIndexSummary {
     source: command.source,
     effect: command.effect,
     approval: command.approval,
+    execution: { runtimeStatus: command.transport.runtimeStatus, executable: false },
     shape: command.shape,
     loadPolicy: command.loadPolicy,
     capabilities: command.capabilities,
