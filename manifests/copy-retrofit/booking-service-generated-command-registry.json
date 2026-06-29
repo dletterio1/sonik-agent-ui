@@ -3,7 +3,7 @@
 	"upstream": {
 		"repoPath": "/Users/danielletterio/Documents/GitHub/sonik-booking-service",
 		"gitRemote": "git@github.com:dletterio1/sonik-booking-service.git",
-		"revision": "f68e20b5f450ef86ab2f64d95a3fe93c7e88f0aa",
+		"revision": "4324559be7f9533a0557dc0363f2fcfebb1cb6d9",
 		"license": "UNLICENSED"
 	},
 	"entries": [

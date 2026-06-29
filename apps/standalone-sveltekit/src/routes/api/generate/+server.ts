@@ -38,6 +38,7 @@ import type { RequestHandler } from "./$types";
 
 const PAGE_CONTEXT_FIELD_MAX_CHARS = 160;
 const PAGE_CONTEXT_LIST_MAX_ITEMS = 8;
+const APPROVED_COMMAND_IDS_MAX_ITEMS = 128;
 
 
 function createAgentHostSessionEnvelope(event: RequestEvent): HostSessionEnvelope | null {
@@ -59,7 +60,13 @@ function createAgentHostSessionEnvelope(event: RequestEvent): HostSessionEnvelop
 function approvedCommandIdsFromHostSession(hostSession: HostSessionEnvelope | null): string[] {
   const value = hostSession?.metadata?.approvedCommandIds;
   if (!Array.isArray(value)) return [];
-  return [...new Set(value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0))].slice(0, 20);
+  return [
+    ...new Set(
+      value
+        .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+        .map((entry) => entry.trim()),
+    ),
+  ].slice(0, APPROVED_COMMAND_IDS_MAX_ITEMS);
 }
 
 function resolveAgentPageContext(value: unknown, defaults: { activeDocument?: WorkspaceDocumentRecord | null } = {}): AgentPageContext | undefined {

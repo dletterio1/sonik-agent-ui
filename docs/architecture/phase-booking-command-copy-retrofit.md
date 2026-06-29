@@ -8,7 +8,7 @@ This slice preserves booking-service generated command truth before expanding li
 
 | Upstream | Revision | Destination | Purpose |
 | --- | --- | --- | --- |
-| `sonik-booking-service` | `f68e20b5f450ef86ab2f64d95a3fe93c7e88f0aa` | `docs/upstream-proofs/booking-service/` | Full booking OpenAPI, generated SDK command registry, SDK registry constants, booking-side registry check script. |
+| `sonik-booking-service` | `4324559be7f9533a0557dc0363f2fcfebb1cb6d9` | `docs/upstream-proofs/booking-service/` | Full booking OpenAPI, generated SDK command registry, SDK registry constants, booking-side registry check script. |
 | `sonik-mcp` | `befe393f69580297eff5605938f1ee9e685af245` | `docs/upstream-proofs/sonik-mcp/` | Command-OS doctrine and CLI/MCP parity-policy test patterns. |
 
 The copy manifests are:

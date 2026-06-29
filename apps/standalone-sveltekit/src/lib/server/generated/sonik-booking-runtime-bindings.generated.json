@@ -5,7 +5,7 @@
   "source": {
     "sourceRepo": "/Users/danielletterio/Documents/GitHub/sonik-booking-service",
     "sourceRef": "codex/booking-agent-ui-runtime-bridge",
-    "sourceRevision": "f68e20b5f450ef86ab2f64d95a3fe93c7e88f0aa",
+    "sourceRevision": "4324559be7f9533a0557dc0363f2fcfebb1cb6d9",
     "sourcePath": "packages/sonik-sdk/docs/booking-openapi.generated.json",
     "sourceSha256": "936f732d40a9dada43bc6986b9871e8e3c4ee538c4547c5199f66646b0951955",
     "sourceOperationCount": 72,

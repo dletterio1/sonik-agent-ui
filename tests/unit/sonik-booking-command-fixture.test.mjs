@@ -38,7 +38,7 @@ assert.equal(operationCount, 72, "fixture represents the full copied OpenAPI ope
 assert.equal(checkedFixture.summary.commandCount, 72);
 assert.equal(checkedFixture.summary.familyCount, 12);
 assert.equal(checkedFixture.source.sourceRef, "codex/booking-agent-ui-runtime-bridge");
-assert.equal(checkedFixture.source.sourceRevision, "f68e20b5f450ef86ab2f64d95a3fe93c7e88f0aa");
+assert.equal(checkedFixture.source.sourceRevision, "4324559be7f9533a0557dc0363f2fcfebb1cb6d9");
 assert.equal(checkedFixture.source.sourceSha256, "936f732d40a9dada43bc6986b9871e8e3c4ee538c4547c5199f66646b0951955");
 assert.equal(checkedFixture.source.sourceOperationCount, 72, "full copied OpenAPI source has 72 operations");
 assert.equal(checkedFixture.source.extractedOperationCount, 72, "generator fixture uses the full copied OpenAPI operation set");
