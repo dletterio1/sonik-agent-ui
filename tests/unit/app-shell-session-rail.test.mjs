@@ -112,7 +112,8 @@ assert.equal(generateRoute.includes("activeDocument?.session_id ?? workspaceSess
 assert.equal(generateRoute.includes("includeHostRuntime: true"), true, "generate route should opt into host-composed command indexes without changing the neutral default helper");
 assert.equal(generateRoute.includes("hostSession: hostSession ?? undefined"), true, "generate route should pass signed host session context into command runtime when available");
 assert.equal(generateRoute.includes('hostSessionMode: hostSession ? undefined : "standalone-demo"'), true, "generate route should fall back to explicit standalone fixture auth only without a trusted host session");
-assert.equal(generateRoute.includes("createBookingRuntimeAuthContextFromEnv(env)"), true, "generate route should resolve booking runtime auth from server env instead of page context");
+assert.equal(generateRoute.includes("createBookingRuntimeAuthContextFromTrustedHostHeader"), true, "generate route should prefer the signed embedded host context for booking runtime auth");
+assert.equal(generateRoute.includes("fallback: createBookingRuntimeAuthContextFromEnv(env)"), true, "generate route should fall back to server env runtime auth when no signed host context is donated");
 assert.equal(generateRoute.includes("bookingRuntimeCredentialed"), true, "generate telemetry should expose credential posture without logging credentials");
 assert.equal(generateRoute.includes("createAgent({ activeDocument, sessionId: telemetrySessionId, pageContext, hostSession, approvedCommandIds, bookingServiceBaseUrl, bookingRuntimeAuth, persistence: requestPersistence })"), true, "agent tools should receive active workspace session id, page context, trusted host session, approval grants, configured booking runtime base URL, and server-side auth mode");
 assert.equal(generateRoute.includes("CURRENT HOST/PAGE CONTEXT:"), true, "generate route should inject host page context as first-class model context, not only telemetry/tool metadata");
@@ -136,6 +137,7 @@ assert.equal(hostCommandRuntimeSource.includes("resolveStandaloneHostSession"), 
 assert.equal(hostCommandRuntimeSource.includes("createEmbeddedHostSessionEnvelope"), true, "standalone host runtime should include an Amplify-shaped embedded host session path");
 assert.equal(hostCommandRuntimeSource.includes("filterEligibleHostCommandAdapters"), true, "host command composition should be gated by adapter-owned trusted auth/org/scope eligibility");
 assert.equal(hostCommandRuntimeSource.includes("isEligible:"), true, "host adapters should own their own eligibility rule instead of hardcoding one global family gate");
+assert.equal(hostCommandRuntimeSource.includes('headers["x-sonik-agent-ui-host-context"]'), true, "booking runtime should forward the signed host context header to booking service instead of trusting raw x-sonik-agent-* headers");
 
 assert.equal(documentToolsSource.includes("sessionId?: string | null"), true, "document tool context should accept a workspace session id");
 assert.equal(documentToolsSource.includes("session_id: runtime.sessionId"), true, "new document artifacts should be created inside the active workspace session");

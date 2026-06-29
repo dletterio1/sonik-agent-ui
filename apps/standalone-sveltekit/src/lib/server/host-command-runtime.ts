@@ -44,12 +44,13 @@ export const GENERATED_BOOKING_RELEASE_HOLD_COMMAND_ID = "booking.release.hold";
 export const GENERATED_BOOKING_RUNTIME_PROVIDER = "sonik-booking-openapi-runtime";
 export const GENERATED_BOOKING_DEMO_RUNTIME_PROVIDER = "sonik-booking-openapi-demo-runtime";
 
-export type BookingRuntimeAuthMode = "anonymous" | "bearer" | "service-token" | "cookie";
+export type BookingRuntimeAuthMode = "anonymous" | "bearer" | "service-token" | "cookie" | "signed-host-context";
 
 export type BookingRuntimeAuthContext = {
   mode: BookingRuntimeAuthMode;
   token?: string | null;
   includeCredentials?: boolean;
+  signedHostContextHeader?: string | null;
   source?: "env" | "host" | "test";
 };
 
@@ -473,6 +474,10 @@ function createGeneratedBookingRuntimeHeaders(authContext: BookingRuntimeAuthCon
   const token = safeSecretHeaderValue(authContext.token);
   if (token && authContext.mode === "bearer") headers.authorization = `Bearer ${token}`;
   if (token && authContext.mode === "service-token") headers["x-sonik-service-token"] = token;
+  const signedHostContextHeader = safeSecretHeaderValue(authContext.signedHostContextHeader);
+  if (signedHostContextHeader && authContext.mode === "signed-host-context") {
+    headers["x-sonik-agent-ui-host-context"] = signedHostContextHeader;
+  }
   return headers;
 }
 
@@ -589,13 +594,30 @@ export function createBookingRuntimeAuthContextFromEnv(envLike: Record<string, s
     mode,
     token: mode === "bearer" || mode === "service-token" ? token : null,
     includeCredentials: includeCredentials || mode === "cookie",
+    signedHostContextHeader: null,
     source: "env",
+  };
+}
+
+export function createBookingRuntimeAuthContextFromTrustedHostHeader(input: {
+  header: string | null | undefined;
+  fallback?: BookingRuntimeAuthContext | null;
+}): BookingRuntimeAuthContext {
+  const signedHostContextHeader = safeSecretHeaderValue(input.header);
+  if (!signedHostContextHeader) return resolveBookingRuntimeAuthContext(input.fallback);
+  return {
+    mode: "signed-host-context",
+    token: null,
+    includeCredentials: false,
+    signedHostContextHeader,
+    source: "host",
   };
 }
 
 export function hasBookingRuntimeCredential(authContext: BookingRuntimeAuthContext | null | undefined): boolean {
   if (!authContext) return false;
   const mode = normalizeBookingRuntimeAuthMode(authContext.mode) ?? "anonymous";
+  if (mode === "signed-host-context") return Boolean(safeSecretHeaderValue(authContext.signedHostContextHeader));
   if (mode !== "bearer" && mode !== "service-token") return false;
   return Boolean(safeSecretHeaderValue(authContext.token));
 }
@@ -616,6 +638,7 @@ function resolveBookingRuntimeAuthContext(input: BookingRuntimeAuthContext | nul
     mode,
     token: mode === "bearer" || mode === "service-token" ? token : null,
     includeCredentials: input.includeCredentials === true || mode === "cookie",
+    signedHostContextHeader: mode === "signed-host-context" ? safeSecretHeaderValue(input.signedHostContextHeader) : null,
     source: input.source ?? "host",
   };
 }
@@ -623,7 +646,7 @@ function resolveBookingRuntimeAuthContext(input: BookingRuntimeAuthContext | nul
 function normalizeBookingRuntimeAuthMode(value: string | null | undefined): BookingRuntimeAuthMode | null {
   if (!value) return null;
   const normalized = value.trim().toLowerCase();
-  if (normalized === "bearer" || normalized === "service-token" || normalized === "cookie" || normalized === "anonymous") return normalized;
+  if (normalized === "bearer" || normalized === "service-token" || normalized === "cookie" || normalized === "anonymous" || normalized === "signed-host-context") return normalized;
   return null;
 }
 

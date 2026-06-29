@@ -17,8 +17,12 @@ import { instrumentGenerateStream } from "$lib/server/stream-telemetry";
 import { createDevSmokeStream, readDevSmokeRunId, shouldUseDevSmokeStream, writeDevSmokeStreamTelemetry } from "$lib/server/dev-smoke-stream";
 import { getRequestWorkspacePersistence, syncRequestActiveWorkspaceDocumentSnapshot, type WorkspaceDocumentRecord } from "$lib/server/workspace-request-store";
 import { createStandaloneCommandIndexSummary } from "$lib/server/tool-manifest";
-import { createBookingRuntimeAuthContextFromEnv, hasBookingRuntimeCredential } from "$lib/server/host-command-runtime";
-import { resolveTrustedHostSessionSnapshot } from "$lib/server/workspace-services";
+import {
+  createBookingRuntimeAuthContextFromEnv,
+  createBookingRuntimeAuthContextFromTrustedHostHeader,
+  hasBookingRuntimeCredential,
+} from "$lib/server/host-command-runtime";
+import { AGENT_UI_HOST_CONTEXT_HEADER, resolveTrustedHostSessionSnapshot } from "$lib/server/workspace-services";
 import type { HostSessionEnvelope } from "@sonik-agent-ui/platform-adapters";
 import type { AgentPageContext } from "@sonik-agent-ui/tool-contracts";
 import {
@@ -191,7 +195,10 @@ export const POST: RequestHandler = async (event) => {
   const telemetryPageContext = sanitizePageContext(body?.pageContext ?? body?.workspace?.pageContext);
   const pageContextSource = resolvePageContextSource(body, activeDocument);
   const bookingServiceBaseUrl = env.SONIK_BOOKING_API_BASE_URL ?? env.BOOKING_SERVICE_BASE_URL ?? null;
-  const bookingRuntimeAuth = createBookingRuntimeAuthContextFromEnv(env);
+  const bookingRuntimeAuth = createBookingRuntimeAuthContextFromTrustedHostHeader({
+    header: request.headers.get(AGENT_UI_HOST_CONTEXT_HEADER),
+    fallback: createBookingRuntimeAuthContextFromEnv(env),
+  });
   const hostSession = createAgentHostSessionEnvelope(event);
   const approvedCommandIds = approvedCommandIdsFromHostSession(hostSession);
   const startedAt = Date.now();

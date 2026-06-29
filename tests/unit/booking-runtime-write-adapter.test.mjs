@@ -26,6 +26,7 @@ const CONTEXT_ID = "22222222-2222-4222-8222-222222222222";
 const HOLD_ID = "33333333-3333-4333-8333-333333333333";
 const RESOURCE_UNIT_ID = "44444444-4444-4444-8444-444444444444";
 const TOKEN = "phase3-secret-token";
+const SIGNED_HOST_CONTEXT_HEADER = "eyJzaWduZWQiOiJwcm9vZiJ9";
 
 const hostSession = {
   source: "amplify-embedded",
@@ -218,6 +219,7 @@ assert.equal(JSON.stringify(createReceipt).includes(TOKEN), false, "receipts red
 const createCall = calls.find((call) => call.method === "POST" && call.url.endsWith("/api/v1/booking/holds"));
 assert.ok(createCall, "create hold calls POST /holds");
 assert.equal(createCall.headers.authorization, `Bearer ${TOKEN}`);
+assert.equal(createCall.headers["x-sonik-agent-ui-host-context"], undefined, "bearer runtime does not synthesize a signed host context");
 assert.equal(createCall.headers["x-sonik-agent-org-id"], ORG_ID);
 assert.equal(createCall.headers["x-sonik-agent-session-id"], SESSION_ID);
 assert.equal(createCall.headers["x-sonik-agent-principal-id"], USER_ID);
@@ -225,6 +227,28 @@ assert.equal(createCall.body.userId, USER_ID, "create hold body is bound to trus
 assert.equal(createCall.headers["x-sonik-idempotency-key"], "agent-ui-v02-demo-hold-001");
 assert.equal(createCall.body.resourceUnitId, RESOURCE_UNIT_ID);
 assert.equal(createCall.body.metadata.apiToken, "[redacted]");
+
+const signedHeaderCalls = [];
+const signedHeaderBundle = createStandaloneHostCommandRuntimeBundle({
+  hostSession,
+  pageContext: bookingPageContext,
+  bookingServiceBaseUrl: "https://booking.example.test",
+  bookingRuntimeAuth: { mode: "signed-host-context", signedHostContextHeader: SIGNED_HOST_CONTEXT_HEADER, source: "test" },
+  fetcher: async (url, init = {}) => {
+    signedHeaderCalls.push({ url: String(url), method: init.method, headers: init.headers });
+    return Response.json([{ startsAt: "2026-07-01T18:00:00.000Z", endsAt: "2026-07-01T18:30:00.000Z", capacityRemaining: 4 }]);
+  },
+});
+const signedHeaderReceipt = await executeHostCatalogCommand({
+  catalog: signedHeaderBundle.catalog,
+  runtimeAdapters: signedHeaderBundle.runtimeAdapters,
+  commandId: GENERATED_BOOKING_AVAILABILITY_COMMAND_ID,
+  commandInput: { contextId: CONTEXT_ID, from: "2026-07-01T18:00:00.000Z", to: "2026-07-01T19:00:00.000Z", partySize: 2, source: "admin", resourceUnitId: RESOURCE_UNIT_ID },
+  execution: { ...signedHeaderBundle.executionContext, action: "execute", requestId: "req_signed_context_header" },
+});
+assert.equal(signedHeaderReceipt.ok, true, "signed host-context runtime is treated as credentialed");
+assert.equal(signedHeaderCalls.at(-1).headers["x-sonik-agent-ui-host-context"], SIGNED_HOST_CONTEXT_HEADER, "signed host context is forwarded to booking service");
+assert.equal(signedHeaderCalls.at(-1).headers.authorization, undefined, "signed host-context runtime avoids bearer fallback");
 
 const getHoldReceipt = await executeHostCatalogCommand({
   catalog: bundle.catalog,
