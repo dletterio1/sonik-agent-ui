@@ -115,13 +115,21 @@ const signedTrustedSessionWithMetadata = sanitizeAgentHostPageContext({
     authenticated: true,
     scopes: ["agent-ui.workspace.persistence"],
     expiresAt: "2026-06-24T22:10:00.000Z",
-    metadata: { authAuthority: "amplify-org-context", sessionMode: "production" },
+    metadata: {
+      authAuthority: "amplify-org-context",
+      sessionMode: "production",
+      approvedCommandIds: ["booking.create.hold", "booking.release.hold"],
+    },
   },
 });
 assert.deepEqual(
   signedTrustedSessionWithMetadata?.hostSession?.metadata,
-  { authAuthority: "amplify-org-context", sessionMode: "production" },
-  "signed host-context metadata must survive unchanged when it is part of the HMAC payload",
+  {
+    authAuthority: "amplify-org-context",
+    sessionMode: "production",
+    approvedCommandIds: ["booking.create.hold", "booking.release.hold"],
+  },
+  "signed host-context metadata, including command-id arrays, must survive unchanged when it is part of the HMAC payload",
 );
 
 assert.deepEqual(

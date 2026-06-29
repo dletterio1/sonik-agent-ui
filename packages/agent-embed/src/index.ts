@@ -541,14 +541,21 @@ function sanitizeTrustedHostContext(value: AgentTrustedHostContext | null | unde
 }
 
 
-function sanitizeHostSessionMetadata(value: unknown): Record<string, string | number | boolean> | undefined {
+type SanitizedHostSessionMetadataValue = string | number | boolean | string[];
+
+function sanitizeHostSessionMetadata(value: unknown): Record<string, SanitizedHostSessionMetadataValue> | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const entries: Array<[string, string | number | boolean]> = [];
+  const entries: Array<[string, SanitizedHostSessionMetadataValue]> = [];
   for (const [rawKey, rawValue] of Object.entries(value as Record<string, unknown>).slice(0, MAX_LIST_ITEMS)) {
     const key = cleanText(rawKey);
     if (!key) continue;
     if (typeof rawValue === "boolean" || typeof rawValue === "number") {
       entries.push([key, rawValue]);
+      continue;
+    }
+    if (Array.isArray(rawValue)) {
+      const values = rawValue.map(cleanText).filter((entry): entry is string => Boolean(entry)).slice(0, MAX_LIST_ITEMS);
+      if (values.length > 0) entries.push([key, values]);
       continue;
     }
     const text = cleanText(rawValue);
