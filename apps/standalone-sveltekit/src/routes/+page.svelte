@@ -989,8 +989,8 @@
           handleClearArtifact();
           return semanticActionResult(true, "Artifact cleared.");
         },
-        openWorkspaceDocument: () => {
-          openDocumentEditor();
+        openWorkspaceDocument: async () => {
+          await openDocumentEditor();
           return semanticActionResult(true, "Workspace document opened.");
         },
       },
@@ -1628,10 +1628,6 @@
       pendingArtifactIntent = trimmed;
     }
 
-    if (/\b(document|markdown|html|code|editor|workspace)\b/i.test(trimmed)) {
-      documentEditorOpen = true;
-    }
-
     logSessionTelemetry("chat.submit.start", { sessionId: activeSessionId, reason: `${trimmed.length} chars` });
     maybeNameNewChat(trimmed);
     conversation.sendMessage({ text: trimmed });
@@ -1675,9 +1671,40 @@
     artifactEvents = [];
   }
 
-  function openDocumentEditor(): void {
-    documentEditorOpen = true;
+  async function createInitialWorkspaceDocument(): Promise<ActiveDocumentSnapshot> {
+    const response = await workspaceFetch("/api/document", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        session_id: activeSessionId ?? "workspace-document-island",
+        title: documentFrameTitle,
+        language: documentFrameLanguage,
+        content: documentFrameContent,
+      }),
+    });
+    if (!response.ok) {
+      const message = await readWorkspaceResponseError(response);
+      throw new Error(message || "Workspace document could not be created.");
+    }
+    return (await response.json()) as ActiveDocumentSnapshot;
+  }
+
+  async function openDocumentEditor(): Promise<void> {
     pendingArtifactIntent = null;
+    if (!documentSeed) {
+      try {
+        const document = await createInitialWorkspaceDocument();
+        activeDocument = document;
+        documentSeed = document;
+        documentPreferredView = inferPreferredDocumentView(document.language);
+        lastPersistedDocumentSignature = createDocumentSnapshotSignature(document);
+      } catch (error) {
+        sessionRailError = error instanceof Error ? error.message : String(error);
+        reportClientEffectError("document_frame.open_error", error, { sessionId: activeSessionId });
+        return;
+      }
+    }
+    documentEditorOpen = true;
   }
 
   function handleDocumentEvent(event: WorkspaceDocumentEvent): void {

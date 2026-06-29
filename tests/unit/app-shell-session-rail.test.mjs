@@ -331,6 +331,12 @@ assert.equal(pageSource.includes("function getSubmitDisabledReason"), true, "pag
 assert.equal(pageSource.includes("createDevSmokeHeaders"), true, "dev smoke mode should be transported as headers from the local smoke URL");
 assert.equal(pageSource.includes("devSmokeMockStream"), false, "page should not put smoke-only mode flags into the application request body");
 assert.equal(pageSource.includes("openWorkspaceDocument"), true, "page-control contract should expose document host action without DOM scraping");
+assert.equal(pageSource.includes("async function createInitialWorkspaceDocument"), true, "parent app should create initial workspace documents through signed workspaceFetch before mounting the static document iframe");
+assert.equal(pageSource.includes('const response = await workspaceFetch("/api/document"'), true, "initial document creation must use workspaceFetch so embedded cloud runtime receives the signed host context header");
+const openDocumentEditorSource = pageSource.slice(pageSource.indexOf("async function openDocumentEditor"), pageSource.indexOf("function handleDocumentEvent"));
+assert.equal(openDocumentEditorSource.includes("const document = await createInitialWorkspaceDocument();"), true, "openDocumentEditor should create a persisted document snapshot before opening the iframe");
+assert.equal(openDocumentEditorSource.indexOf("documentEditorOpen = true;") > openDocumentEditorSource.indexOf("const document = await createInitialWorkspaceDocument();"), true, "document iframe should open only after openDocumentEditor has created or selected a document snapshot");
+assert.equal(pageSource.includes("if (/\\b(document|markdown|html|code|editor|workspace)\\b/i.test(trimmed))"), false, "chat submit should not prematurely open the document iframe before a tool-created document exists");
 assert.equal(pageSource.includes("lastPersistStatus"), true, "page assertions should track post-stream persistence state for crash regression gates");
 assert.equal(pageContextRouteSource.includes("client.page_context.updated"), true, "dev page context endpoint should persist a telemetry breadcrumb");
 assert.equal(pageContextRouteSource.includes("Dev page context is disabled"), true, "dev page context endpoint should be gated outside local/dev observability mode");
