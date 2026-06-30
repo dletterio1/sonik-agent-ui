@@ -413,6 +413,70 @@ export const commandWorkflowRecipeSchema = z.object({
 export type CommandWorkflowRecipeStep = z.infer<typeof commandWorkflowRecipeStepSchema>;
 export type CommandWorkflowRecipe = z.infer<typeof commandWorkflowRecipeSchema>;
 
+export const skillDescriptorSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string().min(1),
+  familyId: z.string().min(1),
+  loadPolicy: commandLoadPolicySchema.default({ mode: "lazy", priority: 0 }),
+  contextHints: commandContextHintsSchema.default({ routes: [], surfaces: [], pageTypes: [], artifactTypes: [], skillFamilies: [], commandFamilies: [], requiredScopes: [] }),
+  intentAliases: z.array(z.string().min(1)).default([]),
+  commandSequence: z.array(z.string().min(1)).default([]),
+  requiredCommands: z.array(z.string().min(1)).default([]),
+  forbiddenUnlessExplicit: z.array(z.string().min(1)).default([]),
+  workflowRecipe: commandWorkflowRecipeSchema.optional(),
+  examples: z.array(z.object({
+    title: z.string().min(1),
+    prompt: z.string().min(1),
+    expectedCommandPath: z.array(z.string().min(1)).default([]),
+  })).default([]),
+  negativeExamples: z.array(z.object({
+    title: z.string().min(1),
+    prompt: z.string().min(1),
+    failIfCommandIds: z.array(z.string().min(1)).default([]),
+    expectedCommandPath: z.array(z.string().min(1)).default([]),
+  })).default([]),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+}).superRefine((skill, ctx) => {
+  if (skill.workflowRecipe && skill.commandSequence.length > 0 && skill.workflowRecipe.commandSequence.join("\u0000") !== skill.commandSequence.join("\u0000")) {
+    ctx.addIssue({ code: "custom", path: ["commandSequence"], message: "Skill commandSequence must match workflowRecipe.commandSequence when a workflowRecipe is provided." });
+  }
+});
+
+export const skillCatalogSchema = z.object({
+  version: z.literal("sonik-agent-ui.skill-catalog.v1"),
+  generatedAt: z.string(),
+  provider: z.string().min(1),
+  skills: z.array(skillDescriptorSchema),
+});
+
+export const skillIndexSummarySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  familyId: z.string(),
+  loadPolicy: commandLoadPolicySchema,
+  intentAliases: z.array(z.string()),
+  commandSequence: z.array(z.string()),
+  requiredCommands: z.array(z.string()),
+});
+
+export const skillIndexSchema = z.object({
+  version: z.literal("sonik-agent-ui.skill-index.v1"),
+  provider: z.string(),
+  generatedAt: z.string(),
+  skills: z.array(skillIndexSummarySchema),
+  totalMatches: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+  limit: z.number().int().positive(),
+});
+
+export type SkillDescriptor = z.infer<typeof skillDescriptorSchema>;
+export type SkillCatalog = z.infer<typeof skillCatalogSchema>;
+export type SkillIndexSummary = z.infer<typeof skillIndexSummarySchema>;
+export type SkillIndex = z.infer<typeof skillIndexSchema>;
+export type SkillLearnAspect = "description" | "workflow" | "examples" | "policy" | "context" | "commands";
+
 export type CommandExecutionContext = {
   action?: CommandAction;
   source?: CommandExecutionSource;
@@ -471,6 +535,10 @@ const defaultCommandFamilies: CommandFamilyDefinition[] = [
 
 export function createCommandCatalog(provider: string, commands: CommandDescriptor[], generatedAt = new Date().toISOString()): CommandCatalog {
   return commandCatalogSchema.parse({ version: "sonik-agent-ui.command-catalog.v1", generatedAt, provider, commands });
+}
+
+export function createSkillCatalog(provider: string, skills: SkillDescriptor[], generatedAt = new Date().toISOString()): SkillCatalog {
+  return skillCatalogSchema.parse({ version: "sonik-agent-ui.skill-catalog.v1", generatedAt, provider, skills });
 }
 
 export function createCommandFamilyRegistry(provider: string, families: CommandFamilyDefinition[] = defaultCommandFamilies, generatedAt = new Date().toISOString()): CommandFamilyRegistry {
@@ -567,6 +635,81 @@ export function projectCommandToToolEntry(command: CommandDescriptor): ToolContr
 
 export function searchCommandCatalog(catalog: CommandCatalog, query = "", limit = 20): CommandCatalogSearchResult["commands"] {
   return searchCommandCatalogWithMetadata(catalog, query, limit).commands;
+}
+
+export function searchSkillCatalogWithMetadata(catalog: SkillCatalog, query = "", limit = 20, context: CommandIndexContext = {}): SkillIndex {
+  const boundedLimit = Math.max(1, Math.min(Math.floor(limit), 50));
+  const normalized = query.trim().toLowerCase();
+  const tokens = tokenizeCommandText(normalized);
+  const matches = catalog.skills
+    .filter((skill) => skill.loadPolicy.mode !== "hidden")
+    .filter((skill) => skillVisibleInIndexContext(skill, context))
+    .filter((skill) => {
+      if (tokens.length === 0) return true;
+      const haystack = [
+        skill.id,
+        skill.title,
+        skill.description,
+        skill.familyId,
+        ...skill.intentAliases,
+        ...skill.commandSequence,
+        ...skill.requiredCommands,
+        ...skill.contextHints.routes,
+        ...skill.contextHints.surfaces,
+        ...skill.contextHints.pageTypes,
+        ...skill.contextHints.skillFamilies,
+        ...skill.contextHints.commandFamilies,
+      ].join(" ").toLowerCase();
+      return tokens.every((token) => haystack.includes(token));
+    })
+    .sort((a, b) => Number(skillMatchesIndexContext(b, context)) - Number(skillMatchesIndexContext(a, context)) || b.loadPolicy.priority - a.loadPolicy.priority || a.id.localeCompare(b.id));
+
+  return createSkillIndex(catalog, matches, boundedLimit);
+}
+
+export function createStartupSkillIndex(catalog: SkillCatalog, input: { limit?: number; context?: CommandIndexContext } = {}): SkillIndex {
+  const context = input.context ?? {};
+  const skills = catalog.skills
+    .filter((skill) => skill.loadPolicy.mode === "eager-summary" && skillVisibleInIndexContext(skill, context))
+    .sort((a, b) => b.loadPolicy.priority - a.loadPolicy.priority || a.id.localeCompare(b.id));
+  return createSkillIndex(catalog, skills, input.limit ?? 8);
+}
+
+export function createSurfaceSkillIndex(catalog: SkillCatalog, context: CommandIndexContext = {}, input: { limit?: number } = {}): SkillIndex {
+  const skills = catalog.skills
+    .filter((skill) => skill.loadPolicy.mode !== "hidden")
+    .filter((skill) => skillVisibleInIndexContext(skill, context))
+    .filter((skill) => skill.loadPolicy.mode === "eager-summary" || (skill.loadPolicy.mode === "surface-eager" && skillMatchesIndexContext(skill, context)))
+    .sort((a, b) => Number(skillMatchesIndexContext(b, context)) - Number(skillMatchesIndexContext(a, context)) || b.loadPolicy.priority - a.loadPolicy.priority || a.id.localeCompare(b.id));
+  return createSkillIndex(catalog, skills, input.limit ?? 8);
+}
+
+export function learnSkillDescriptor(catalog: SkillCatalog, skillId: string, aspects: SkillLearnAspect[] = ["description", "workflow", "examples", "policy", "context", "commands"]): Record<string, unknown> {
+  const skill = catalog.skills.find((entry) => entry.id === skillId);
+  if (!skill) return { ok: false, error: "UNKNOWN_SKILL", skillId };
+  const learned: Record<string, unknown> = { ok: true, skillId: skill.id, title: skill.title, familyId: skill.familyId };
+  if (aspects.includes("description")) {
+    learned.description = skill.description;
+    learned.intentAliases = skill.intentAliases;
+  }
+  if (aspects.includes("workflow")) learned.workflowRecipe = skill.workflowRecipe;
+  if (aspects.includes("examples")) {
+    learned.examples = skill.examples;
+    learned.negativeExamples = skill.negativeExamples;
+  }
+  if (aspects.includes("policy")) {
+    learned.forbiddenUnlessExplicit = skill.forbiddenUnlessExplicit;
+    learned.metadata = skill.metadata;
+  }
+  if (aspects.includes("context")) {
+    learned.contextHints = skill.contextHints;
+    learned.loadPolicy = skill.loadPolicy;
+  }
+  if (aspects.includes("commands")) {
+    learned.commandSequence = skill.commandSequence;
+    learned.requiredCommands = skill.requiredCommands;
+  }
+  return learned;
 }
 
 export function searchCommandCatalogWithMetadata(catalog: CommandCatalog, query = "", limit = 20): CommandCatalogSearchResult {
@@ -787,6 +930,46 @@ function commandMatchesIndexContext(command: CommandDescriptor, context: Command
     (context.pageType && hints.pageTypes.includes(context.pageType)) ||
     (context.artifactType && hints.artifactTypes.includes(context.artifactType)) ||
     context.commandFamilies?.includes(command.familyId) ||
+    context.skillFamilies?.some((family) => hints.skillFamilies.includes(family))
+  );
+}
+
+function createSkillIndex(catalog: SkillCatalog, skills: SkillDescriptor[], limit: number): SkillIndex {
+  const boundedLimit = Math.max(1, Math.min(Math.floor(limit), 50));
+  return skillIndexSchema.parse({
+    version: "sonik-agent-ui.skill-index.v1",
+    provider: catalog.provider,
+    generatedAt: catalog.generatedAt,
+    skills: skills.slice(0, boundedLimit).map((skill) => ({
+      id: skill.id,
+      title: skill.title,
+      description: skill.description,
+      familyId: skill.familyId,
+      loadPolicy: skill.loadPolicy,
+      intentAliases: skill.intentAliases,
+      commandSequence: skill.commandSequence,
+      requiredCommands: skill.requiredCommands,
+    })),
+    totalMatches: skills.length,
+    truncated: skills.length > boundedLimit,
+    limit: boundedLimit,
+  });
+}
+
+function skillVisibleInIndexContext(skill: SkillDescriptor, context: CommandIndexContext): boolean {
+  const scopes = new Set(context.scopes ?? []);
+  const requiredScopes = [...new Set(skill.contextHints.requiredScopes)];
+  return requiredScopes.length === 0 || requiredScopes.every((scope) => scopes.has(scope));
+}
+
+function skillMatchesIndexContext(skill: SkillDescriptor, context: CommandIndexContext): boolean {
+  const hints = skill.contextHints;
+  return Boolean(
+    (context.surface && hints.surfaces.includes(context.surface)) ||
+    (context.route && hints.routes.includes(context.route)) ||
+    (context.pageType && hints.pageTypes.includes(context.pageType)) ||
+    (context.artifactType && hints.artifactTypes.includes(context.artifactType)) ||
+    context.commandFamilies?.some((family) => hints.commandFamilies.includes(family)) ||
     context.skillFamilies?.some((family) => hints.skillFamilies.includes(family))
   );
 }

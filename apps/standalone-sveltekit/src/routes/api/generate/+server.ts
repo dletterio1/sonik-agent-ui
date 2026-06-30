@@ -17,6 +17,7 @@ import { instrumentGenerateStream } from "$lib/server/stream-telemetry";
 import { createDevSmokeStream, readDevSmokeRunId, shouldUseDevSmokeStream, writeDevSmokeStreamTelemetry } from "$lib/server/dev-smoke-stream";
 import { getRequestWorkspacePersistence, syncRequestActiveWorkspaceDocumentSnapshot, type WorkspaceDocumentRecord } from "$lib/server/workspace-request-store";
 import { createStandaloneCommandIndexSummary } from "$lib/server/tool-manifest";
+import { createRuntimeSkillIndexSummary } from "$lib/server/skill-registry";
 import {
   createBookingRuntimeAuthContextFromEnv,
   createBookingRuntimeAuthContextFromTrustedHostHeader,
@@ -250,8 +251,14 @@ export const POST: RequestHandler = async (event) => {
   const modelMessages = await convertToModelMessages(uiMessages);
   const contextSummary = summarizeWorkspaceContext({ activeDocument });
   const commandIndexSummary = createStandaloneCommandIndexSummary({ includeApprovalRequired: true, includeHostRuntime: true, hostSession: hostSession ?? undefined, hostSessionMode: hostSession ? undefined : "standalone-demo", sessionId: telemetrySessionId, pageContext, bookingServiceBaseUrl, bookingRuntimeAuth });
+  const skillIndexSummary = createRuntimeSkillIndexSummary({
+    ...pageContext,
+    authenticated: hostSession?.authenticated,
+    organizationId: hostSession?.organizationId,
+    scopes: hostSession?.scopes,
+  });
   const pageContextSummary = createCurrentPageContextSummary(pageContext);
-  const systemContext = [contextSummary, pageContextSummary, `CONTRACT-DERIVED COMMAND STARTUP INDEX:\n${commandIndexSummary}`].filter(Boolean).join("\n\n");
+  const systemContext = [contextSummary, pageContextSummary, `CONTEXT-RELEVANT SKILL STARTUP INDEX:\n${skillIndexSummary}`, `CONTRACT-DERIVED COMMAND STARTUP INDEX:\n${commandIndexSummary}`].filter(Boolean).join("\n\n");
   const contextualModelMessages = systemContext
     ? [{ role: "system" as const, content: systemContext }, ...modelMessages]
     : modelMessages;
@@ -277,6 +284,24 @@ export const POST: RequestHandler = async (event) => {
       hostSessionSource: hostSession?.source ?? null,
       approvedCommandCount: approvedCommandIds.length,
     },
+    ok: true,
+  }).catch(() => undefined);
+  void writeAgentTelemetry({
+    source: "server",
+    event: "api.generate.skill_index_context",
+    requestId,
+    traceId,
+    traceparent,
+    runId: smokeRunId,
+    sessionId: telemetrySessionId,
+    messageId: lastMessage?.id,
+    elementCount: skillIndexSummary.split("\n- ").length - 1,
+    surface: pageContext?.surface,
+    route: pageContext?.route,
+    commandFamilies: pageContext?.commandFamilies,
+    skillFamilies: pageContext?.skillFamilies,
+    contextSource: pageContextSource,
+    pageContext: telemetryPageContext,
     ok: true,
   }).catch(() => undefined);
   if (shouldUseDevSmokeStream(request)) {

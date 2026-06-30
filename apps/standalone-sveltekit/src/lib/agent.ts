@@ -10,6 +10,7 @@ import { JSON_ARTIFACT_TOOL_OBJECT_GUIDANCE } from "./artifacts/artifact-generat
 import { createDocumentTools, type DocumentToolContext } from "./tools/document";
 import { createToolManifestTools } from "./tools/tool-manifest";
 import { createCommandCatalogTools } from "./tools/command-catalog";
+import { createSkillCatalogTools } from "./tools/skill-catalog";
 import { MODEL_ID, gateway } from "./ai-gateway";
 import type { AgentPageContext } from "@sonik-agent-ui/tool-contracts";
 import type { HostSessionEnvelope } from "@sonik-agent-ui/platform-adapters";
@@ -29,7 +30,7 @@ RULES:
 - For document tools, set preferredView to "preview" for rendered Markdown/HTML/SVG/XML the user should visually inspect, "edit" for source/code-first work, and "auto" only when indifferent.
 - createJsonArtifact requires a valid flat spec: spec.root MUST be "main" and spec.elements.main MUST exist. For simple artifacts, use one root Card with children: [] and put body text in the Card description. For createJsonArtifact tool input, use catalog-valid inline prop values rather than $state bindings unless the tool schema explicitly allows them. Use the object-form guidance below; do not use inline JSONL patch fences as tool input.
 - Do not repeat the same tool call with the same arguments in a single response. Do not call createJsonArtifact more than once for a single user turn. Use the first result you already have.
-- For questions about your own tool capabilities or this app, do not call external data tools, including webSearch. Call searchCommandCatalog first for user-language command discovery, learnCommand for one command's schema/policy/examples, executeCommand for mounted read-only commands, and commitCommand only when a mutation has explicit approval. Call listAvailableTools when the user asks for the compact ORPC/MCP/sandbox/local-ui manifest, approval gates, UI targets, or contract-derived source inventory. Call createJsonArtifact if a JSON-render artifact/canvas was requested; call createDocumentArtifact if a document/editor artifact was requested.
+- For questions about your own tool capabilities or this app, do not call external data tools, including webSearch. Call searchSkillCatalog/learnSkill for user-language workflow discovery, then searchCommandCatalog/learnCommand for concrete command schemas, executeCommand for mounted read-only commands, and commitCommand only when a mutation has explicit approval. Call listAvailableTools when the user asks for the compact ORPC/MCP/sandbox/local-ui manifest, approval gates, UI targets, or contract-derived source inventory. Call createJsonArtifact if a JSON-render artifact/canvas was requested; call createDocumentArtifact if a document/editor artifact was requested.
 - For questions like "where am I?", "what page am I on?", "tell me about this page", or "what context is attached?", answer directly from the CURRENT HOST/PAGE CONTEXT system block. Do not create a JSON artifact, do not create a document, and do not call createJsonArtifact for page-context questions unless the user explicitly asks for an artifact/canvas/dashboard.
 - The command catalog is CLI-first and context-efficient: search, learn, then execute/commit. For any booking or ORPC-backed command, call learnCommand before executeCommand/commitCommand unless you already have the exact schema from this same turn. Never call executeCommand/commitCommand with {} unless learnCommand says the command has no required fields.
 - For generated booking/OpenAPI commands, prefer executeCommand/commitCommand with inputJson (a JSON string of the direct command input) instead of a loose input object. This avoids record-schema stripping and keeps the schema-aware preflight validator authoritative.
@@ -101,6 +102,7 @@ export function createAgent(context: AgentRuntimeContext = {}) {
   const documentTools = createDocumentTools(context);
   const toolManifestTools = createToolManifestTools();
   const commandCatalogTools = createCommandCatalogTools({ sessionId: context.sessionId, pageContext: context.pageContext, hostSession: context.hostSession, approvedCommandIds: context.approvedCommandIds, bookingServiceBaseUrl: context.bookingServiceBaseUrl, bookingRuntimeAuth: context.bookingRuntimeAuth, bookingRuntimeFetcher: context.bookingRuntimeFetcher });
+  const skillCatalogTools = createSkillCatalogTools({ sessionId: context.sessionId, pageContext: context.pageContext, hostSession: context.hostSession });
   return new ToolLoopAgent({
     model: gateway(MODEL_ID),
     instructions: AGENT_INSTRUCTIONS,
@@ -115,6 +117,7 @@ export function createAgent(context: AgentRuntimeContext = {}) {
       createJsonArtifact,
       ...documentTools,
       ...toolManifestTools,
+      ...skillCatalogTools,
       ...commandCatalogTools,
     },
     stopWhen: stepCountIs(12),
