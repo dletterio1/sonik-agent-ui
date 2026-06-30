@@ -5,8 +5,13 @@ const commandArtifacts = JSON.parse(await readFile("tests/fixtures/generated/son
 const runtimeBindings = JSON.parse(await readFile("tests/fixtures/generated/sonik-booking-runtime-bindings.generated.json", "utf8"));
 
 assert.equal(runtimeBindings.version, "sonik-agent-ui.booking-runtime-bindings.v1");
-assert.equal(runtimeBindings.summary.commandCount, commandArtifacts.summary.commandCount, "runtime bindings cover every generated command descriptor");
-assert.equal(runtimeBindings.bindings.length, commandArtifacts.catalog.commands.length, "one runtime binding is generated for every generated command");
+const mountedCommands = commandArtifacts.catalog.commands.filter((command) => command.metadata?.sourceMounted === true);
+const shadowCommands = commandArtifacts.catalog.commands.filter((command) => command.metadata?.sourceMounted !== true);
+assert.equal(runtimeBindings.summary.sourceCommandCount, commandArtifacts.summary.commandCount, "runtime bindings keep the full generated command surface count");
+assert.equal(runtimeBindings.summary.commandCount, mountedCommands.length, "runtime bindings cover every source-mounted generated command descriptor");
+assert.equal(runtimeBindings.summary.shadowCommandCount, shadowCommands.length, "runtime bindings retain the shadow command count as non-executable posture");
+assert.deepEqual(runtimeBindings.summary.shadowCommandIds, shadowCommands.map((command) => command.id).sort(), "runtime bindings explicitly list generated shadow commands without mounting them");
+assert.equal(runtimeBindings.bindings.length, mountedCommands.length, "one runtime binding is generated for every source-mounted generated command");
 
 const commandById = new Map(commandArtifacts.catalog.commands.map((command) => [command.id, command]));
 const seen = new Set();
@@ -15,6 +20,7 @@ for (const binding of runtimeBindings.bindings) {
   seen.add(binding.commandId);
   const command = commandById.get(binding.commandId);
   assert.ok(command, `runtime binding references generated command: ${binding.commandId}`);
+  assert.equal(command.metadata.sourceMounted, true, `${binding.commandId} is mounted by the source service before runtime binding`);
   assert.equal(binding.method, command.transport.method, `${binding.commandId} method matches descriptor`);
   assert.equal(binding.path, command.transport.path, `${binding.commandId} path matches descriptor`);
   assert.equal(binding.effect, command.effect, `${binding.commandId} effect matches descriptor`);
@@ -33,7 +39,9 @@ assert.equal(runtimeBindings.summary.writeCount, runtimeBindings.bindings.filter
 assert.equal(runtimeBindings.summary.destructiveCount, runtimeBindings.bindings.filter((binding) => binding.effect === "destructive").length);
 assert.equal(runtimeBindings.summary.mountedReadCount, runtimeBindings.bindings.filter((binding) => binding.status === "mounted-read").length);
 assert.equal(runtimeBindings.summary.mountedWriteCount, runtimeBindings.bindings.filter((binding) => binding.status === "mounted-write").length);
-assert.equal(runtimeBindings.summary.commandCount, 72, "Sonik booking generated runtime currently exposes all 72 generated commands");
-assert.equal(runtimeBindings.summary.mountedWriteCount, 39, "writes plus destructive commands are commit-mounted, not execute-mounted");
+assert.equal(runtimeBindings.summary.sourceCommandCount, 72, "Sonik booking generator still owns the full 72-command contract surface");
+assert.equal(runtimeBindings.summary.commandCount, 53, "Sonik booking generated runtime exposes exactly the 53 source-mounted commands");
+assert.equal(runtimeBindings.summary.shadowCommandCount, 19, "19 generated commands remain discoverable shadow contract descriptors, not executable runtime bindings");
+assert.equal(runtimeBindings.summary.mountedWriteCount, 29, "mounted writes plus mounted destructive commands are commit-mounted, not execute-mounted");
 
 console.log(JSON.stringify({ ok: true, ...runtimeBindings.summary }));

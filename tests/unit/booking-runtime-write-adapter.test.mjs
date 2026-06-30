@@ -134,13 +134,15 @@ const bundle = createStandaloneHostCommandRuntimeBundle({
 });
 
 const generatedRuntimeCommands = bundle.catalog.commands.filter((command) => command.metadata?.runtimeAdapterProvider === GENERATED_BOOKING_RUNTIME_PROVIDER);
-assert.equal(generatedRuntimeCommands.length, runtimeBindings.summary.commandCount, "trusted host catalog mounts every generated booking command");
-assert.equal(generatedRuntimeCommands.filter((command) => command.effect === "read").length, runtimeBindings.summary.readCount, "all generated reads are mounted");
-assert.equal(generatedRuntimeCommands.filter((command) => command.effect === "write").length, runtimeBindings.summary.writeCount, "all generated writes are mounted");
-assert.equal(generatedRuntimeCommands.filter((command) => command.effect === "destructive").length, runtimeBindings.summary.destructiveCount, "all generated destructive commands are mounted behind approval");
+assert.equal(runtimeBindings.summary.sourceCommandCount, 72, "trusted host runtime keeps the full generated booking contract count");
+assert.equal(runtimeBindings.summary.shadowCommandCount, 19, "trusted host runtime keeps generated shadow commands non-executable");
+assert.equal(generatedRuntimeCommands.length, runtimeBindings.summary.commandCount, "trusted host catalog mounts every source-mounted generated booking command");
+assert.equal(generatedRuntimeCommands.filter((command) => command.effect === "read").length, runtimeBindings.summary.readCount, "all source-mounted generated reads are mounted");
+assert.equal(generatedRuntimeCommands.filter((command) => command.effect === "write").length, runtimeBindings.summary.writeCount, "all source-mounted generated writes are mounted");
+assert.equal(generatedRuntimeCommands.filter((command) => command.effect === "destructive").length, runtimeBindings.summary.destructiveCount, "all source-mounted generated destructive commands are mounted behind approval");
 const generatedRuntimeAdapter = bundle.runtimeAdapters.find((adapter) => adapter.provider === GENERATED_BOOKING_RUNTIME_PROVIDER);
 assert.ok(generatedRuntimeAdapter, "trusted host runtime includes generated booking runtime adapter");
-assert.equal(generatedRuntimeAdapter.bindings.length, runtimeBindings.summary.commandCount, "runtime adapter binds every generated booking command");
+assert.equal(generatedRuntimeAdapter.bindings.length, runtimeBindings.summary.commandCount, "runtime adapter binds every source-mounted generated booking command");
 assert.equal(generatedRuntimeAdapter.bindings.filter((entry) => entry.status === "mounted-read").length, runtimeBindings.summary.readCount, "runtime adapter maps every read as mounted-read");
 assert.equal(generatedRuntimeAdapter.bindings.filter((entry) => entry.status === "mounted-write").length, runtimeBindings.summary.mountedWriteCount, "runtime adapter maps every write/destructive command as mounted-write");
 
@@ -305,8 +307,9 @@ const signedCommandIds = signedHeaderBundle.catalog.commands
   .map((command) => command.id)
   .sort();
 const expectedGeneratedCommandIds = runtimeBindings.bindings.map((binding) => binding.commandId).sort();
-assert.deepEqual(signedCommandIds, expectedGeneratedCommandIds, "signed host-context catalog mounts every generated booking command");
-assert.equal(signedCommandIds.length, 72, "signed host-context exposes all generated booking commands, not a four-command handwritten subset");
+assert.deepEqual(signedCommandIds, expectedGeneratedCommandIds, "signed host-context catalog mounts every source-mounted generated booking command");
+assert.equal(signedCommandIds.length, 53, "signed host-context exposes the full source-mounted generated command set, not a four-command handwritten subset");
+assert.equal(signedHeaderBundle.catalog.commands.some((command) => runtimeBindings.summary.shadowCommandIds.includes(command.id)), false, "signed host-context does not mount generated shadow commands as executable");
 assert.equal(
   signedHeaderBundle.runtimeAdapters.every((adapter) => adapter.provider === GENERATED_BOOKING_RUNTIME_PROVIDER),
   true,
@@ -358,38 +361,21 @@ const releaseCall = calls.find((call) => call.method === "POST" && call.url.ends
 assert.ok(releaseCall, "release hold calls POST /holds/{holdId}/release");
 assert.equal(releaseCall.body.reason, binding.cleanupMutation.cleanupReason);
 
-const beforeDestructive = calls.length;
-const destructiveExecuteDenied = await executeHostCatalogCommand({
+const beforeShadowWaitlist = calls.length;
+const learnedShadowWaitlist = learnGlobalCommand({ commandId: "booking.delete.waitlist.entry", aspects: ["policy", "transport", "auth", "schema"] });
+assert.equal(learnedShadowWaitlist.ok, true, "global registry still discovers generated shadow waitlist commands");
+assert.equal(learnedShadowWaitlist.transport.runtimeStatus, "shadow", "shadow waitlist commands remain non-mounted in global discovery");
+assert.equal(bundle.catalog.commands.some((command) => command.id === "booking.delete.waitlist.entry"), false, "trusted host catalog does not mount source-shadow waitlist commands");
+const shadowWaitlistReceipt = await executeHostCatalogCommand({
   catalog: bundle.catalog,
   runtimeAdapters: bundle.runtimeAdapters,
   commandId: "booking.delete.waitlist.entry",
   commandInput: { entryId: WAITLIST_ENTRY_ID },
-  execution: { ...bundle.executionContext, action: "execute", requestId: "req_delete_waitlist_execute" },
+  execution: { ...bundle.executionContext, action: "commit", approved: true, requestId: "req_delete_waitlist_shadow" },
 });
-assert.equal(destructiveExecuteDenied.ok, false, "destructive generated DELETE commands cannot run through execute");
-assert.equal(calls.length, beforeDestructive, "execute denial does not call the booking API for destructive commands");
-
-const destructiveMissingPath = await executeHostCatalogCommand({
-  catalog: bundle.catalog,
-  runtimeAdapters: bundle.runtimeAdapters,
-  commandId: "booking.delete.waitlist.entry",
-  commandInput: {},
-  execution: { ...bundle.executionContext, action: "commit", approved: true, requestId: "req_delete_waitlist_missing_path" },
-});
-assert.equal(destructiveMissingPath.ok, false, "destructive generated DELETE commands fail closed on missing path params");
-assert.match(destructiveMissingPath.errors?.[0]?.message ?? "", /Missing path parameter: entryId/);
-assert.equal(calls.length, beforeDestructive, "missing destructive path param fails before calling booking API");
-
-const destructiveReceipt = await executeHostCatalogCommand({
-  catalog: bundle.catalog,
-  runtimeAdapters: bundle.runtimeAdapters,
-  commandId: "booking.delete.waitlist.entry",
-  commandInput: { entryId: WAITLIST_ENTRY_ID },
-  execution: { ...bundle.executionContext, action: "commit", approved: true, requestId: "req_delete_waitlist_commit" },
-});
-assert.equal(destructiveReceipt.ok, true, "approved destructive generated DELETE command commits through generated runtime");
-const deleteCall = calls.find((call) => call.method === "DELETE" && call.url.endsWith(`/api/v1/booking/waitlist/${WAITLIST_ENTRY_ID}`));
-assert.ok(deleteCall, "approved destructive commit sends DELETE to the generated path");
+assert.equal(shadowWaitlistReceipt.ok, false, "source-shadow waitlist command is not executable through trusted host runtime");
+assert.equal(shadowWaitlistReceipt.policy.reasons.includes("unknown_command"), true, "source-shadow command is absent from mounted runtime catalog");
+assert.equal(calls.length, beforeShadowWaitlist, "source-shadow command does not call the booking API");
 
 const uploadReceipt = await executeHostCatalogCommand({
   catalog: bundle.catalog,

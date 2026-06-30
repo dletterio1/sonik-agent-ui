@@ -81,7 +81,7 @@ const tools = createCommandCatalogTools({
 
 const search = await tools.searchCommandCatalog.execute({ query: "booking", limit: 20 });
 assert.ok(search.contextLoadedCommandIds.length >= 20, "trusted host search exposes a bounded page-context command summary set");
-assert.ok(search.totalMatches >= 72, "trusted host search can discover the generated booking command catalog");
+assert.ok(search.totalMatches >= 53, "trusted host search can discover the generated source-mounted booking command catalog");
 assert.equal(search.truncated, true, "generated booking catalog remains bounded instead of flooding context");
 
 const learnedCreate = await tools.learnCommand.execute({ commandId: GENERATED_BOOKING_CREATE_HOLD_COMMAND_ID, aspects: ["policy", "transport", "auth", "schema"] });

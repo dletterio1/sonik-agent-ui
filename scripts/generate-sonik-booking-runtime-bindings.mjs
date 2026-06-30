@@ -22,7 +22,10 @@ for (const [path, pathItem] of Object.entries(document.paths ?? {})) {
 }
 
 const generatedAt = artifacts.generatedAt;
-const bindings = artifacts.catalog.commands.map((command) => {
+const sourceCommands = artifacts.catalog.commands;
+const mountedCommands = sourceCommands.filter((command) => command.metadata?.sourceMounted === true);
+const shadowCommands = sourceCommands.filter((command) => command.metadata?.sourceMounted !== true);
+const bindings = mountedCommands.map((command) => {
   const method = String(command.transport?.method ?? 'GET').toUpperCase();
   const path = command.transport?.path ?? '/';
   const operationEntry = operationsByMethodPath.get(`${method} ${path}`);
@@ -60,7 +63,10 @@ const bindings = artifacts.catalog.commands.map((command) => {
 });
 
 const summary = {
+  sourceCommandCount: sourceCommands.length,
   commandCount: bindings.length,
+  shadowCommandCount: shadowCommands.length,
+  shadowCommandIds: shadowCommands.map((command) => command.id).sort(),
   readCount: bindings.filter((binding) => binding.effect === 'read').length,
   writeCount: bindings.filter((binding) => binding.effect === 'write').length,
   destructiveCount: bindings.filter((binding) => binding.effect === 'destructive').length,
