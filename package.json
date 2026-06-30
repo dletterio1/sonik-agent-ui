@@ -26,7 +26,8 @@
     "smoke:agent-ui:booking-pipeb:document": "node scripts/agent-ui-booking-pipeb-document-smoke.mjs",
     "check:copy-retrofit:booking": "node --experimental-strip-types scripts/check-booking-command-copy-retrofit.mjs && node scripts/verify-source-drift.mjs manifests/copy-retrofit/booking-service-generated-command-registry.json && node scripts/verify-source-drift.mjs manifests/copy-retrofit/sonik-mcp-command-doctrine.json",
     "generate:runtime:sonik-booking": "node --experimental-strip-types scripts/generate-sonik-booking-runtime-bindings.mjs",
-    "check:runtime:sonik-booking": "node --experimental-strip-types scripts/generate-sonik-booking-runtime-bindings.mjs --check"
+    "check:runtime:sonik-booking": "node --experimental-strip-types scripts/generate-sonik-booking-runtime-bindings.mjs --check",
+    "smoke:agent-ui:booking-pipeb:reservation": "node scripts/agent-ui-booking-reservation-pipeb-smoke.mjs"
   },
   "packageManager": "pnpm@11.1.3",
   "engines": {

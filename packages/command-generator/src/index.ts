@@ -853,30 +853,88 @@ function sampleValueFromSchema(schema: unknown, options: { root?: boolean; key?:
     const entries: Array<[string, unknown]> = [];
     for (const key of keys) {
       if (!options.root && !required.has(key)) continue;
-      if (!required.has(key) && declaredRequired.length > 0 && key !== "clientRequestId") continue;
+      if (!required.has(key) && declaredRequired.length > 0 && !isHelpfulOptionalExampleKey(key)) continue;
       entries.push([key, sampleValueFromSchema(properties[key], { key })]);
     }
     return Object.fromEntries(entries);
   }
   if (record.type === "array") return [sampleValueFromSchema(record.items, options)];
-  if (record.type === "integer" || record.type === "number") return typeof record.minimum === "number" ? record.minimum : 1;
+  if (record.type === "integer" || record.type === "number") return sampleNumberFromSchema(record, options.key);
   if (record.type === "boolean") return true;
   if (record.type === "null") return null;
 
   const key = options.key ?? "";
   const format = stringValue(record.format);
-  if (format === "uuid" || /(^|_)(id|uuid)$/i.test(key)) return `${key || "id"}_uuid`;
-  if (format === "date-time" || /at$/i.test(key)) return /endsAt/i.test(key) ? "2026-07-01T13:00:00.000Z" : "2026-07-01T12:00:00.000Z";
+  const description = stringValue(record.description) ?? "";
+  if (/^(userId|principalId)$/i.test(key)) return "CURRENT_HOST_PRINCIPAL_ID";
+  if (format === "uuid" || /(^|_)(id|uuid)$/i.test(key)) return sampleUuidForKey(key);
+  if (format === "date-time" || /at$/i.test(key) || isIsoDateRangeKey(key, description)) return sampleDateTimeForKey(key);
   if (format === "date") return "2026-07-01";
   if (format === "binary") return "<binary>";
   if (/timezone/i.test(key)) return "America/New_York";
+  if (/currency/i.test(key)) return "USD";
   if (/email/i.test(key)) return "guest@example.com";
   if (/phone/i.test(key)) return "+15555550123";
   if (/slug/i.test(key)) return "demo";
   if (/kind/i.test(key)) return "venue_schedule";
   if (/source/i.test(key)) return "admin";
+  if (/code/i.test(key)) return "base";
+  if (/label/i.test(key)) return "Base";
   if (/name/i.test(key)) return "Demo";
-  return key ? `example_${key}` : "example";
+  const fallback = key ? `example_${key}` : "example";
+  return boundStringToSchema(fallback, record);
+}
+
+function sampleNumberFromSchema(schema: Record<string, unknown>, key: string | undefined): number {
+  if (key && /amountCents|priceCents|cents/i.test(key)) return 1000;
+  if (key && /partySize|capacity|quantity|count|limit/i.test(key)) return 2;
+  const minimum = typeof schema.minimum === "number" ? schema.minimum : undefined;
+  const maximum = typeof schema.maximum === "number" ? schema.maximum : undefined;
+  if (minimum !== undefined && maximum !== undefined) {
+    if (minimum <= 1 && maximum >= 1) return 1;
+    if (minimum <= 1000 && maximum >= 1000) return 1000;
+    return minimum;
+  }
+  if (minimum !== undefined) return Math.max(minimum, 1);
+  if (maximum !== undefined) return Math.min(maximum, 1);
+  return 1;
+}
+
+function boundStringToSchema(value: string, schema: Record<string, unknown>): string {
+  const minLength = typeof schema.minLength === "number" ? schema.minLength : undefined;
+  const maxLength = typeof schema.maxLength === "number" ? schema.maxLength : undefined;
+  let next = value;
+  if (maxLength !== undefined && next.length > maxLength) next = next.slice(0, maxLength);
+  if (minLength !== undefined && next.length < minLength) next = next.padEnd(minLength, "x");
+  return next;
+}
+
+function isHelpfulOptionalExampleKey(key: string): boolean {
+  return /^(clientRequestId|partySize|source|name|config|slug|timezone|rule|windows|status|reason|displayName|email|role|fileName|ttlSeconds|resourceUnitId)$/i.test(key);
+}
+
+function isIsoDateRangeKey(key: string, description: string): boolean {
+  return /^(from|to)$/i.test(key) && /iso|date|time|window|range/i.test(description);
+}
+
+function sampleDateTimeForKey(key: string): string {
+  if (/^(to|endsAt)$/i.test(key)) return "2026-07-01T19:00:00.000Z";
+  if (/^endsAt$/i.test(key)) return "2026-07-01T13:00:00.000Z";
+  if (/^startsAt$/i.test(key)) return "2026-07-01T18:00:00.000Z";
+  return "2026-07-01T18:00:00.000Z";
+}
+
+function sampleUuidForKey(key: string): string {
+  const samples: Record<string, string> = {
+    contextId: "11111111-1111-4111-8111-111111111111",
+    bookingId: "22222222-2222-4222-8222-222222222222",
+    holdId: "33333333-3333-4333-8333-333333333333",
+    resourceUnitId: "44444444-4444-4444-8444-444444444444",
+    resourceTypeId: "55555555-5555-4555-8555-555555555555",
+    assetId: "66666666-6666-4666-8666-666666666666",
+    customerId: "77777777-7777-4777-8777-777777777777",
+  };
+  return samples[key] ?? "00000000-0000-4000-8000-000000000001";
 }
 
 function schemaDescription(schema: Record<string, unknown> | undefined): string | undefined {

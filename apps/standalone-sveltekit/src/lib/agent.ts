@@ -31,7 +31,11 @@ RULES:
 - Do not repeat the same tool call with the same arguments in a single response. Do not call createJsonArtifact more than once for a single user turn. Use the first result you already have.
 - For questions about your own tool capabilities or this app, do not call external data tools, including webSearch. Call searchCommandCatalog first for user-language command discovery, learnCommand for one command's schema/policy/examples, executeCommand for mounted read-only commands, and commitCommand only when a mutation has explicit approval. Call listAvailableTools when the user asks for the compact ORPC/MCP/sandbox/local-ui manifest, approval gates, UI targets, or contract-derived source inventory. Call createJsonArtifact if a JSON-render artifact/canvas was requested; call createDocumentArtifact if a document/editor artifact was requested.
 - For questions like "where am I?", "what page am I on?", "tell me about this page", or "what context is attached?", answer directly from the CURRENT HOST/PAGE CONTEXT system block. Do not create a JSON artifact, do not create a document, and do not call createJsonArtifact for page-context questions unless the user explicitly asks for an artifact/canvas/dashboard.
-- The command catalog is CLI-first and context-efficient: search, learn, then execute/commit. A standalone fixture-backed read-only booking host command may be mounted for local testing; other ORPC business commands remain metadata-only unless a live adapter explicitly marks them mounted and executable.
+- The command catalog is CLI-first and context-efficient: search, learn, then execute/commit. For any booking or ORPC-backed command, call learnCommand before executeCommand/commitCommand unless you already have the exact schema from this same turn. Never call executeCommand/commitCommand with {} unless learnCommand says the command has no required fields.
+- For generated booking/OpenAPI commands, prefer executeCommand/commitCommand with inputJson (a JSON string of the direct command input) instead of a loose input object. This avoids record-schema stripping and keeps the schema-aware preflight validator authoritative.
+- If executeCommand or commitCommand returns policy.reasons including command_input_preflight_failed, missing_required_fields, unsupported_input_fields, or summary.kind == "command_input_preflight_failed", do not repeat the same bad call. Immediately call learnCommand for that command, copy the requiredFields/exampleInput shape, remove unsupported fields, and retry once with corrected direct command input via inputJson.
+- Booking command input convention: pass path/query/body fields directly in inputJson. Do not wrap JSON request bodies in body unless learnCommand says the schema requires body. For availability use contextId, from, to, and optional partySize/source; do not use a date field. For reservation/booking creation use booking.create.guest first, then booking.create.booking with contextId, the returned guest/user id as userId, startsAt, endsAt, source, partySize, and a clientRequestId. Use commitCommand for booking.create.guest and booking.create.booking. When schema examples contain CURRENT_HOST_PRINCIPAL_ID, pass that literal only if you are creating a booking for the current host principal; the trusted runtime binds it to the current host principal.
+- A standalone fixture-backed read-only booking host command may be mounted for local testing; other ORPC business commands remain metadata-only unless a live adapter explicitly marks them mounted and executable.
 - For inline JSON-render responses outside createJsonArtifact, embed fetched data directly in /state paths so components can reference it.
 - Use Card components to group related information.
 - NEVER nest a Card inside another Card. If you need sub-sections inside a Card, use Stack, Separator, Heading, or Accordion instead.
@@ -113,7 +117,7 @@ export function createAgent(context: AgentRuntimeContext = {}) {
       ...toolManifestTools,
       ...commandCatalogTools,
     },
-    stopWhen: stepCountIs(5),
+    stopWhen: stepCountIs(12),
     temperature: 0.35,
   });
 }

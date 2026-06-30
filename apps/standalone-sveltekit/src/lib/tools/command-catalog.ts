@@ -13,6 +13,11 @@ import type { HostSessionEnvelope } from "@sonik-agent-ui/platform-adapters";
 import { writeAgentTelemetry } from "../server/agent-telemetry.ts";
 
 const commandAspectSchema = z.enum(["description", "schema", "examples", "policy", "output", "surfaces", "transport", "auth"]);
+const directCommandInputSchema = z.object({
+  commandId: z.string().describe("Command id to execute."),
+  input: z.unknown().optional().describe("Direct structured command input object. For generated booking commands, prefer inputJson when arbitrary keys are rejected by the model/tool schema."),
+  inputJson: z.string().optional().describe("Optional JSON string for direct command input. Use this for generated OpenAPI/ORPC commands with arbitrary path/query/body fields, e.g. {\"contextId\":\"...\"}. Parsed and schema-preflighted before runtime execution."),
+});
 
 export function createCommandCatalogTools(context: { sessionId?: string | null; approvedCommandIds?: string[]; hostSession?: HostSessionEnvelope | null; pageContext?: AgentPageContext; bookingServiceBaseUrl?: string | null; bookingRuntimeAuth?: BookingRuntimeAuthContext | null; bookingRuntimeFetcher?: typeof fetch } = {}) {
   const hostSessionInput = () => context.hostSession ? { hostSession: context.hostSession } : { hostSessionMode: "standalone-demo" as const };
@@ -81,18 +86,17 @@ export function createCommandCatalogTools(context: { sessionId?: string | null; 
     executeCommand: tool({
       description:
         "Execute a mounted read-only command from the Sonik command catalog. Mutations must use commitCommand and require explicit approval.",
-      inputSchema: z.object({
-        commandId: z.string().describe("Command id to execute."),
-        input: z.record(z.string(), z.unknown()).default({}).describe("Structured command input."),
-      }),
-      execute: async ({ commandId, input }) => {
+      inputSchema: directCommandInputSchema,
+      execute: async ({ commandId, input, inputJson }) => {
         const { catalog, runtimeAdapters, executionContext } = createBundle();
         const command = catalog.commands.find((entry) => entry.id === commandId);
         const contextCommandIds = createContextCommandIds();
+        const commandInput = coerceDirectCommandInput(input, inputJson);
+        const repairedInput = repairCommandInputFromPageContext(command, commandInput, context.pageContext);
         const receipt = await executeHostCatalogCommand({
           catalog,
           commandId,
-          commandInput: input,
+          commandInput: repairedInput,
           runtimeAdapters,
           execution: {
             ...executionContext,
@@ -118,18 +122,19 @@ export function createCommandCatalogTools(context: { sessionId?: string | null; 
     commitCommand: tool({
       description:
         "Request commit of an approval-gated command from the Sonik command catalog. Approval is resolved from trusted host/session state, not model-provided booleans. Only trusted host/runtime-mounted mutations can commit; generated discovery records remain metadata-only unless this runtime adapter mounted the command.",
-      inputSchema: z.object({
+      inputSchema: directCommandInputSchema.extend({
         commandId: z.string().describe("Command id to commit."),
-        input: z.record(z.string(), z.unknown()).default({}).describe("Structured command input."),
       }),
-      execute: async ({ commandId, input }) => {
+      execute: async ({ commandId, input, inputJson }) => {
         const { catalog, runtimeAdapters, executionContext } = createBundle();
         const command = catalog.commands.find((entry) => entry.id === commandId);
         const contextCommandIds = createContextCommandIds();
+        const commandInput = coerceDirectCommandInput(input, inputJson);
+        const repairedInput = repairCommandInputFromPageContext(command, commandInput, context.pageContext);
         const receipt = await executeHostCatalogCommand({
           catalog,
           commandId,
-          commandInput: input,
+          commandInput: repairedInput,
           runtimeAdapters,
           execution: {
             ...executionContext,
@@ -154,4 +159,66 @@ export function createCommandCatalogTools(context: { sessionId?: string | null; 
       },
     }),
   };
+}
+
+
+function coerceDirectCommandInput(input: unknown, inputJson: string | undefined): Record<string, unknown> {
+  if (typeof inputJson === "string" && inputJson.trim()) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(inputJson);
+    } catch (error) {
+      throw new Error(`inputJson must be valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("inputJson must parse to a JSON object");
+    return parsed as Record<string, unknown>;
+  }
+  if (input === undefined || input === null) return {};
+  if (typeof input === "string" && input.trim()) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(input);
+    } catch {
+      throw new Error("input must be a JSON object, or pass JSON text through inputJson");
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("input JSON must parse to an object");
+    return parsed as Record<string, unknown>;
+  }
+  if (typeof input !== "object" || Array.isArray(input)) throw new Error("input must be a JSON object");
+  return input as Record<string, unknown>;
+}
+
+function repairCommandInputFromPageContext(
+  command: CommandDescriptor | undefined,
+  input: Record<string, unknown>,
+  pageContext: AgentPageContext | undefined,
+): Record<string, unknown> {
+  if (!command || !command.id.startsWith("booking.")) return input;
+  const schema = command.inputSchemaJson && typeof command.inputSchemaJson === "object" && !Array.isArray(command.inputSchemaJson)
+    ? command.inputSchemaJson as { required?: unknown; properties?: unknown; additionalProperties?: unknown }
+    : command.input.schema && typeof command.input.schema === "object" && !Array.isArray(command.input.schema)
+      ? command.input.schema as { required?: unknown; properties?: unknown; additionalProperties?: unknown }
+      : null;
+  const required = Array.isArray(schema?.required) ? schema.required.filter((field): field is string => typeof field === "string") : [];
+  const properties = schema?.properties && typeof schema.properties === "object" && !Array.isArray(schema.properties)
+    ? schema.properties as Record<string, unknown>
+    : {};
+  const repaired: Record<string, unknown> = { ...input };
+  if (required.includes("contextId") && !hasUsableToolInput(repaired.contextId)) {
+    const pageContextId = pageContext?.activeEntity?.id;
+    if (typeof pageContextId === "string" && pageContextId.trim()) repaired.contextId = pageContextId.trim();
+  }
+  if (command.id === "booking.get.availability" && typeof repaired.date === "string") {
+    const day = repaired.date.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      if (!hasUsableToolInput(repaired.from) && "from" in properties) repaired.from = `${day}T18:00:00.000Z`;
+      if (!hasUsableToolInput(repaired.to) && "to" in properties) repaired.to = `${day}T19:00:00.000Z`;
+      if (schema?.additionalProperties === false || !("date" in properties)) delete repaired.date;
+    }
+  }
+  return repaired;
+}
+
+function hasUsableToolInput(value: unknown): boolean {
+  return value !== undefined && value !== null && !(typeof value === "string" && value.trim() === "");
 }

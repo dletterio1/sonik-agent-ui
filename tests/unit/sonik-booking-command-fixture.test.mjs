@@ -116,8 +116,8 @@ assert.equal(learned.inputSchema.properties.contextId.format, "uuid");
 assert.equal(learned.inputSchema.properties.source.enum.includes("admin"), true);
 assert.equal(Array.isArray(learned.examples), true);
 assert.equal(learned.examples.length > 0, true, "learnCommand exposes generated examples for model payload construction");
-assert.equal(learned.examples[0].input.contextId, "contextId_uuid");
-assert.equal(learned.examples[0].input.endsAt, "2026-07-01T13:00:00.000Z", "generated examples avoid invalid zero-length booking windows");
+assert.equal(learned.examples[0].input.contextId, "11111111-1111-4111-8111-111111111111");
+assert.equal(learned.examples[0].input.endsAt, "2026-07-01T19:00:00.000Z", "generated examples avoid invalid zero-length booking windows");
 assert.equal(learned.inputConvention, "pass path/query/body fields directly as command input; do not wrap JSON bodies in body unless binary or explicitly required by the schema");
 assert.ok(learned.forbiddenFields.includes("organizationId"), "learnCommand teaches host-derived org fields instead of making the model guess");
 assert.ok(learned.commonErrors.some((entry) => entry.includes("commitCommand")), "learnCommand returns workflow guidance alongside schema");
@@ -129,7 +129,7 @@ assert.deepEqual(learned.surfaces, ["chat", "artifact"]);
 
 const learnedPathParam = learnCommandDescriptor(catalog, "booking.get.booking", ["schema", "examples"]);
 assert.equal(learnedPathParam.inputSchema.properties.bookingId.description.includes("path parameter"), true, "path parameter commands teach direct path key input");
-assert.deepEqual(learnedPathParam.examples[0].input, { bookingId: "bookingId_uuid" });
+assert.deepEqual(learnedPathParam.examples[0].input, { bookingId: "22222222-2222-4222-8222-222222222222" });
 
 const readReceipt = executeCatalogCommand(catalog, "booking.list.contexts", {}, {
   source: "agent-ui",

@@ -78,7 +78,8 @@ for (const shadowCommandId of runtimeBindings.summary.shadowCommandIds) {
 
 const results = [];
 for (const binding of runtimeBindings.bindings) {
-  const commandInput = sampleInputForBinding(binding);
+  const command = bundle.catalog.commands.find((entry) => entry.id === binding.commandId);
+  const commandInput = sampleInputForBinding(binding, command);
   const action = binding.commit ? "commit" : "execute";
   const before = calls.length;
   const receipt = await executeHostCatalogCommand({
@@ -122,7 +123,9 @@ console.log(JSON.stringify({
   ],
 }));
 
-function sampleInputForBinding(binding) {
+function sampleInputForBinding(binding, command) {
+  const generatedExample = command?.examples?.[0]?.input;
+  if (generatedExample && typeof generatedExample === "object" && !Array.isArray(generatedExample) && Object.keys(generatedExample).length > 0) return generatedExample;
   if (binding.commandId === "booking.create.hold") {
     return { contextId: ids.contextId, window: windowInput(), partySize: 2, source: "admin", clientRequestId: "runtime-coverage-create-hold", ttlSeconds: 600, resourceUnitId: ids.resourceUnitId };
   }
@@ -130,7 +133,7 @@ function sampleInputForBinding(binding) {
     return { ...routeInput(binding), contextId: ids.contextId, role: "floor_plan", fileName: "runtime-coverage.txt", file: new Blob(["runtime coverage"], { type: "text/plain" }) };
   }
   const input = { ...routeInput(binding) };
-  if (binding.requestBody.bodyEncoding === "json" || binding.requestBody.required) input.body = bodyInput(binding.commandId);
+  if (binding.requestBody.bodyEncoding === "json" || binding.requestBody.required) return { ...input, ...bodyInput(binding.commandId) };
   return input;
 }
 

@@ -345,7 +345,9 @@
               "input": {
                 "kind": "event",
                 "name": "Demo",
-                "timezone": "America/New_York"
+                "timezone": "America/New_York",
+                "config": {},
+                "slug": "demo"
               }
             }
           ],
@@ -682,9 +684,11 @@
             {
               "title": "Example input for Project a legacy event context",
               "input": {
-                "externalEventRef": "externalEventRef_uuid",
+                "externalEventRef": "00000000-0000-4000-8000-000000000001",
                 "name": "Demo",
-                "timezone": "America/New_York"
+                "timezone": "America/New_York",
+                "config": {},
+                "slug": "demo"
               }
             }
           ],
@@ -829,7 +833,7 @@
             {
               "title": "Example input for Get a bookable context",
               "input": {
-                "contextId": "contextId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111"
               }
             }
           ],
@@ -1017,7 +1021,10 @@
             {
               "title": "Example input for Update a bookable context",
               "input": {
-                "contextId": "contextId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "name": "Demo",
+                "config": {},
+                "slug": "demo"
               }
             }
           ],
@@ -1194,7 +1201,7 @@
             {
               "title": "Example input for Create a schedule rule",
               "input": {
-                "contextId": "contextId_uuid",
+                "contextId": "11111111-1111-4111-8111-111111111111",
                 "rule": {}
               }
             }
@@ -1339,7 +1346,7 @@
             {
               "title": "Example input for List a context's schedule rules",
               "input": {
-                "contextId": "contextId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111"
               }
             }
           ],
@@ -1490,8 +1497,8 @@
             {
               "title": "Example input for Update a schedule rule",
               "input": {
-                "contextId": "contextId_uuid",
-                "ruleId": "ruleId_uuid",
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "ruleId": "00000000-0000-4000-8000-000000000001",
                 "rule": {}
               }
             }
@@ -1639,8 +1646,8 @@
             {
               "title": "Example input for Delete a schedule rule",
               "input": {
-                "contextId": "contextId_uuid",
-                "ruleId": "ruleId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "ruleId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -1865,9 +1872,12 @@
             {
               "title": "Example input for Get computed availability for a context",
               "input": {
-                "contextId": "contextId_uuid",
-                "from": "example_from",
-                "to": "example_to"
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "from": "2026-07-01T18:00:00.000Z",
+                "to": "2026-07-01T19:00:00.000Z",
+                "partySize": 2,
+                "source": "admin",
+                "resourceUnitId": "44444444-4444-4444-8444-444444444444"
               }
             }
           ],
@@ -2096,10 +2106,11 @@
             {
               "title": "Example input for Create a booking",
               "input": {
-                "contextId": "contextId_uuid",
-                "userId": "example_userId",
-                "startsAt": "2026-07-01T12:00:00.000Z",
-                "endsAt": "2026-07-01T13:00:00.000Z",
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "userId": "CURRENT_HOST_PRINCIPAL_ID",
+                "startsAt": "2026-07-01T18:00:00.000Z",
+                "endsAt": "2026-07-01T19:00:00.000Z",
+                "partySize": 1,
                 "source": "admin",
                 "clientRequestId": "example_clientRequestId"
               }
@@ -2276,9 +2287,9 @@
             {
               "title": "Example input for List bookings",
               "input": {
-                "contextId": "contextId_uuid",
-                "userId": "example_userId",
-                "customerId": "customerId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "userId": "CURRENT_HOST_PRINCIPAL_ID",
+                "customerId": "77777777-7777-4777-8777-777777777777"
               }
             }
           ],
@@ -2419,7 +2430,7 @@
             {
               "title": "Example input for Get a booking",
               "input": {
-                "bookingId": "bookingId_uuid"
+                "bookingId": "22222222-2222-4222-8222-222222222222"
               }
             }
           ],
@@ -2563,7 +2574,7 @@
             {
               "title": "Example input for Cancel a booking",
               "input": {
-                "bookingId": "bookingId_uuid"
+                "bookingId": "22222222-2222-4222-8222-222222222222"
               }
             }
           ],
@@ -2698,7 +2709,7 @@
             {
               "title": "Example input for Confirm a booking",
               "input": {
-                "bookingId": "bookingId_uuid"
+                "bookingId": "22222222-2222-4222-8222-222222222222"
               }
             }
           ],
@@ -2863,9 +2874,9 @@
             {
               "title": "Example input for Reschedule a booking",
               "input": {
-                "bookingId": "bookingId_uuid",
-                "startsAt": "2026-07-01T12:00:00.000Z",
-                "endsAt": "2026-07-01T13:00:00.000Z"
+                "bookingId": "22222222-2222-4222-8222-222222222222",
+                "startsAt": "2026-07-01T18:00:00.000Z",
+                "endsAt": "2026-07-01T19:00:00.000Z"
               }
             }
           ],
@@ -3004,7 +3015,7 @@
             {
               "title": "Example input for List party members for a booking",
               "input": {
-                "bookingId": "bookingId_uuid"
+                "bookingId": "22222222-2222-4222-8222-222222222222"
               }
             }
           ],
@@ -3205,7 +3216,7 @@
             {
               "title": "Example input for Add a party member to a booking",
               "input": {
-                "bookingId": "bookingId_uuid",
+                "bookingId": "22222222-2222-4222-8222-222222222222",
                 "displayName": "Demo",
                 "clientRequestId": "example_clientRequestId"
               }
@@ -3374,8 +3385,8 @@
             {
               "title": "Example input for Remove a party member from a booking",
               "input": {
-                "bookingId": "bookingId_uuid",
-                "partyMemberId": "partyMemberId_uuid"
+                "bookingId": "22222222-2222-4222-8222-222222222222",
+                "partyMemberId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -3519,7 +3530,7 @@
             {
               "title": "Example input for List resource assignments for a booking",
               "input": {
-                "bookingId": "bookingId_uuid"
+                "bookingId": "22222222-2222-4222-8222-222222222222"
               }
             }
           ],
@@ -3693,9 +3704,9 @@
             {
               "title": "Example input for Assign a resource to a booking",
               "input": {
-                "bookingId": "bookingId_uuid",
+                "bookingId": "22222222-2222-4222-8222-222222222222",
                 "body": {
-                  "resourceUnitId": "resourceUnitId_uuid"
+                  "resourceUnitId": "44444444-4444-4444-8444-444444444444"
                 }
               }
             }
@@ -3841,8 +3852,8 @@
             {
               "title": "Example input for Unassign a resource from a booking",
               "input": {
-                "bookingId": "bookingId_uuid",
-                "assignmentId": "assignmentId_uuid"
+                "bookingId": "22222222-2222-4222-8222-222222222222",
+                "assignmentId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -4306,7 +4317,7 @@
             {
               "title": "Example input for Get one customer context by id",
               "input": {
-                "customerId": "customerId_uuid"
+                "customerId": "77777777-7777-4777-8777-777777777777"
               }
             }
           ],
@@ -4457,7 +4468,9 @@
             {
               "title": "Example input for Update a customer context",
               "input": {
-                "customerId": "customerId_uuid"
+                "customerId": "77777777-7777-4777-8777-777777777777",
+                "name": "Demo",
+                "email": "guest@example.com"
               }
             }
           ],
@@ -4619,7 +4632,7 @@
             {
               "title": "Example input for Open (or fetch) a member's house account",
               "input": {
-                "customerId": "customerId_uuid"
+                "customerId": "77777777-7777-4777-8777-777777777777"
               }
             }
           ],
@@ -4771,7 +4784,7 @@
             {
               "title": "Example input for Get a house account with its balance",
               "input": {
-                "accountId": "accountId_uuid"
+                "accountId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -4970,7 +4983,7 @@
             {
               "title": "Example input for List a house account's ledger entries",
               "input": {
-                "accountId": "accountId_uuid"
+                "accountId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -5191,9 +5204,9 @@
             {
               "title": "Example input for Post a charge, payment, or adjustment",
               "input": {
-                "accountId": "accountId_uuid",
+                "accountId": "00000000-0000-4000-8000-000000000001",
                 "kind": "charge",
-                "amountCents": -9007199254740991
+                "amountCents": 1000
               }
             }
           ],
@@ -5374,7 +5387,7 @@
             {
               "title": "Example input for Read a member's statement / F&B-minimum progress",
               "input": {
-                "accountId": "accountId_uuid"
+                "accountId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -5519,7 +5532,7 @@
             {
               "title": "Example input for Get a customer profile",
               "input": {
-                "customerId": "customerId_uuid"
+                "customerId": "77777777-7777-4777-8777-777777777777"
               }
             }
           ],
@@ -5703,7 +5716,7 @@
             {
               "title": "Example input for Update a customer profile",
               "input": {
-                "customerId": "customerId_uuid"
+                "customerId": "77777777-7777-4777-8777-777777777777"
               }
             }
           ],
@@ -5833,7 +5846,7 @@
             {
               "title": "Example input for Get customer insights",
               "input": {
-                "customerId": "customerId_uuid"
+                "customerId": "77777777-7777-4777-8777-777777777777"
               }
             }
           ],
@@ -6016,7 +6029,7 @@
               "title": "Example input for Create a resource type",
               "input": {
                 "name": "Demo",
-                "capacity": 1
+                "capacity": 2
               }
             }
           ],
@@ -6145,7 +6158,7 @@
             {
               "title": "Example input for List resource types",
               "input": {
-                "contextId": "contextId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111"
               }
             }
           ],
@@ -6323,8 +6336,9 @@
             {
               "title": "Example input for Create a resource unit",
               "input": {
-                "typeId": "typeId_uuid",
-                "name": "Demo"
+                "typeId": "00000000-0000-4000-8000-000000000001",
+                "name": "Demo",
+                "status": "active"
               }
             }
           ],
@@ -6476,8 +6490,8 @@
             {
               "title": "Example input for List resource units",
               "input": {
-                "typeId": "typeId_uuid",
-                "contextId": "contextId_uuid",
+                "typeId": "00000000-0000-4000-8000-000000000001",
+                "contextId": "11111111-1111-4111-8111-111111111111",
                 "status": "active"
               }
             }
@@ -6673,11 +6687,13 @@
             {
               "title": "Example input for Create a resource block",
               "input": {
+                "resourceUnitId": "44444444-4444-4444-8444-444444444444",
                 "window": {
-                  "startsAt": "2026-07-01T12:00:00.000Z",
-                  "endsAt": "2026-07-01T13:00:00.000Z"
+                  "startsAt": "2026-07-01T18:00:00.000Z",
+                  "endsAt": "2026-07-01T19:00:00.000Z"
                 },
-                "reason": "example_reason"
+                "reason": "example_reason",
+                "source": "admin"
               }
             }
           ],
@@ -6811,9 +6827,9 @@
             {
               "title": "Example input for List resource blocks",
               "input": {
-                "contextId": "contextId_uuid",
-                "resourceTypeId": "resourceTypeId_uuid",
-                "resourceUnitId": "resourceUnitId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "resourceTypeId": "55555555-5555-4555-8555-555555555555",
+                "resourceUnitId": "44444444-4444-4444-8444-444444444444"
               }
             }
           ],
@@ -6997,12 +7013,13 @@
             {
               "title": "Example input for Create a resource combination",
               "input": {
-                "contextId": "contextId_uuid",
+                "contextId": "11111111-1111-4111-8111-111111111111",
                 "name": "Demo",
                 "resourceUnitIds": [
-                  "resourceUnitIds_uuid"
+                  "00000000-0000-4000-8000-000000000001"
                 ],
-                "capacity": 1
+                "capacity": 2,
+                "status": "active"
               }
             }
           ],
@@ -7131,7 +7148,7 @@
             {
               "title": "Example input for List resource combinations",
               "input": {
-                "contextId": "contextId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111"
               }
             }
           ],
@@ -7331,14 +7348,14 @@
             {
               "title": "Example input for Create a waitlist entry",
               "input": {
-                "contextId": "contextId_uuid",
-                "customerId": "customerId_uuid",
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "customerId": "77777777-7777-4777-8777-777777777777",
                 "requestedWindow": {
-                  "startsAt": "2026-07-01T12:00:00.000Z",
-                  "endsAt": "2026-07-01T13:00:00.000Z"
+                  "startsAt": "2026-07-01T18:00:00.000Z",
+                  "endsAt": "2026-07-01T19:00:00.000Z"
                 },
                 "demand": {
-                  "partySize": 1
+                  "partySize": 2
                 }
               }
             }
@@ -7476,7 +7493,7 @@
             {
               "title": "Example input for List waitlist entries",
               "input": {
-                "contextId": "contextId_uuid",
+                "contextId": "11111111-1111-4111-8111-111111111111",
                 "status": "waiting"
               }
             }
@@ -7607,7 +7624,7 @@
             {
               "title": "Example input for Get a waitlist entry",
               "input": {
-                "entryId": "entryId_uuid"
+                "entryId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -7735,7 +7752,7 @@
             {
               "title": "Example input for Delete a waitlist entry",
               "input": {
-                "entryId": "entryId_uuid"
+                "entryId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -7899,12 +7916,12 @@
             {
               "title": "Example input for Offer a waitlist entry",
               "input": {
-                "entryId": "entryId_uuid",
+                "entryId": "00000000-0000-4000-8000-000000000001",
                 "offeredWindow": {
-                  "startsAt": "2026-07-01T12:00:00.000Z",
-                  "endsAt": "2026-07-01T13:00:00.000Z"
+                  "startsAt": "2026-07-01T18:00:00.000Z",
+                  "endsAt": "2026-07-01T19:00:00.000Z"
                 },
-                "expiresAt": "2026-07-01T12:00:00.000Z"
+                "expiresAt": "2026-07-01T18:00:00.000Z"
               }
             }
           ],
@@ -8043,7 +8060,7 @@
             {
               "title": "Example input for Claim a waitlist offer",
               "input": {
-                "entryId": "entryId_uuid",
+                "entryId": "00000000-0000-4000-8000-000000000001",
                 "clientRequestId": "example_clientRequestId"
               }
             }
@@ -8170,7 +8187,7 @@
             {
               "title": "Example input for Expire a waitlist entry",
               "input": {
-                "entryId": "entryId_uuid"
+                "entryId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -8745,7 +8762,7 @@
               "input": {
                 "kind": "booking_window",
                 "active": true,
-                "contextId": "contextId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111"
               }
             }
           ],
@@ -9128,7 +9145,11 @@
             {
               "title": "Example input for Update a booking policy",
               "input": {
-                "policyId": "policyId_uuid"
+                "policyId": "00000000-0000-4000-8000-000000000001",
+                "name": "Demo",
+                "rule": {
+                  "kind": "booking_window"
+                }
               }
             }
           ],
@@ -9344,14 +9365,14 @@
               "title": "Example input for Create a rate plan",
               "input": {
                 "name": "Demo",
-                "currency": "example_currency",
+                "currency": "USD",
                 "components": [
                   {
-                    "code": "example_code",
-                    "label": "example_label",
+                    "code": "base",
+                    "label": "Base",
                     "amount": {
-                      "amountCents": -9007199254740991,
-                      "currency": "example_currency"
+                      "amountCents": 1000,
+                      "currency": "USD"
                     }
                   }
                 ]
@@ -9497,8 +9518,8 @@
               "title": "Example input for List rate plans",
               "input": {
                 "active": true,
-                "contextId": "contextId_uuid",
-                "resourceTypeId": "resourceTypeId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "resourceTypeId": "55555555-5555-4555-8555-555555555555"
               }
             }
           ],
@@ -9710,7 +9731,8 @@
             {
               "title": "Example input for Update a rate plan",
               "input": {
-                "ratePlanId": "ratePlanId_uuid"
+                "ratePlanId": "00000000-0000-4000-8000-000000000001",
+                "name": "Demo"
               }
             }
           ],
@@ -9936,12 +9958,16 @@
             {
               "title": "Example input for Create a booking hold",
               "input": {
-                "contextId": "contextId_uuid",
+                "contextId": "11111111-1111-4111-8111-111111111111",
                 "window": {
-                  "startsAt": "2026-07-01T12:00:00.000Z",
-                  "endsAt": "2026-07-01T13:00:00.000Z"
+                  "startsAt": "2026-07-01T18:00:00.000Z",
+                  "endsAt": "2026-07-01T19:00:00.000Z"
                 },
-                "clientRequestId": "example_clientRequestId"
+                "partySize": 1,
+                "source": "web",
+                "clientRequestId": "example_clientRequestId",
+                "ttlSeconds": 600,
+                "resourceUnitId": "44444444-4444-4444-8444-444444444444"
               }
             }
           ],
@@ -10072,7 +10098,7 @@
             {
               "title": "Example input for Get a booking hold",
               "input": {
-                "holdId": "holdId_uuid"
+                "holdId": "33333333-3333-4333-8333-333333333333"
               }
             }
           ],
@@ -10245,7 +10271,7 @@
             {
               "title": "Example input for Commit a booking hold",
               "input": {
-                "holdId": "holdId_uuid",
+                "holdId": "33333333-3333-4333-8333-333333333333",
                 "clientRequestId": "example_clientRequestId"
               }
             }
@@ -10394,7 +10420,8 @@
             {
               "title": "Example input for Release a booking hold",
               "input": {
-                "holdId": "holdId_uuid"
+                "holdId": "33333333-3333-4333-8333-333333333333",
+                "reason": "example_reason"
               }
             }
           ],
@@ -10544,8 +10571,8 @@
             {
               "title": "Example input for Extend a booking hold",
               "input": {
-                "holdId": "holdId_uuid",
-                "ttlSeconds": 60
+                "holdId": "33333333-3333-4333-8333-333333333333",
+                "ttlSeconds": 1000
               }
             }
           ],
@@ -10761,13 +10788,13 @@
             {
               "title": "Example input for Create a booking quote",
               "input": {
-                "contextId": "contextId_uuid",
+                "contextId": "11111111-1111-4111-8111-111111111111",
                 "window": {
-                  "startsAt": "2026-07-01T12:00:00.000Z",
-                  "endsAt": "2026-07-01T13:00:00.000Z"
+                  "startsAt": "2026-07-01T18:00:00.000Z",
+                  "endsAt": "2026-07-01T19:00:00.000Z"
                 },
                 "demand": {
-                  "partySize": 1
+                  "partySize": 2
                 }
               }
             }
@@ -10907,7 +10934,7 @@
             {
               "title": "Example input for Get a booking quote",
               "input": {
-                "quoteId": "quoteId_uuid"
+                "quoteId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -11597,7 +11624,7 @@
             {
               "title": "Example input for List booking media assets",
               "input": {
-                "contextId": "contextId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111"
               }
             }
           ],
@@ -11760,7 +11787,7 @@
             {
               "title": "Example input for Upload booking media asset",
               "input": {
-                "contextId": "contextId_uuid",
+                "contextId": "11111111-1111-4111-8111-111111111111",
                 "fileName": "Demo",
                 "role": "context_media"
               }
@@ -12662,7 +12689,9 @@
             "input": {
               "kind": "event",
               "name": "Demo",
-              "timezone": "America/New_York"
+              "timezone": "America/New_York",
+              "config": {},
+              "slug": "demo"
             }
           }
         ],
@@ -12889,7 +12918,9 @@
               "input": {
                 "kind": "event",
                 "name": "Demo",
-                "timezone": "America/New_York"
+                "timezone": "America/New_York",
+                "config": {},
+                "slug": "demo"
               }
             }
           ],
@@ -13259,9 +13290,11 @@
           {
             "title": "Example input for Project a legacy event context",
             "input": {
-              "externalEventRef": "externalEventRef_uuid",
+              "externalEventRef": "00000000-0000-4000-8000-000000000001",
               "name": "Demo",
-              "timezone": "America/New_York"
+              "timezone": "America/New_York",
+              "config": {},
+              "slug": "demo"
             }
           }
         ],
@@ -13469,9 +13502,11 @@
             {
               "title": "Example input for Project a legacy event context",
               "input": {
-                "externalEventRef": "externalEventRef_uuid",
+                "externalEventRef": "00000000-0000-4000-8000-000000000001",
                 "name": "Demo",
-                "timezone": "America/New_York"
+                "timezone": "America/New_York",
+                "config": {},
+                "slug": "demo"
               }
             }
           ],
@@ -13571,7 +13606,7 @@
           {
             "title": "Example input for Get a bookable context",
             "input": {
-              "contextId": "contextId_uuid"
+              "contextId": "11111111-1111-4111-8111-111111111111"
             }
           }
         ],
@@ -13713,7 +13748,7 @@
             {
               "title": "Example input for Get a bookable context",
               "input": {
-                "contextId": "contextId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111"
               }
             }
           ],
@@ -13831,7 +13866,10 @@
           {
             "title": "Example input for Update a bookable context",
             "input": {
-              "contextId": "contextId_uuid"
+              "contextId": "11111111-1111-4111-8111-111111111111",
+              "name": "Demo",
+              "config": {},
+              "slug": "demo"
             }
           }
         ],
@@ -14041,7 +14079,10 @@
             {
               "title": "Example input for Update a bookable context",
               "input": {
-                "contextId": "contextId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "name": "Demo",
+                "config": {},
+                "slug": "demo"
               }
             }
           ],
@@ -14164,7 +14205,7 @@
           {
             "title": "Example input for Create a schedule rule",
             "input": {
-              "contextId": "contextId_uuid",
+              "contextId": "11111111-1111-4111-8111-111111111111",
               "rule": {}
             }
           }
@@ -14348,7 +14389,7 @@
             {
               "title": "Example input for Create a schedule rule",
               "input": {
-                "contextId": "contextId_uuid",
+                "contextId": "11111111-1111-4111-8111-111111111111",
                 "rule": {}
               }
             }
@@ -14448,7 +14489,7 @@
           {
             "title": "Example input for List a context's schedule rules",
             "input": {
-              "contextId": "contextId_uuid"
+              "contextId": "11111111-1111-4111-8111-111111111111"
             }
           }
         ],
@@ -14589,7 +14630,7 @@
             {
               "title": "Example input for List a context's schedule rules",
               "input": {
-                "contextId": "contextId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111"
               }
             }
           ],
@@ -14680,8 +14721,8 @@
           {
             "title": "Example input for Update a schedule rule",
             "input": {
-              "contextId": "contextId_uuid",
-              "ruleId": "ruleId_uuid",
+              "contextId": "11111111-1111-4111-8111-111111111111",
+              "ruleId": "00000000-0000-4000-8000-000000000001",
               "rule": {}
             }
           }
@@ -14845,8 +14886,8 @@
             {
               "title": "Example input for Update a schedule rule",
               "input": {
-                "contextId": "contextId_uuid",
-                "ruleId": "ruleId_uuid",
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "ruleId": "00000000-0000-4000-8000-000000000001",
                 "rule": {}
               }
             }
@@ -14943,8 +14984,8 @@
           {
             "title": "Example input for Delete a schedule rule",
             "input": {
-              "contextId": "contextId_uuid",
-              "ruleId": "ruleId_uuid"
+              "contextId": "11111111-1111-4111-8111-111111111111",
+              "ruleId": "00000000-0000-4000-8000-000000000001"
             }
           }
         ],
@@ -15094,8 +15135,8 @@
             {
               "title": "Example input for Delete a schedule rule",
               "input": {
-                "contextId": "contextId_uuid",
-                "ruleId": "ruleId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "ruleId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -15239,9 +15280,12 @@
           {
             "title": "Example input for Get computed availability for a context",
             "input": {
-              "contextId": "contextId_uuid",
-              "from": "example_from",
-              "to": "example_to"
+              "contextId": "11111111-1111-4111-8111-111111111111",
+              "from": "2026-07-01T18:00:00.000Z",
+              "to": "2026-07-01T19:00:00.000Z",
+              "partySize": 2,
+              "source": "admin",
+              "resourceUnitId": "44444444-4444-4444-8444-444444444444"
             }
           }
         ],
@@ -15499,9 +15543,12 @@
             {
               "title": "Example input for Get computed availability for a context",
               "input": {
-                "contextId": "contextId_uuid",
-                "from": "example_from",
-                "to": "example_to"
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "from": "2026-07-01T18:00:00.000Z",
+                "to": "2026-07-01T19:00:00.000Z",
+                "partySize": 2,
+                "source": "admin",
+                "resourceUnitId": "44444444-4444-4444-8444-444444444444"
               }
             }
           ],
@@ -15630,10 +15677,11 @@
           {
             "title": "Example input for Create a booking",
             "input": {
-              "contextId": "contextId_uuid",
-              "userId": "example_userId",
-              "startsAt": "2026-07-01T12:00:00.000Z",
-              "endsAt": "2026-07-01T13:00:00.000Z",
+              "contextId": "11111111-1111-4111-8111-111111111111",
+              "userId": "CURRENT_HOST_PRINCIPAL_ID",
+              "startsAt": "2026-07-01T18:00:00.000Z",
+              "endsAt": "2026-07-01T19:00:00.000Z",
+              "partySize": 1,
               "source": "admin",
               "clientRequestId": "example_clientRequestId"
             }
@@ -15916,10 +15964,11 @@
             {
               "title": "Example input for Create a booking",
               "input": {
-                "contextId": "contextId_uuid",
-                "userId": "example_userId",
-                "startsAt": "2026-07-01T12:00:00.000Z",
-                "endsAt": "2026-07-01T13:00:00.000Z",
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "userId": "CURRENT_HOST_PRINCIPAL_ID",
+                "startsAt": "2026-07-01T18:00:00.000Z",
+                "endsAt": "2026-07-01T19:00:00.000Z",
+                "partySize": 1,
                 "source": "admin",
                 "clientRequestId": "example_clientRequestId"
               }
@@ -16024,9 +16073,9 @@
           {
             "title": "Example input for List bookings",
             "input": {
-              "contextId": "contextId_uuid",
-              "userId": "example_userId",
-              "customerId": "customerId_uuid"
+              "contextId": "11111111-1111-4111-8111-111111111111",
+              "userId": "CURRENT_HOST_PRINCIPAL_ID",
+              "customerId": "77777777-7777-4777-8777-777777777777"
             }
           }
         ],
@@ -16226,9 +16275,9 @@
             {
               "title": "Example input for List bookings",
               "input": {
-                "contextId": "contextId_uuid",
-                "userId": "example_userId",
-                "customerId": "customerId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "userId": "CURRENT_HOST_PRINCIPAL_ID",
+                "customerId": "77777777-7777-4777-8777-777777777777"
               }
             }
           ],
@@ -16324,7 +16373,7 @@
           {
             "title": "Example input for Get a booking",
             "input": {
-              "bookingId": "bookingId_uuid"
+              "bookingId": "22222222-2222-4222-8222-222222222222"
             }
           }
         ],
@@ -16462,7 +16511,7 @@
             {
               "title": "Example input for Get a booking",
               "input": {
-                "bookingId": "bookingId_uuid"
+                "bookingId": "22222222-2222-4222-8222-222222222222"
               }
             }
           ],
@@ -16561,7 +16610,7 @@
           {
             "title": "Example input for Cancel a booking",
             "input": {
-              "bookingId": "bookingId_uuid"
+              "bookingId": "22222222-2222-4222-8222-222222222222"
             }
           }
         ],
@@ -16702,7 +16751,7 @@
             {
               "title": "Example input for Cancel a booking",
               "input": {
-                "bookingId": "bookingId_uuid"
+                "bookingId": "22222222-2222-4222-8222-222222222222"
               }
             }
           ],
@@ -16792,7 +16841,7 @@
           {
             "title": "Example input for Confirm a booking",
             "input": {
-              "bookingId": "bookingId_uuid"
+              "bookingId": "22222222-2222-4222-8222-222222222222"
             }
           }
         ],
@@ -16924,7 +16973,7 @@
             {
               "title": "Example input for Confirm a booking",
               "input": {
-                "bookingId": "bookingId_uuid"
+                "bookingId": "22222222-2222-4222-8222-222222222222"
               }
             }
           ],
@@ -17032,9 +17081,9 @@
           {
             "title": "Example input for Reschedule a booking",
             "input": {
-              "bookingId": "bookingId_uuid",
-              "startsAt": "2026-07-01T12:00:00.000Z",
-              "endsAt": "2026-07-01T13:00:00.000Z"
+              "bookingId": "22222222-2222-4222-8222-222222222222",
+              "startsAt": "2026-07-01T18:00:00.000Z",
+              "endsAt": "2026-07-01T19:00:00.000Z"
             }
           }
         ],
@@ -17208,9 +17257,9 @@
             {
               "title": "Example input for Reschedule a booking",
               "input": {
-                "bookingId": "bookingId_uuid",
-                "startsAt": "2026-07-01T12:00:00.000Z",
-                "endsAt": "2026-07-01T13:00:00.000Z"
+                "bookingId": "22222222-2222-4222-8222-222222222222",
+                "startsAt": "2026-07-01T18:00:00.000Z",
+                "endsAt": "2026-07-01T19:00:00.000Z"
               }
             }
           ],
@@ -17304,7 +17353,7 @@
           {
             "title": "Example input for List party members for a booking",
             "input": {
-              "bookingId": "bookingId_uuid"
+              "bookingId": "22222222-2222-4222-8222-222222222222"
             }
           }
         ],
@@ -17440,7 +17489,7 @@
             {
               "title": "Example input for List party members for a booking",
               "input": {
-                "bookingId": "bookingId_uuid"
+                "bookingId": "22222222-2222-4222-8222-222222222222"
               }
             }
           ],
@@ -17558,7 +17607,7 @@
           {
             "title": "Example input for Add a party member to a booking",
             "input": {
-              "bookingId": "bookingId_uuid",
+              "bookingId": "22222222-2222-4222-8222-222222222222",
               "displayName": "Demo",
               "clientRequestId": "example_clientRequestId"
             }
@@ -17796,7 +17845,7 @@
             {
               "title": "Example input for Add a party member to a booking",
               "input": {
-                "bookingId": "bookingId_uuid",
+                "bookingId": "22222222-2222-4222-8222-222222222222",
                 "displayName": "Demo",
                 "clientRequestId": "example_clientRequestId"
               }
@@ -17914,8 +17963,8 @@
           {
             "title": "Example input for Remove a party member from a booking",
             "input": {
-              "bookingId": "bookingId_uuid",
-              "partyMemberId": "partyMemberId_uuid"
+              "bookingId": "22222222-2222-4222-8222-222222222222",
+              "partyMemberId": "00000000-0000-4000-8000-000000000001"
             }
           }
         ],
@@ -18085,8 +18134,8 @@
             {
               "title": "Example input for Remove a party member from a booking",
               "input": {
-                "bookingId": "bookingId_uuid",
-                "partyMemberId": "partyMemberId_uuid"
+                "bookingId": "22222222-2222-4222-8222-222222222222",
+                "partyMemberId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -18185,7 +18234,7 @@
           {
             "title": "Example input for List resource assignments for a booking",
             "input": {
-              "bookingId": "bookingId_uuid"
+              "bookingId": "22222222-2222-4222-8222-222222222222"
             }
           }
         ],
@@ -18326,7 +18375,7 @@
             {
               "title": "Example input for List resource assignments for a booking",
               "input": {
-                "bookingId": "bookingId_uuid"
+                "bookingId": "22222222-2222-4222-8222-222222222222"
               }
             }
           ],
@@ -18421,9 +18470,9 @@
           {
             "title": "Example input for Assign a resource to a booking",
             "input": {
-              "bookingId": "bookingId_uuid",
+              "bookingId": "22222222-2222-4222-8222-222222222222",
               "body": {
-                "resourceUnitId": "resourceUnitId_uuid"
+                "resourceUnitId": "44444444-4444-4444-8444-444444444444"
               }
             }
           }
@@ -18629,9 +18678,9 @@
             {
               "title": "Example input for Assign a resource to a booking",
               "input": {
-                "bookingId": "bookingId_uuid",
+                "bookingId": "22222222-2222-4222-8222-222222222222",
                 "body": {
-                  "resourceUnitId": "resourceUnitId_uuid"
+                  "resourceUnitId": "44444444-4444-4444-8444-444444444444"
                 }
               }
             }
@@ -18726,8 +18775,8 @@
           {
             "title": "Example input for Unassign a resource from a booking",
             "input": {
-              "bookingId": "bookingId_uuid",
-              "assignmentId": "assignmentId_uuid"
+              "bookingId": "22222222-2222-4222-8222-222222222222",
+              "assignmentId": "00000000-0000-4000-8000-000000000001"
             }
           }
         ],
@@ -18875,8 +18924,8 @@
             {
               "title": "Example input for Unassign a resource from a booking",
               "input": {
-                "bookingId": "bookingId_uuid",
-                "assignmentId": "assignmentId_uuid"
+                "bookingId": "22222222-2222-4222-8222-222222222222",
+                "assignmentId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -19525,7 +19574,7 @@
           {
             "title": "Example input for Get one customer context by id",
             "input": {
-              "customerId": "customerId_uuid"
+              "customerId": "77777777-7777-4777-8777-777777777777"
             }
           }
         ],
@@ -19661,7 +19710,7 @@
             {
               "title": "Example input for Get one customer context by id",
               "input": {
-                "customerId": "customerId_uuid"
+                "customerId": "77777777-7777-4777-8777-777777777777"
               }
             }
           ],
@@ -19747,7 +19796,9 @@
           {
             "title": "Example input for Update a customer context",
             "input": {
-              "customerId": "customerId_uuid"
+              "customerId": "77777777-7777-4777-8777-777777777777",
+              "name": "Demo",
+              "email": "guest@example.com"
             }
           }
         ],
@@ -19916,7 +19967,9 @@
             {
               "title": "Example input for Update a customer context",
               "input": {
-                "customerId": "customerId_uuid"
+                "customerId": "77777777-7777-4777-8777-777777777777",
+                "name": "Demo",
+                "email": "guest@example.com"
               }
             }
           ],
@@ -20028,7 +20081,7 @@
           {
             "title": "Example input for Open (or fetch) a member's house account",
             "input": {
-              "customerId": "customerId_uuid"
+              "customerId": "77777777-7777-4777-8777-777777777777"
             }
           }
         ],
@@ -20193,7 +20246,7 @@
             {
               "title": "Example input for Open (or fetch) a member's house account",
               "input": {
-                "customerId": "customerId_uuid"
+                "customerId": "77777777-7777-4777-8777-777777777777"
               }
             }
           ],
@@ -20301,7 +20354,7 @@
           {
             "title": "Example input for Get a house account with its balance",
             "input": {
-              "accountId": "accountId_uuid"
+              "accountId": "00000000-0000-4000-8000-000000000001"
             }
           }
         ],
@@ -20450,7 +20503,7 @@
             {
               "title": "Example input for Get a house account with its balance",
               "input": {
-                "accountId": "accountId_uuid"
+                "accountId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -20566,7 +20619,7 @@
           {
             "title": "Example input for List a house account's ledger entries",
             "input": {
-              "accountId": "accountId_uuid"
+              "accountId": "00000000-0000-4000-8000-000000000001"
             }
           }
         ],
@@ -20800,7 +20853,7 @@
             {
               "title": "Example input for List a house account's ledger entries",
               "input": {
-                "accountId": "accountId_uuid"
+                "accountId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -20946,9 +20999,9 @@
           {
             "title": "Example input for Post a charge, payment, or adjustment",
             "input": {
-              "accountId": "accountId_uuid",
+              "accountId": "00000000-0000-4000-8000-000000000001",
               "kind": "charge",
-              "amountCents": -9007199254740991
+              "amountCents": 1000
             }
           }
         ],
@@ -21199,9 +21252,9 @@
             {
               "title": "Example input for Post a charge, payment, or adjustment",
               "input": {
-                "accountId": "accountId_uuid",
+                "accountId": "00000000-0000-4000-8000-000000000001",
                 "kind": "charge",
-                "amountCents": -9007199254740991
+                "amountCents": 1000
               }
             }
           ],
@@ -21331,7 +21384,7 @@
           {
             "title": "Example input for Read a member's statement / F&B-minimum progress",
             "input": {
-              "accountId": "accountId_uuid"
+              "accountId": "00000000-0000-4000-8000-000000000001"
             }
           }
         ],
@@ -21519,7 +21572,7 @@
             {
               "title": "Example input for Read a member's statement / F&B-minimum progress",
               "input": {
-                "accountId": "accountId_uuid"
+                "accountId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -21619,7 +21672,7 @@
           {
             "title": "Example input for Get a customer profile",
             "input": {
-              "customerId": "customerId_uuid"
+              "customerId": "77777777-7777-4777-8777-777777777777"
             }
           }
         ],
@@ -21761,7 +21814,7 @@
             {
               "title": "Example input for Get a customer profile",
               "input": {
-                "customerId": "customerId_uuid"
+                "customerId": "77777777-7777-4777-8777-777777777777"
               }
             }
           ],
@@ -21871,7 +21924,7 @@
           {
             "title": "Example input for Update a customer profile",
             "input": {
-              "customerId": "customerId_uuid"
+              "customerId": "77777777-7777-4777-8777-777777777777"
             }
           }
         ],
@@ -22081,7 +22134,7 @@
             {
               "title": "Example input for Update a customer profile",
               "input": {
-                "customerId": "customerId_uuid"
+                "customerId": "77777777-7777-4777-8777-777777777777"
               }
             }
           ],
@@ -22166,7 +22219,7 @@
           {
             "title": "Example input for Get customer insights",
             "input": {
-              "customerId": "customerId_uuid"
+              "customerId": "77777777-7777-4777-8777-777777777777"
             }
           }
         ],
@@ -22293,7 +22346,7 @@
             {
               "title": "Example input for Get customer insights",
               "input": {
-                "customerId": "customerId_uuid"
+                "customerId": "77777777-7777-4777-8777-777777777777"
               }
             }
           ],
@@ -22399,7 +22452,7 @@
             "title": "Example input for Create a resource type",
             "input": {
               "name": "Demo",
-              "capacity": 1
+              "capacity": 2
             }
           }
         ],
@@ -22611,7 +22664,7 @@
               "title": "Example input for Create a resource type",
               "input": {
                 "name": "Demo",
-                "capacity": 1
+                "capacity": 2
               }
             }
           ],
@@ -22698,7 +22751,7 @@
           {
             "title": "Example input for List resource types",
             "input": {
-              "contextId": "contextId_uuid"
+              "contextId": "11111111-1111-4111-8111-111111111111"
             }
           }
         ],
@@ -22822,7 +22875,7 @@
             {
               "title": "Example input for List resource types",
               "input": {
-                "contextId": "contextId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111"
               }
             }
           ],
@@ -22919,8 +22972,9 @@
           {
             "title": "Example input for Create a resource unit",
             "input": {
-              "typeId": "typeId_uuid",
-              "name": "Demo"
+              "typeId": "00000000-0000-4000-8000-000000000001",
+              "name": "Demo",
+              "status": "active"
             }
           }
         ],
@@ -23132,8 +23186,9 @@
             {
               "title": "Example input for Create a resource unit",
               "input": {
-                "typeId": "typeId_uuid",
-                "name": "Demo"
+                "typeId": "00000000-0000-4000-8000-000000000001",
+                "name": "Demo",
+                "status": "active"
               }
             }
           ],
@@ -23225,8 +23280,8 @@
           {
             "title": "Example input for List resource units",
             "input": {
-              "typeId": "typeId_uuid",
-              "contextId": "contextId_uuid",
+              "typeId": "00000000-0000-4000-8000-000000000001",
+              "contextId": "11111111-1111-4111-8111-111111111111",
               "status": "active"
             }
           }
@@ -23392,8 +23447,8 @@
             {
               "title": "Example input for List resource units",
               "input": {
-                "typeId": "typeId_uuid",
-                "contextId": "contextId_uuid",
+                "typeId": "00000000-0000-4000-8000-000000000001",
+                "contextId": "11111111-1111-4111-8111-111111111111",
                 "status": "active"
               }
             }
@@ -23498,11 +23553,13 @@
           {
             "title": "Example input for Create a resource block",
             "input": {
+              "resourceUnitId": "44444444-4444-4444-8444-444444444444",
               "window": {
-                "startsAt": "2026-07-01T12:00:00.000Z",
-                "endsAt": "2026-07-01T13:00:00.000Z"
+                "startsAt": "2026-07-01T18:00:00.000Z",
+                "endsAt": "2026-07-01T19:00:00.000Z"
               },
-              "reason": "example_reason"
+              "reason": "example_reason",
+              "source": "admin"
             }
           }
         ],
@@ -23741,11 +23798,13 @@
             {
               "title": "Example input for Create a resource block",
               "input": {
+                "resourceUnitId": "44444444-4444-4444-8444-444444444444",
                 "window": {
-                  "startsAt": "2026-07-01T12:00:00.000Z",
-                  "endsAt": "2026-07-01T13:00:00.000Z"
+                  "startsAt": "2026-07-01T18:00:00.000Z",
+                  "endsAt": "2026-07-01T19:00:00.000Z"
                 },
-                "reason": "example_reason"
+                "reason": "example_reason",
+                "source": "admin"
               }
             }
           ],
@@ -23827,9 +23886,9 @@
           {
             "title": "Example input for List resource blocks",
             "input": {
-              "contextId": "contextId_uuid",
-              "resourceTypeId": "resourceTypeId_uuid",
-              "resourceUnitId": "resourceUnitId_uuid"
+              "contextId": "11111111-1111-4111-8111-111111111111",
+              "resourceTypeId": "55555555-5555-4555-8555-555555555555",
+              "resourceUnitId": "44444444-4444-4444-8444-444444444444"
             }
           }
         ],
@@ -23968,9 +24027,9 @@
             {
               "title": "Example input for List resource blocks",
               "input": {
-                "contextId": "contextId_uuid",
-                "resourceTypeId": "resourceTypeId_uuid",
-                "resourceUnitId": "resourceUnitId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "resourceTypeId": "55555555-5555-4555-8555-555555555555",
+                "resourceUnitId": "44444444-4444-4444-8444-444444444444"
               }
             }
           ],
@@ -24069,12 +24128,13 @@
           {
             "title": "Example input for Create a resource combination",
             "input": {
-              "contextId": "contextId_uuid",
+              "contextId": "11111111-1111-4111-8111-111111111111",
               "name": "Demo",
               "resourceUnitIds": [
-                "resourceUnitIds_uuid"
+                "00000000-0000-4000-8000-000000000001"
               ],
-              "capacity": 1
+              "capacity": 2,
+              "status": "active"
             }
           }
         ],
@@ -24296,12 +24356,13 @@
             {
               "title": "Example input for Create a resource combination",
               "input": {
-                "contextId": "contextId_uuid",
+                "contextId": "11111111-1111-4111-8111-111111111111",
                 "name": "Demo",
                 "resourceUnitIds": [
-                  "resourceUnitIds_uuid"
+                  "00000000-0000-4000-8000-000000000001"
                 ],
-                "capacity": 1
+                "capacity": 2,
+                "status": "active"
               }
             }
           ],
@@ -24388,7 +24449,7 @@
           {
             "title": "Example input for List resource combinations",
             "input": {
-              "contextId": "contextId_uuid"
+              "contextId": "11111111-1111-4111-8111-111111111111"
             }
           }
         ],
@@ -24512,7 +24573,7 @@
             {
               "title": "Example input for List resource combinations",
               "input": {
-                "contextId": "contextId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111"
               }
             }
           ],
@@ -24595,14 +24656,14 @@
           {
             "title": "Example input for Create a waitlist entry",
             "input": {
-              "contextId": "contextId_uuid",
-              "customerId": "customerId_uuid",
+              "contextId": "11111111-1111-4111-8111-111111111111",
+              "customerId": "77777777-7777-4777-8777-777777777777",
               "requestedWindow": {
-                "startsAt": "2026-07-01T12:00:00.000Z",
-                "endsAt": "2026-07-01T13:00:00.000Z"
+                "startsAt": "2026-07-01T18:00:00.000Z",
+                "endsAt": "2026-07-01T19:00:00.000Z"
               },
               "demand": {
-                "partySize": 1
+                "partySize": 2
               }
             }
           }
@@ -24872,14 +24933,14 @@
             {
               "title": "Example input for Create a waitlist entry",
               "input": {
-                "contextId": "contextId_uuid",
-                "customerId": "customerId_uuid",
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "customerId": "77777777-7777-4777-8777-777777777777",
                 "requestedWindow": {
-                  "startsAt": "2026-07-01T12:00:00.000Z",
-                  "endsAt": "2026-07-01T13:00:00.000Z"
+                  "startsAt": "2026-07-01T18:00:00.000Z",
+                  "endsAt": "2026-07-01T19:00:00.000Z"
                 },
                 "demand": {
-                  "partySize": 1
+                  "partySize": 2
                 }
               }
             }
@@ -24964,7 +25025,7 @@
           {
             "title": "Example input for List waitlist entries",
             "input": {
-              "contextId": "contextId_uuid",
+              "contextId": "11111111-1111-4111-8111-111111111111",
               "status": "waiting"
             }
           }
@@ -25108,7 +25169,7 @@
             {
               "title": "Example input for List waitlist entries",
               "input": {
-                "contextId": "contextId_uuid",
+                "contextId": "11111111-1111-4111-8111-111111111111",
                 "status": "waiting"
               }
             }
@@ -25195,7 +25256,7 @@
           {
             "title": "Example input for Get a waitlist entry",
             "input": {
-              "entryId": "entryId_uuid"
+              "entryId": "00000000-0000-4000-8000-000000000001"
             }
           }
         ],
@@ -25322,7 +25383,7 @@
             {
               "title": "Example input for Get a waitlist entry",
               "input": {
-                "entryId": "entryId_uuid"
+                "entryId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -25406,7 +25467,7 @@
           {
             "title": "Example input for Delete a waitlist entry",
             "input": {
-              "entryId": "entryId_uuid"
+              "entryId": "00000000-0000-4000-8000-000000000001"
             }
           }
         ],
@@ -25531,7 +25592,7 @@
             {
               "title": "Example input for Delete a waitlist entry",
               "input": {
-                "entryId": "entryId_uuid"
+                "entryId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -25618,12 +25679,12 @@
           {
             "title": "Example input for Offer a waitlist entry",
             "input": {
-              "entryId": "entryId_uuid",
+              "entryId": "00000000-0000-4000-8000-000000000001",
               "offeredWindow": {
-                "startsAt": "2026-07-01T12:00:00.000Z",
-                "endsAt": "2026-07-01T13:00:00.000Z"
+                "startsAt": "2026-07-01T18:00:00.000Z",
+                "endsAt": "2026-07-01T19:00:00.000Z"
               },
-              "expiresAt": "2026-07-01T12:00:00.000Z"
+              "expiresAt": "2026-07-01T18:00:00.000Z"
             }
           }
         ],
@@ -25817,12 +25878,12 @@
             {
               "title": "Example input for Offer a waitlist entry",
               "input": {
-                "entryId": "entryId_uuid",
+                "entryId": "00000000-0000-4000-8000-000000000001",
                 "offeredWindow": {
-                  "startsAt": "2026-07-01T12:00:00.000Z",
-                  "endsAt": "2026-07-01T13:00:00.000Z"
+                  "startsAt": "2026-07-01T18:00:00.000Z",
+                  "endsAt": "2026-07-01T19:00:00.000Z"
                 },
-                "expiresAt": "2026-07-01T12:00:00.000Z"
+                "expiresAt": "2026-07-01T18:00:00.000Z"
               }
             }
           ],
@@ -25913,7 +25974,7 @@
           {
             "title": "Example input for Claim a waitlist offer",
             "input": {
-              "entryId": "entryId_uuid",
+              "entryId": "00000000-0000-4000-8000-000000000001",
               "clientRequestId": "example_clientRequestId"
             }
           }
@@ -26054,7 +26115,7 @@
             {
               "title": "Example input for Claim a waitlist offer",
               "input": {
-                "entryId": "entryId_uuid",
+                "entryId": "00000000-0000-4000-8000-000000000001",
                 "clientRequestId": "example_clientRequestId"
               }
             }
@@ -26137,7 +26198,7 @@
           {
             "title": "Example input for Expire a waitlist entry",
             "input": {
-              "entryId": "entryId_uuid"
+              "entryId": "00000000-0000-4000-8000-000000000001"
             }
           }
         ],
@@ -26260,7 +26321,7 @@
             {
               "title": "Example input for Expire a waitlist entry",
               "input": {
-                "entryId": "entryId_uuid"
+                "entryId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -27134,7 +27195,7 @@
             "input": {
               "kind": "booking_window",
               "active": true,
-              "contextId": "contextId_uuid"
+              "contextId": "11111111-1111-4111-8111-111111111111"
             }
           }
         ],
@@ -27314,7 +27375,7 @@
               "input": {
                 "kind": "booking_window",
                 "active": true,
-                "contextId": "contextId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111"
               }
             }
           ],
@@ -27400,7 +27461,11 @@
           {
             "title": "Example input for Update a booking policy",
             "input": {
-              "policyId": "policyId_uuid"
+              "policyId": "00000000-0000-4000-8000-000000000001",
+              "name": "Demo",
+              "rule": {
+                "kind": "booking_window"
+              }
             }
           }
         ],
@@ -28032,7 +28097,11 @@
             {
               "title": "Example input for Update a booking policy",
               "input": {
-                "policyId": "policyId_uuid"
+                "policyId": "00000000-0000-4000-8000-000000000001",
+                "name": "Demo",
+                "rule": {
+                  "kind": "booking_window"
+                }
               }
             }
           ],
@@ -28124,14 +28193,14 @@
             "title": "Example input for Create a rate plan",
             "input": {
               "name": "Demo",
-              "currency": "example_currency",
+              "currency": "USD",
               "components": [
                 {
-                  "code": "example_code",
-                  "label": "example_label",
+                  "code": "base",
+                  "label": "Base",
                   "amount": {
-                    "amountCents": -9007199254740991,
-                    "currency": "example_currency"
+                    "amountCents": 1000,
+                    "currency": "USD"
                   }
                 }
               ]
@@ -28427,14 +28496,14 @@
               "title": "Example input for Create a rate plan",
               "input": {
                 "name": "Demo",
-                "currency": "example_currency",
+                "currency": "USD",
                 "components": [
                   {
-                    "code": "example_code",
-                    "label": "example_label",
+                    "code": "base",
+                    "label": "Base",
                     "amount": {
-                      "amountCents": -9007199254740991,
-                      "currency": "example_currency"
+                      "amountCents": 1000,
+                      "currency": "USD"
                     }
                   }
                 ]
@@ -28524,8 +28593,8 @@
             "title": "Example input for List rate plans",
             "input": {
               "active": true,
-              "contextId": "contextId_uuid",
-              "resourceTypeId": "resourceTypeId_uuid"
+              "contextId": "11111111-1111-4111-8111-111111111111",
+              "resourceTypeId": "55555555-5555-4555-8555-555555555555"
             }
           }
         ],
@@ -28677,8 +28746,8 @@
               "title": "Example input for List rate plans",
               "input": {
                 "active": true,
-                "contextId": "contextId_uuid",
-                "resourceTypeId": "resourceTypeId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111",
+                "resourceTypeId": "55555555-5555-4555-8555-555555555555"
               }
             }
           ],
@@ -28765,7 +28834,8 @@
           {
             "title": "Example input for Update a rate plan",
             "input": {
-              "ratePlanId": "ratePlanId_uuid"
+              "ratePlanId": "00000000-0000-4000-8000-000000000001",
+              "name": "Demo"
             }
           }
         ],
@@ -29055,7 +29125,8 @@
             {
               "title": "Example input for Update a rate plan",
               "input": {
-                "ratePlanId": "ratePlanId_uuid"
+                "ratePlanId": "00000000-0000-4000-8000-000000000001",
+                "name": "Demo"
               }
             }
           ],
@@ -29158,12 +29229,16 @@
           {
             "title": "Example input for Create a booking hold",
             "input": {
-              "contextId": "contextId_uuid",
+              "contextId": "11111111-1111-4111-8111-111111111111",
               "window": {
-                "startsAt": "2026-07-01T12:00:00.000Z",
-                "endsAt": "2026-07-01T13:00:00.000Z"
+                "startsAt": "2026-07-01T18:00:00.000Z",
+                "endsAt": "2026-07-01T19:00:00.000Z"
               },
-              "clientRequestId": "example_clientRequestId"
+              "partySize": 1,
+              "source": "web",
+              "clientRequestId": "example_clientRequestId",
+              "ttlSeconds": 600,
+              "resourceUnitId": "44444444-4444-4444-8444-444444444444"
             }
           }
         ],
@@ -29464,12 +29539,16 @@
             {
               "title": "Example input for Create a booking hold",
               "input": {
-                "contextId": "contextId_uuid",
+                "contextId": "11111111-1111-4111-8111-111111111111",
                 "window": {
-                  "startsAt": "2026-07-01T12:00:00.000Z",
-                  "endsAt": "2026-07-01T13:00:00.000Z"
+                  "startsAt": "2026-07-01T18:00:00.000Z",
+                  "endsAt": "2026-07-01T19:00:00.000Z"
                 },
-                "clientRequestId": "example_clientRequestId"
+                "partySize": 1,
+                "source": "web",
+                "clientRequestId": "example_clientRequestId",
+                "ttlSeconds": 600,
+                "resourceUnitId": "44444444-4444-4444-8444-444444444444"
               }
             }
           ],
@@ -29555,7 +29634,7 @@
           {
             "title": "Example input for Get a booking hold",
             "input": {
-              "holdId": "holdId_uuid"
+              "holdId": "33333333-3333-4333-8333-333333333333"
             }
           }
         ],
@@ -29683,7 +29762,7 @@
             {
               "title": "Example input for Get a booking hold",
               "input": {
-                "holdId": "holdId_uuid"
+                "holdId": "33333333-3333-4333-8333-333333333333"
               }
             }
           ],
@@ -29801,7 +29880,7 @@
           {
             "title": "Example input for Commit a booking hold",
             "input": {
-              "holdId": "holdId_uuid",
+              "holdId": "33333333-3333-4333-8333-333333333333",
               "clientRequestId": "example_clientRequestId"
             }
           }
@@ -29982,7 +30061,7 @@
             {
               "title": "Example input for Commit a booking hold",
               "input": {
-                "holdId": "holdId_uuid",
+                "holdId": "33333333-3333-4333-8333-333333333333",
                 "clientRequestId": "example_clientRequestId"
               }
             }
@@ -30081,7 +30160,8 @@
           {
             "title": "Example input for Release a booking hold",
             "input": {
-              "holdId": "holdId_uuid"
+              "holdId": "33333333-3333-4333-8333-333333333333",
+              "reason": "example_reason"
             }
           }
         ],
@@ -30231,7 +30311,8 @@
             {
               "title": "Example input for Release a booking hold",
               "input": {
-                "holdId": "holdId_uuid"
+                "holdId": "33333333-3333-4333-8333-333333333333",
+                "reason": "example_reason"
               }
             }
           ],
@@ -30330,8 +30411,8 @@
           {
             "title": "Example input for Extend a booking hold",
             "input": {
-              "holdId": "holdId_uuid",
-              "ttlSeconds": 60
+              "holdId": "33333333-3333-4333-8333-333333333333",
+              "ttlSeconds": 1000
             }
           }
         ],
@@ -30484,8 +30565,8 @@
             {
               "title": "Example input for Extend a booking hold",
               "input": {
-                "holdId": "holdId_uuid",
-                "ttlSeconds": 60
+                "holdId": "33333333-3333-4333-8333-333333333333",
+                "ttlSeconds": 1000
               }
             }
           ],
@@ -30586,13 +30667,13 @@
           {
             "title": "Example input for Create a booking quote",
             "input": {
-              "contextId": "contextId_uuid",
+              "contextId": "11111111-1111-4111-8111-111111111111",
               "window": {
-                "startsAt": "2026-07-01T12:00:00.000Z",
-                "endsAt": "2026-07-01T13:00:00.000Z"
+                "startsAt": "2026-07-01T18:00:00.000Z",
+                "endsAt": "2026-07-01T19:00:00.000Z"
               },
               "demand": {
-                "partySize": 1
+                "partySize": 2
               }
             }
           }
@@ -30876,13 +30957,13 @@
             {
               "title": "Example input for Create a booking quote",
               "input": {
-                "contextId": "contextId_uuid",
+                "contextId": "11111111-1111-4111-8111-111111111111",
                 "window": {
-                  "startsAt": "2026-07-01T12:00:00.000Z",
-                  "endsAt": "2026-07-01T13:00:00.000Z"
+                  "startsAt": "2026-07-01T18:00:00.000Z",
+                  "endsAt": "2026-07-01T19:00:00.000Z"
                 },
                 "demand": {
-                  "partySize": 1
+                  "partySize": 2
                 }
               }
             }
@@ -30977,7 +31058,7 @@
           {
             "title": "Example input for Get a booking quote",
             "input": {
-              "quoteId": "quoteId_uuid"
+              "quoteId": "00000000-0000-4000-8000-000000000001"
             }
           }
         ],
@@ -31113,7 +31194,7 @@
             {
               "title": "Example input for Get a booking quote",
               "input": {
-                "quoteId": "quoteId_uuid"
+                "quoteId": "00000000-0000-4000-8000-000000000001"
               }
             }
           ],
@@ -32123,7 +32204,7 @@
           {
             "title": "Example input for List booking media assets",
             "input": {
-              "contextId": "contextId_uuid"
+              "contextId": "11111111-1111-4111-8111-111111111111"
             }
           }
         ],
@@ -32261,7 +32342,7 @@
             {
               "title": "Example input for List booking media assets",
               "input": {
-                "contextId": "contextId_uuid"
+                "contextId": "11111111-1111-4111-8111-111111111111"
               }
             }
           ],
@@ -32368,7 +32449,7 @@
           {
             "title": "Example input for Upload booking media asset",
             "input": {
-              "contextId": "contextId_uuid",
+              "contextId": "11111111-1111-4111-8111-111111111111",
               "fileName": "Demo",
               "role": "context_media"
             }
@@ -32541,7 +32622,7 @@
             {
               "title": "Example input for Upload booking media asset",
               "input": {
-                "contextId": "contextId_uuid",
+                "contextId": "11111111-1111-4111-8111-111111111111",
                 "fileName": "Demo",
                 "role": "context_media"
               }

@@ -43,7 +43,13 @@ const fetcher = async (url, init = {}) => {
   if (String(url).includes("/availability")) {
     return Response.json([{ startsAt: "2026-07-01T18:00:00.000Z", endsAt: "2026-07-01T18:30:00.000Z", capacityRemaining: 4 }]);
   }
+  if (String(url).endsWith(`/api/v1/booking/contexts/${CONTEXT_ID}`) && init.method === "GET") {
+    return Response.json({ id: CONTEXT_ID, organizationId: ORG_ID, label: "Summer Jazz Night", status: "active" });
+  }
   if (String(url).endsWith("/api/v1/booking/holds") && init.method === "POST") {
+    if (body.clientRequestId === "force-runtime-500") {
+      return Response.json({ error: "forced-runtime-failure" }, { status: 500 });
+    }
     return Response.json({
       id: HOLD_ID,
       organizationId: ORG_ID,
@@ -104,6 +110,46 @@ assert.equal(deniedExecuteMutation.receipt.ok, false, "agent-facing executeComma
 assert.equal(deniedExecuteMutation.receipt.policy.reasons.includes("runtime_not_mounted_for_execute"), true);
 assert.equal(calls.length, 0, "denied executeCommand mutation does not call booking runtime");
 
+const emptyAvailability = await tools.executeCommand.execute({
+  commandId: GENERATED_BOOKING_AVAILABILITY_COMMAND_ID,
+  input: {},
+});
+assert.equal(emptyAvailability.receipt.ok, false, "preflight repairs contextId but still rejects missing availability time fields before host runtime fetch");
+assert.equal(emptyAvailability.receipt.summary.kind, "command_input_preflight_failed");
+assert.deepEqual(emptyAvailability.receipt.summary.missingRequiredFields, ["from", "to"]);
+assert.deepEqual(emptyAvailability.receipt.nextActions, ["learnCommand"]);
+assert.equal(calls.length, 0, "preflight failure does not call booking runtime");
+
+const dateAvailability = await tools.executeCommand.execute({
+  commandId: GENERATED_BOOKING_AVAILABILITY_COMMAND_ID,
+  input: { date: "2026-07-01", partySize: 2 },
+});
+assert.equal(dateAvailability.receipt.ok, true, "preflight repair maps availability date to from/to and binds page contextId");
+assert.equal(calls.at(-1).method, "GET");
+assert.equal(new URL(calls.at(-1).url).pathname, `/api/v1/booking/contexts/${CONTEXT_ID}/availability`);
+assert.equal(new URL(calls.at(-1).url).searchParams.get("from"), "2026-07-01T18:00:00.000Z");
+assert.equal(new URL(calls.at(-1).url).searchParams.get("to"), "2026-07-01T19:00:00.000Z");
+
+const contextRead = await tools.executeCommand.execute({
+  commandId: "booking.get.context",
+  input: {},
+});
+assert.equal(contextRead.receipt.ok, true, "preflight repair binds page contextId for booking.get.context");
+assert.equal(calls.at(-1).method, "GET");
+assert.equal(calls.at(-1).url, `https://booking.example.test/api/v1/booking/contexts/${CONTEXT_ID}`);
+
+const learnedAvailability = await tools.learnCommand.execute({ commandId: GENERATED_BOOKING_AVAILABILITY_COMMAND_ID, aspects: ["schema", "examples"] });
+assert.equal(learnedAvailability.ok, true, "learnCommand recovers the exact availability schema after preflight failure");
+assert.deepEqual(learnedAvailability.inputSchema.required, ["contextId", "from", "to"]);
+assert.deepEqual(learnedAvailability.examples[0].input, {
+  contextId: "11111111-1111-4111-8111-111111111111",
+  from: "2026-07-01T18:00:00.000Z",
+  to: "2026-07-01T19:00:00.000Z",
+  partySize: 2,
+  source: "admin",
+  resourceUnitId: "44444444-4444-4444-8444-444444444444",
+});
+
 const availability = await tools.executeCommand.execute({
   commandId: GENERATED_BOOKING_AVAILABILITY_COMMAND_ID,
   input: { contextId: CONTEXT_ID, from: "2026-07-01T18:00:00.000Z", to: "2026-07-01T19:00:00.000Z", partySize: 2, source: "admin", resourceUnitId: RESOURCE_UNIT_ID },
@@ -126,6 +172,23 @@ const create = await tools.commitCommand.execute({
   },
 });
 assert.equal(create.receipt.ok, true, "agent-facing commitCommand can create an approved hold through the trusted runtime");
+
+const failedRuntimeCreate = await tools.commitCommand.execute({
+  commandId: GENERATED_BOOKING_CREATE_HOLD_COMMAND_ID,
+  inputJson: JSON.stringify({
+    contextId: CONTEXT_ID,
+    userId: USER_ID,
+    window: { startsAt: "2026-07-01T18:00:00.000Z", endsAt: "2026-07-01T18:30:00.000Z" },
+    partySize: 2,
+    source: "admin",
+    clientRequestId: "force-runtime-500",
+    resourceUnitId: RESOURCE_UNIT_ID,
+  }),
+});
+assert.equal(failedRuntimeCreate.receipt.ok, false, "commitCommand reports runtime HTTP failures as failed receipts");
+assert.equal(failedRuntimeCreate.receipt.summary.ok, false, "failed runtime summary preserves HTTP ok=false");
+assert.equal(failedRuntimeCreate.receipt.errors[0].code, "HOST_RUNTIME_RESPONSE_NOT_OK", "failed runtime receipt has an explicit runtime-response error code");
+
 assert.equal(create.receipt.summary.receipt.confirmation.id, HOLD_ID);
 assert.equal(create.receipt.summary.receipt.confirmation.status, "active");
 assert.equal(JSON.stringify(create).includes(TOKEN), false, "agent-facing command receipt redacts booking runtime secrets");
