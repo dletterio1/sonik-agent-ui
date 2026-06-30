@@ -11,12 +11,16 @@ import {
   learnCommandDescriptor,
   searchCommandCatalog,
   searchCommandCatalogWithMetadata,
+  createAskUserQuestionSpec,
+  createAskUserQuestionsFromQuestionForm,
+  createInteractiveSurfaceSpec,
   createToolManifest,
   evaluateToolPolicy,
   filterAvailableTools,
   inferEffectFromHttpMethod,
   inferEffectFromProcedureId,
   isValidOrpcProcedureId,
+  validateQuestionAnswer,
 } from "../../packages/tool-contracts/src/index.ts";
 import {
   createCommandIndexContext,
@@ -57,6 +61,132 @@ assert.equal(inferEffectFromProcedureId("booking.contexts.delete"), "destructive
 assert.equal(isValidOrpcProcedureId("booking.contexts.list"), true);
 assert.equal(isValidOrpcProcedureId("GET /api/v1/booking/contexts"), false, "ORPC procedure ids must not be arbitrary endpoint strings");
 assert.equal(isValidOrpcProcedureId("https://api.sonik.fm/rpc"), false, "ORPC procedure ids must not be URLs");
+
+const confirmationQuestion = createAskUserQuestionSpec({
+  question_id: "q_confirmation_mode",
+  title: "How should bookings be confirmed?",
+  body: "Should customers receive instant confirmation, require manual approval, join a waitlist, or submit a request before staff confirms?",
+  why_this_matters: "This controls whether Sonik can issue a booking confirmation immediately or must create a pending request.",
+  answer_type: "single_choice",
+  choices: [
+    "instant_confirm",
+    { value: "manual_approval", label: "Manual approval", description: "Staff must approve first." },
+  ],
+  required: true,
+  allow_skip: false,
+  writes_to: "inventory.items[].confirmation_mode",
+});
+assert.equal(confirmationQuestion.id, "q_confirmation_mode", "snake_case question_id should normalize to canonical id");
+assert.equal(confirmationQuestion.answerType, "single_choice", "snake_case answer_type should normalize to canonical answerType");
+assert.deepEqual(confirmationQuestion.choices.map((choice) => choice.value), ["instant_confirm", "manual_approval"], "string/object choices normalize to stable values");
+assert.equal(confirmationQuestion.writesTo, "inventory.items[].confirmation_mode", "writes_to should normalize to writesTo");
+
+assert.throws(() => createAskUserQuestionSpec({
+  id: "q_bad_required_skip",
+  title: "Bad",
+  body: "Bad",
+  answerType: "short_text",
+  required: true,
+  allowSkip: true,
+}), /Required questions must not allow skip/, "required questions cannot be skippable");
+assert.throws(() => createAskUserQuestionSpec({
+  id: "q_duplicate_choices",
+  title: "Bad choices",
+  body: "Bad choices",
+  answerType: "single_choice",
+  choices: ["yes", { value: "yes", label: "Yes again" }],
+}), /unique/, "choice values must remain stable and unique after normalization");
+assert.throws(() => createAskUserQuestionSpec({
+  id: "q_text_with_choices",
+  title: "Bad text",
+  body: "Bad text",
+  answerType: "short_text",
+  choices: ["a"],
+}), /must not include choices/, "free-text questions should not carry choice options");
+
+const validAnswer = validateQuestionAnswer(confirmationQuestion, {
+  question_id: "q_confirmation_mode",
+  value: "manual_approval",
+  artifact_id: "artifact-intake-1",
+});
+assert.equal(validAnswer.ok, true, "valid single_choice answer should pass");
+assert.equal(validAnswer.ok && validAnswer.writesTo, "inventory.items[].confirmation_mode", "answer validation should retain state write target");
+const invalidAnswer = validateQuestionAnswer(confirmationQuestion, { questionId: "q_confirmation_mode", value: "waitlist" });
+assert.equal(invalidAnswer.ok, false, "undeclared single_choice values should fail");
+assert.equal(!invalidAnswer.ok && invalidAnswer.errors.some((error) => error.code === "invalid_choice"), true);
+const skippedRequired = validateQuestionAnswer(confirmationQuestion, { questionId: "q_confirmation_mode", skipped: true });
+assert.equal(skippedRequired.ok, false, "required non-skippable questions should reject skipped submissions");
+
+const multiQuestion = createAskUserQuestionSpec({
+  id: "q_channels",
+  title: "Channels",
+  body: "Which channels should be enabled?",
+  answerType: "multi_choice",
+  choices: ["email", "sms", "whatsapp"],
+  minSelections: 1,
+  maxSelections: 2,
+});
+assert.equal(validateQuestionAnswer(multiQuestion, { questionId: "q_channels", value: ["email", "sms"] }).ok, true, "bounded multi-choice should accept declared values");
+const duplicateChannels = validateQuestionAnswer(multiQuestion, { questionId: "q_channels", value: ["email", "email"] });
+assert.equal(duplicateChannels.ok, false, "multi_choice should reject duplicate submitted choices");
+assert.equal(!duplicateChannels.ok && duplicateChannels.errors.some((error) => error.code === "duplicate_selection"), true);
+const tooManyChannels = validateQuestionAnswer(multiQuestion, { questionId: "q_channels", value: ["email", "sms", "whatsapp"] });
+assert.equal(tooManyChannels.ok, false, "multi_choice should enforce maxSelections");
+assert.equal(!tooManyChannels.ok && tooManyChannels.errors.some((error) => error.code === "max_selections"), true);
+
+const questionSurface = createInteractiveSurfaceSpec({
+  id: "surface_booking_intake_question",
+  kind: "ask_user_question",
+  title: "Booking intake question",
+  questions: [confirmationQuestion],
+  actions: [{ id: "submit", label: "Submit", kind: "submit_answer", requiresConfirmation: false }],
+});
+assert.equal(questionSurface.questions[0]?.id, "q_confirmation_mode", "interactive question surface should embed canonical question specs");
+assert.throws(() => createInteractiveSurfaceSpec({
+  id: "surface_empty_question",
+  kind: "ask_user_question",
+  title: "Empty",
+  questions: [],
+}), /require at least one question/, "question surfaces must not render empty shells");
+assert.throws(() => createInteractiveSurfaceSpec({
+  id: "surface_duplicate_questions",
+  kind: "question_group",
+  title: "Dupes",
+  questions: [confirmationQuestion, confirmationQuestion],
+}), /unique/, "question ids must be unique within a surface");
+assert.throws(() => createInteractiveSurfaceSpec({
+  id: "surface_unconfirmed_tool_call",
+  kind: "intake_artifact",
+  title: "Unsafe action",
+  actions: [{ id: "analyze", label: "Analyze", kind: "tool_call", toolRef: "$analyze-copy-retrofit" }],
+}), /Invalid option/, "interactive surfaces must not expose executable tool_call actions; command tools own execution");
+assert.throws(() => createInteractiveSurfaceSpec({
+  id: "surface_bound_submit",
+  kind: "ask_user_question",
+  title: "Bound submit",
+  questions: [confirmationQuestion],
+  actions: [{ id: "submit", label: "Submit", kind: "submit_answer", commandId: "booking.create.booking" }],
+}), /preview command\/tool targets only/, "submit actions must not bind directly to executable commands");
+
+const questionFormQuestions = createAskUserQuestionsFromQuestionForm({
+  id: "discovery",
+  title: "Quick brief",
+  questions: [
+    { id: "platform", label: "Primary surface", type: "radio", options: ["Responsive", { label: "Mobile", value: "mobile" }, { label: "Desktop web", description: "Browser-first." }], required: true, help: "Choose the main surface." },
+    { id: "notes", label: "Notes", type: "textarea", placeholder: "Add context" },
+    { id: "channels", label: "Channels", type: "checkbox", options: ["Email", "SMS"], maxSelections: 1 },
+    { id: "layout", label: "Choose layout", type: "direction-cards", options: [{ label: "Wizard" }, { label: "Canvas", value: "canvas" }] },
+  ],
+});
+assert.deepEqual(questionFormQuestions.map((question) => `${question.id}:${question.answerType}:${question.allowSkip}`), [
+  "platform:single_choice:false",
+  "notes:long_text:true",
+  "channels:multi_choice:true",
+  "layout:choice_cards:true",
+], "Question-form parsed interactions should map into Sonik canonical question specs without importing React UI");
+assert.deepEqual(questionFormQuestions[0]?.choices.map((choice) => choice.value), ["Responsive", "mobile", "Desktop web"], "Question-form option values remain stable through Sonik mapping");
+assert.equal(questionFormQuestions[0]?.choices[2]?.description, "Browser-first.", "Question-form object options without value should preserve description and default value from label");
+assert.deepEqual(questionFormQuestions[3]?.choices.map((choice) => choice.value), ["Wizard", "canvas"], "direction-cards should retain card-like choice semantics for later JSON-render adapters");
 
 const mixedManifest = createToolManifest("policy-test", [
   {

@@ -217,6 +217,333 @@ function formatCounts(counts: Record<string, number>): string {
   return Object.entries(counts).map(([key, value]) => `${key}:${value}`).join(",") || "none";
 }
 
+export const askUserAnswerTypeSchema = z.enum([
+  "single_choice",
+  "multi_choice",
+  "choice_cards",
+  "short_text",
+  "long_text",
+  "textarea",
+  "boolean",
+  "number",
+  "date",
+  "datetime",
+  "list",
+  "structured_list",
+  "weekly_schedule",
+  "confirmation",
+]);
+
+export const interactiveSurfaceKindSchema = z.enum([
+  "ask_user_question",
+  "question_group",
+  "manifest_wizard",
+  "command_confirmation",
+  "manifest_preview",
+  "intake_artifact",
+]);
+
+export const interactiveSurfaceStatusSchema = z.enum(["draft", "active", "answered", "skipped", "validated", "exported", "cancelled"]);
+export const interactiveSurfaceSourceSchema = z.enum(["agent", "skill", "page-context", "artifact", "host", "system"]);
+
+const askUserQuestionChoiceObjectSchema = z.object({
+  value: z.union([z.string(), z.number(), z.boolean()]),
+  label: z.string().min(1).optional(),
+  description: z.string().optional(),
+  disabled: z.boolean().default(false),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+});
+
+export const askUserQuestionChoiceSchema = z.union([
+  z.string().min(1).transform((value) => ({ value, label: value, disabled: false, metadata: {} })),
+  askUserQuestionChoiceObjectSchema.transform((choice) => ({
+    ...choice,
+    label: choice.label ?? String(choice.value),
+    disabled: choice.disabled ?? false,
+    metadata: choice.metadata ?? {},
+  })),
+]);
+
+function normalizeAskQuestionWireInput(input: unknown): unknown {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const raw = input as Record<string, unknown>;
+  return {
+    ...raw,
+    version: raw.version ?? "sonik-agent-ui.ask-user-question.v1",
+    id: raw.id ?? raw.question_id ?? raw.questionId,
+    whyThisMatters: raw.whyThisMatters ?? raw.why_this_matters,
+    answerType: raw.answerType ?? raw.answer_type,
+    defaultValue: raw.defaultValue ?? raw.default,
+    allowSkip: raw.allowSkip ?? raw.allow_skip,
+    skipValue: raw.skipValue ?? raw.skip_value,
+    writesTo: raw.writesTo ?? raw.writes_to,
+    maxSelections: raw.maxSelections ?? raw.max_selections,
+    minSelections: raw.minSelections ?? raw.min_selections,
+    reviewRequired: raw.reviewRequired ?? raw.review_required,
+  };
+}
+
+export const askUserQuestionSpecSchema = z.preprocess(normalizeAskQuestionWireInput, z.object({
+  version: z.literal("sonik-agent-ui.ask-user-question.v1").default("sonik-agent-ui.ask-user-question.v1"),
+  id: z.string().min(1),
+  title: z.string().min(1),
+  body: z.string().min(1),
+  whyThisMatters: z.string().min(1).optional(),
+  answerType: askUserAnswerTypeSchema,
+  choices: z.array(askUserQuestionChoiceSchema).default([]),
+  defaultValue: z.unknown().optional(),
+  required: z.boolean().default(false),
+  allowSkip: z.boolean().default(true),
+  skipValue: z.unknown().default("unknown"),
+  writesTo: z.string().min(1).optional(),
+  minSelections: z.number().int().nonnegative().default(0),
+  maxSelections: z.number().int().positive().optional(),
+  source: interactiveSurfaceSourceSchema.default("agent"),
+  confidence: z.number().min(0).max(1).optional(),
+  reviewRequired: z.boolean().default(false),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+}).superRefine((question, ctx) => {
+  const choiceTypes = new Set(["single_choice", "multi_choice", "choice_cards", "confirmation"]);
+  if (choiceTypes.has(question.answerType) && question.choices.length === 0) {
+    ctx.addIssue({ code: "custom", path: ["choices"], message: `${question.answerType} questions require at least one choice.` });
+  }
+  if (!choiceTypes.has(question.answerType) && question.choices.length > 0) {
+    ctx.addIssue({ code: "custom", path: ["choices"], message: `${question.answerType} questions must not include choices.` });
+  }
+  if (question.required && question.allowSkip) {
+    ctx.addIssue({ code: "custom", path: ["allowSkip"], message: "Required questions must not allow skip." });
+  }
+  if (question.answerType === "single_choice" && question.maxSelections && question.maxSelections !== 1) {
+    ctx.addIssue({ code: "custom", path: ["maxSelections"], message: "single_choice maxSelections must be 1 when provided." });
+  }
+  if (question.answerType === "multi_choice" && question.maxSelections && question.minSelections > question.maxSelections) {
+    ctx.addIssue({ code: "custom", path: ["minSelections"], message: "minSelections cannot exceed maxSelections." });
+  }
+  const values = question.choices.map((choice) => String(choice.value));
+  if (new Set(values).size !== values.length) {
+    ctx.addIssue({ code: "custom", path: ["choices"], message: "Question choice values must be unique after normalization." });
+  }
+}));
+
+export const questionAnswerSubmissionSchema = z.preprocess((input) => {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const raw = input as Record<string, unknown>;
+  return {
+    ...raw,
+    questionId: raw.questionId ?? raw.question_id,
+    artifactId: raw.artifactId ?? raw.artifact_id,
+    sessionId: raw.sessionId ?? raw.session_id,
+    answeredAt: raw.answeredAt ?? raw.answered_at,
+    writesTo: raw.writesTo ?? raw.writes_to,
+  };
+}, z.object({
+  version: z.literal("sonik-agent-ui.question-answer-submission.v1").default("sonik-agent-ui.question-answer-submission.v1"),
+  questionId: z.string().min(1),
+  value: z.unknown().optional(),
+  skipped: z.boolean().default(false),
+  writesTo: z.string().min(1).optional(),
+  artifactId: z.string().min(1).optional(),
+  sessionId: z.string().min(1).optional(),
+  answeredAt: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+}));
+
+const interactiveSurfaceActionSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  kind: z.enum(["ask_user_question", "submit_answer", "validate_manifest", "export_manifest", "preview_command"]),
+  toolRef: z.string().min(1).optional(),
+  commandId: z.string().min(1).optional(),
+  requiresConfirmation: z.boolean().default(false),
+  inputMap: z.record(z.string(), z.unknown()).default({}),
+  outputMap: z.record(z.string(), z.unknown()).default({}),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+}).superRefine((action, ctx) => {
+  if ((action.toolRef || action.commandId) && action.kind !== "preview_command") {
+    ctx.addIssue({ code: "custom", path: ["kind"], message: "Interactive surfaces may preview command/tool targets only; execution belongs to command tools." });
+  }
+});
+
+export const interactiveSurfaceSpecSchema = z.object({
+  version: z.literal("sonik-agent-ui.interactive-surface.v1").default("sonik-agent-ui.interactive-surface.v1"),
+  id: z.string().min(1),
+  kind: interactiveSurfaceKindSchema,
+  title: z.string().min(1),
+  description: z.string().default(""),
+  status: interactiveSurfaceStatusSchema.default("draft"),
+  source: interactiveSurfaceSourceSchema.default("agent"),
+  skillId: z.string().min(1).optional(),
+  artifactId: z.string().min(1).optional(),
+  questions: z.array(askUserQuestionSpecSchema).default([]),
+  state: z.record(z.string(), z.unknown()).default({}),
+  actions: z.array(interactiveSurfaceActionSchema).default([]),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+}).superRefine((surface, ctx) => {
+  if ((surface.kind === "ask_user_question" || surface.kind === "question_group") && surface.questions.length === 0) {
+    ctx.addIssue({ code: "custom", path: ["questions"], message: `${surface.kind} surfaces require at least one question.` });
+  }
+  const questionIds = surface.questions.map((question) => question.id);
+  if (new Set(questionIds).size !== questionIds.length) {
+    ctx.addIssue({ code: "custom", path: ["questions"], message: "Interactive surface question ids must be unique." });
+  }
+});
+
+export type AskUserAnswerType = z.infer<typeof askUserAnswerTypeSchema>;
+export type AskUserQuestionChoice = z.infer<typeof askUserQuestionChoiceSchema>;
+export type AskUserQuestionSpec = z.infer<typeof askUserQuestionSpecSchema>;
+export type QuestionAnswerSubmission = z.infer<typeof questionAnswerSubmissionSchema>;
+export type InteractiveSurfaceKind = z.infer<typeof interactiveSurfaceKindSchema>;
+export type InteractiveSurfaceSpec = z.infer<typeof interactiveSurfaceSpecSchema>;
+
+export type QuestionAnswerValidationResult =
+  | { ok: true; submission: QuestionAnswerSubmission; writesTo?: string; normalizedValue: unknown }
+  | { ok: false; errors: Array<{ code: string; message: string; path: Array<string | number> }> };
+
+export function createAskUserQuestionSpec(input: unknown): AskUserQuestionSpec {
+  return askUserQuestionSpecSchema.parse(input);
+}
+
+export function createInteractiveSurfaceSpec(input: unknown): InteractiveSurfaceSpec {
+  return interactiveSurfaceSpecSchema.parse(input);
+}
+
+function normalizeOpenDesignQuestionOptions(options: unknown): AskUserQuestionChoice[] {
+  if (!Array.isArray(options)) return [];
+  return options.flatMap((option): AskUserQuestionChoice[] => {
+    if (typeof option === "string") {
+      const label = option.trim();
+      return label ? [{ value: label, label, disabled: false, metadata: {} }] : [];
+    }
+    if (!option || typeof option !== "object" || Array.isArray(option)) return [];
+    const raw = option as Record<string, unknown>;
+    const label = typeof raw.label === "string" && raw.label.trim() ? raw.label.trim() : undefined;
+    const rawValue = raw.value;
+    const value = typeof rawValue === "string" && rawValue.trim()
+      ? rawValue.trim()
+      : typeof rawValue === "number" || typeof rawValue === "boolean"
+        ? rawValue
+        : label;
+    if (value === undefined || !label) return [];
+    return [{
+      value,
+      label,
+      description: typeof raw.description === "string" && raw.description.trim() ? raw.description.trim() : undefined,
+      disabled: raw.disabled === true,
+      metadata: typeof raw.metadata === "object" && raw.metadata !== null && !Array.isArray(raw.metadata) ? raw.metadata as Record<string, unknown> : {},
+    }];
+  });
+}
+
+export function createAskUserQuestionsFromQuestionForm(formInput: unknown): AskUserQuestionSpec[] {
+  if (!formInput || typeof formInput !== "object" || Array.isArray(formInput)) return [];
+  const form = formInput as Record<string, unknown>;
+  const questions = Array.isArray(form.questions) ? form.questions : [];
+  return questions.flatMap((raw, index) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const question = raw as Record<string, unknown>;
+    const id = typeof question.id === "string" && question.id.trim() ? question.id.trim() : `q${index + 1}`;
+    const label = typeof question.label === "string" && question.label.trim() ? question.label.trim() : id;
+    const type = typeof question.type === "string" ? question.type.toLowerCase() : "text";
+    const choices = normalizeOpenDesignQuestionOptions(question.options);
+    const answerType: AskUserAnswerType = type === "direction-cards"
+      ? "choice_cards"
+      : type === "radio" || type === "select"
+        ? "single_choice"
+      : type === "checkbox"
+        ? "multi_choice"
+        : type === "textarea"
+          ? "long_text"
+          : "short_text";
+    return [createAskUserQuestionSpec({
+      id,
+      title: label,
+      body: label,
+      whyThisMatters: typeof question.help === "string" && question.help.trim() ? question.help : undefined,
+      answerType,
+      choices: answerType === "single_choice" || answerType === "multi_choice" || answerType === "choice_cards" ? choices : [],
+      defaultValue: question.defaultValue,
+      required: question.required === true,
+      allowSkip: question.required === true ? false : true,
+      maxSelections: typeof question.maxSelections === "number" ? question.maxSelections : undefined,
+      source: "agent",
+      metadata: {
+        questionFormId: typeof form.id === "string" ? form.id : undefined,
+        questionFormQuestionType: question.type,
+        placeholder: typeof question.placeholder === "string" ? question.placeholder : undefined,
+      },
+    })];
+  });
+}
+
+export function validateQuestionAnswer(questionInput: unknown, submissionInput: unknown): QuestionAnswerValidationResult {
+  const questionResult = askUserQuestionSpecSchema.safeParse(questionInput);
+  const submissionResult = questionAnswerSubmissionSchema.safeParse(submissionInput);
+  if (!questionResult.success || !submissionResult.success) {
+    return { ok: false, errors: [...zodIssues(questionResult), ...zodIssues(submissionResult)] };
+  }
+  const question = questionResult.data;
+  const submission = submissionResult.data;
+  const errors: Array<{ code: string; message: string; path: Array<string | number> }> = [];
+
+  if (submission.questionId !== question.id) {
+    errors.push({ code: "question_id_mismatch", message: "Submission questionId must match the question spec id.", path: ["questionId"] });
+  }
+  if (submission.skipped) {
+    if (!question.allowSkip) {
+      errors.push({ code: "skip_not_allowed", message: "This question cannot be skipped.", path: ["skipped"] });
+    }
+    return errors.length > 0 ? { ok: false, errors } : { ok: true, submission, writesTo: submission.writesTo ?? question.writesTo, normalizedValue: question.skipValue };
+  }
+  if (question.required && submission.value === undefined) {
+    errors.push({ code: "answer_required", message: "A value is required for this question.", path: ["value"] });
+  }
+
+  const choiceValues = new Set(question.choices.map((choice) => choice.value));
+  if (question.answerType === "single_choice" || question.answerType === "choice_cards" || question.answerType === "confirmation") {
+    if (!choiceValues.has(submission.value as string | number | boolean)) {
+      errors.push({ code: "invalid_choice", message: "Answer must match one of the declared choices.", path: ["value"] });
+    }
+  }
+  if (question.answerType === "multi_choice") {
+    if (!Array.isArray(submission.value)) {
+      errors.push({ code: "invalid_multi_choice", message: "Answer must be an array for multi_choice questions.", path: ["value"] });
+    } else {
+      const selected = submission.value as Array<string | number | boolean>;
+      if (new Set(selected).size !== selected.length) {
+        errors.push({ code: "duplicate_selection", message: "Multi-choice answers must not contain duplicate selections.", path: ["value"] });
+      }
+      for (const value of selected) {
+        if (!choiceValues.has(value)) errors.push({ code: "invalid_choice", message: `Unknown choice value: ${String(value)}`, path: ["value"] });
+      }
+      if (selected.length < question.minSelections) errors.push({ code: "min_selections", message: `Select at least ${question.minSelections} choices.`, path: ["value"] });
+      if (question.maxSelections && selected.length > question.maxSelections) errors.push({ code: "max_selections", message: `Select no more than ${question.maxSelections} choices.`, path: ["value"] });
+    }
+  }
+  if (question.answerType === "boolean" && typeof submission.value !== "boolean") {
+    errors.push({ code: "invalid_boolean", message: "Answer must be boolean.", path: ["value"] });
+  }
+  if (question.answerType === "number" && typeof submission.value !== "number") {
+    errors.push({ code: "invalid_number", message: "Answer must be a number.", path: ["value"] });
+  }
+  if (["short_text", "long_text", "textarea", "date", "datetime", "weekly_schedule"].includes(question.answerType) && typeof submission.value !== "string") {
+    errors.push({ code: "invalid_text", message: `${question.answerType} answers must be strings.`, path: ["value"] });
+  }
+  if ((question.answerType === "list" || question.answerType === "structured_list") && !Array.isArray(submission.value)) {
+    errors.push({ code: "invalid_list", message: `${question.answerType} answers must be arrays.`, path: ["value"] });
+  }
+
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, submission, writesTo: submission.writesTo ?? question.writesTo, normalizedValue: submission.value };
+}
+
+function zodIssues(result: { success: true } | { success: false; error: { issues: Array<{ code: string; message: string; path: Array<PropertyKey> }> } }): Array<{ code: string; message: string; path: Array<string | number> }> {
+  if (result.success) return [];
+  return result.error.issues.map((issue) => ({
+    code: issue.code,
+    message: issue.message,
+    path: issue.path.map((part) => typeof part === "symbol" ? part.toString() : part),
+  }));
+}
+
 export const commandShapeSchema = z.enum(["dispatch", "record", "catalog", "media", "local-ui", "composite"]);
 export const commandExecutionSourceSchema = z.enum(["cli", "mcp", "agent-ui", "orpc", "sandbox", "surface", "test", "headless"]);
 export const commandActionSchema = z.enum(["execute", "commit"]);
