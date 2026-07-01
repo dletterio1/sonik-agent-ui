@@ -7,6 +7,7 @@
   import { Chat } from "@ai-sdk/svelte";
   import { DefaultChatTransport } from "ai";
   import type { DataPart, Spec } from "@json-render/svelte";
+  import type { StateStore } from "@json-render/core";
   import { JsonArtifactRenderer } from "@sonik-agent-ui/json-ui-runtime";
   import { AgentConversation, getSpec, getText, snapshotDataParts, type AgentActivityStatus, type AgentChatMessage } from "@sonik-agent-ui/chat-surface";
   import { upsertJsonRenderArtifact, type JsonRenderArtifact } from "@sonik-agent-ui/artifact-model";
@@ -40,6 +41,12 @@
     type AgentEmbedRailMode,
   } from "@sonik-agent-ui/agent-embed";
   import { registry } from "$lib/render/registry";
+  import {
+    applyJsonRenderStateChanges,
+    buildJsonRenderStatePatchPayload,
+    createJsonRenderStateStore,
+    type JsonRenderStateChange,
+  } from "$lib/render/json-render-state-controller";
   import { createWorkflowSuggestions } from "$lib/agent-workflows/suggestions";
 
   interface ActiveDocumentSnapshot {
@@ -130,6 +137,10 @@
   let activeArtifact = $state<JsonRenderArtifact | null>(null);
   let activeArtifactStatus = $state<ArtifactStatus | null>(null);
   let activeArtifactVersions = $state<ArtifactWarehouseVersion<Spec>[]>([]);
+  let activeArtifactStateStore = $state<StateStore | undefined>();
+  let activeArtifactStateStoreKey = $state<string | null>(null);
+  let activeArtifactStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingActiveArtifactStateChanges: JsonRenderStateChange[] = [];
   let pendingArtifactIntent = $state<string | null>(null);
   let documentEditorOpen = $state(false);
   let activeDocument = $state<ActiveDocumentSnapshot | null>(null);
@@ -571,6 +582,188 @@
         elementCount: Object.keys(snapshot.artifact.content.elements ?? {}).length,
       });
     });
+  }
+
+
+  function ensureActiveArtifactStateStore(): void {
+    if (!activeArtifact) {
+      activeArtifactStateStore = undefined;
+      activeArtifactStateStoreKey = null;
+      pendingActiveArtifactStateChanges = [];
+      clearActiveArtifactStateSaveTimer();
+      return;
+    }
+    const key = `${activeArtifact.id}:${activeArtifact.version}`;
+    if (activeArtifactStateStoreKey === key && activeArtifactStateStore) return;
+    activeArtifactStateStore = createJsonRenderStateStore(activeArtifact.content);
+    activeArtifactStateStoreKey = key;
+    pendingActiveArtifactStateChanges = [];
+    clearActiveArtifactStateSaveTimer();
+  }
+
+  function handleActiveArtifactStateChange(changes: JsonRenderStateChange[]): void {
+    if (!activeArtifact) return;
+    let payload: ReturnType<typeof buildJsonRenderStatePatchPayload>;
+    try {
+      payload = buildJsonRenderStatePatchPayload({
+        artifactId: activeArtifact.id,
+        baseVersion: activeArtifact.version,
+        changes,
+      });
+    } catch (error) {
+      reportClientEffectError("json_render.state_patch.invalid", error, {
+        sessionId: activeSessionId,
+        root: activeArtifact.content.root,
+        elementCount: Object.keys(activeArtifact.content.elements ?? {}).length,
+      });
+      return;
+    }
+
+    activeArtifact = {
+      ...activeArtifact,
+      content: applyJsonRenderStateChanges(activeArtifact.content, payload.changes),
+      updatedAt: new Date().toISOString(),
+    };
+    pendingActiveArtifactStateChanges = mergeStateChanges(pendingActiveArtifactStateChanges, payload.changes);
+    logArtifactTelemetry({
+      source: "client",
+      event: "json_render.state_patch.requested",
+      sessionId: activeSessionId ?? undefined,
+      artifactId: payload.artifactId,
+      artifactVersion: payload.baseVersion,
+      reason: payload.summary,
+      elementCount: payload.changes.length,
+      ok: true,
+    });
+    scheduleActiveArtifactStatePersistence();
+  }
+
+  function mergeStateChanges(current: JsonRenderStateChange[], incoming: JsonRenderStateChange[]): JsonRenderStateChange[] {
+    const map = new Map<string, JsonRenderStateChange>();
+    for (const change of current) map.set(change.path, change);
+    for (const change of incoming) map.set(change.path, change);
+    return Array.from(map.values());
+  }
+
+  function scheduleActiveArtifactStatePersistence(): void {
+    clearActiveArtifactStateSaveTimer();
+    activeArtifactStateSaveTimer = setTimeout(() => {
+      void persistActiveArtifactStatePatch();
+    }, 600);
+  }
+
+  function clearActiveArtifactStateSaveTimer(): void {
+    if (activeArtifactStateSaveTimer) {
+      clearTimeout(activeArtifactStateSaveTimer);
+      activeArtifactStateSaveTimer = null;
+    }
+  }
+
+  async function persistActiveArtifactStatePatch(): Promise<void> {
+    clearActiveArtifactStateSaveTimer();
+    const artifact = activeArtifact;
+    const changes = pendingActiveArtifactStateChanges;
+    if (!artifact || changes.length === 0) return;
+
+    let payload: ReturnType<typeof buildJsonRenderStatePatchPayload>;
+    try {
+      payload = buildJsonRenderStatePatchPayload({
+        artifactId: artifact.id,
+        baseVersion: artifact.version,
+        changes,
+      });
+    } catch (error) {
+      pendingActiveArtifactStateChanges = [];
+      reportClientEffectError("json_render.state_patch.invalid", error, {
+        sessionId: activeSessionId,
+        root: artifact.content.root,
+        elementCount: Object.keys(artifact.content.elements ?? {}).length,
+      });
+      return;
+    }
+
+    pendingActiveArtifactStateChanges = [];
+    try {
+      const response = await workspaceFetch(`/api/artifact/${encodeURIComponent(payload.artifactId)}/state`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (response.status === 409) {
+        const body = await response.json().catch(() => null) as { latestVersion?: number; error?: string } | null;
+        logArtifactTelemetry({
+          source: "client",
+          event: "json_render.state_patch.conflict",
+          sessionId: activeSessionId ?? undefined,
+          artifactId: payload.artifactId,
+          artifactVersion: payload.baseVersion,
+          reason: body?.latestVersion ? `latest v${body.latestVersion}` : undefined,
+          ok: false,
+          error: body?.error ?? "Artifact version conflict",
+        });
+        if (activeSessionId) await switchSession(activeSessionId, { force: true });
+        return;
+      }
+      if (!response.ok) throw new Error(await readWorkspaceResponseError(response));
+      const result = await response.json() as { artifact: WorkspaceArtifactSnapshot; activeArtifactVersions: WorkspaceArtifactVersionSnapshot[] };
+      applyPersistedArtifactStatePatch(result);
+      if (pendingActiveArtifactStateChanges.length > 0 && activeArtifact?.id === result.artifact.id) {
+        activeArtifact = {
+          ...activeArtifact,
+          content: applyJsonRenderStateChanges(activeArtifact.content, pendingActiveArtifactStateChanges),
+          updatedAt: new Date().toISOString(),
+        };
+        scheduleActiveArtifactStatePersistence();
+      }
+      logArtifactTelemetry({
+        source: "client",
+        event: "json_render.state_patch.persisted",
+        sessionId: activeSessionId ?? undefined,
+        artifactId: result.artifact.id,
+        artifactVersion: result.artifact.version,
+        elementCount: payload.changes.length,
+        ok: true,
+      });
+    } catch (error) {
+      pendingActiveArtifactStateChanges = mergeStateChanges(pendingActiveArtifactStateChanges, payload.changes);
+      reportClientEffectError("json_render.state_patch.error", error, {
+        sessionId: activeSessionId,
+        root: artifact.content.root,
+        elementCount: Object.keys(artifact.content.elements ?? {}).length,
+      });
+    }
+  }
+
+  function applyPersistedArtifactStatePatch(result: { artifact: WorkspaceArtifactSnapshot; activeArtifactVersions: WorkspaceArtifactVersionSnapshot[] }): void {
+    const artifact = result.artifact;
+    const snapshot = artifactWarehouse.hydrateJsonRenderArtifact({
+      sessionId: artifact.session_id ?? activeSessionId,
+      artifact: {
+        id: artifact.id,
+        kind: "json-render",
+        title: artifact.title,
+        version: artifact.version,
+        content: artifact.content,
+        createdAt: artifact.created_at,
+        updatedAt: artifact.updated_at,
+      },
+      versions: result.activeArtifactVersions.map((version) => ({
+        versionId: version.id,
+        artifactId: version.artifact_id,
+        version: version.version_number,
+        payload: version.content,
+        source: version.source === "user" ? "user-edit" : version.source === "system" ? "system" : "agent",
+        createdAt: version.created_at,
+      })),
+    });
+    applyArtifactWarehouseSnapshot(snapshot);
+    if (activeArtifactStatus) {
+      activeArtifactStatus = {
+        ...activeArtifactStatus,
+        artifactVersion: snapshot.artifact.version,
+        updatedAt: snapshot.artifact.updatedAt,
+      };
+    }
   }
 
   function handleArtifactVersionChange(version: number): void {
@@ -1133,6 +1326,11 @@
     syncDevPageContext("state_changed");
   });
 
+
+  $effect(() => {
+    ensureActiveArtifactStateStore();
+  });
+
   $effect(() => {
     if (!activeSessionId) return;
     if (isStreaming) return;
@@ -1656,6 +1854,10 @@
     activeArtifact = null;
     activeArtifactStatus = null;
     activeArtifactVersions = [];
+    activeArtifactStateStore = undefined;
+    activeArtifactStateStoreKey = null;
+    pendingActiveArtifactStateChanges = [];
+    clearActiveArtifactStateSaveTimer();
     pendingArtifactIntent = null;
     streamStartedAt = null;
     lastActivityTelemetrySignature = "";
@@ -1678,6 +1880,10 @@
     activeArtifact = null;
     activeArtifactStatus = null;
     activeArtifactVersions = [];
+    activeArtifactStateStore = undefined;
+    activeArtifactStateStoreKey = null;
+    pendingActiveArtifactStateChanges = [];
+    clearActiveArtifactStateSaveTimer();
     pendingArtifactIntent = null;
     streamStartedAt = null;
     lastActivityTelemetrySignature = "";
@@ -1841,6 +2047,8 @@
           spec={activeArtifact.content}
           {registry}
           loading={isStreaming}
+          store={activeArtifactStateStore}
+          onStateChange={handleActiveArtifactStateChange}
         />
       {/if}
     </CanvasViewport>
