@@ -33,6 +33,22 @@ const themePickerSource = await readFile("apps/standalone-sveltekit/src/lib/them
 const themeRegistrySource = await readFile("apps/standalone-sveltekit/src/lib/theme/theme-registry.ts", "utf8");
 const daisyThemeSource = await readFile("apps/standalone-sveltekit/src/lib/theme/foundations/themes/daisy.css", "utf8");
 
+const boundInputComponents = [
+  "QuestionCard",
+  "ChoiceCards",
+  "SelectInput",
+  "RadioGroup",
+  "TextInput",
+  "EditableField",
+  "TextareaField",
+];
+const boundInputComponentSources = Object.fromEntries(
+  await Promise.all(boundInputComponents.map(async (name) => [
+    name,
+    await readFile(`apps/standalone-sveltekit/src/lib/render/components/${name}.svelte`, "utf8"),
+  ])),
+);
+
 assert.equal(rootSource.includes("rail?: Snippet"), true, "WorkspaceRoot should expose an optional rail snippet");
 assert.equal(rootSource.includes("{@render rail()}"), true, "WorkspaceRoot should render the session rail beside chat/artifacts");
 assert.equal(rootSource.includes('data-has-rail={railVisible}'), true, "WorkspaceRoot should keep no-rail integrations compatible");
@@ -48,6 +64,8 @@ assert.equal(pageSource.includes("/api/sessions"), true, "app shell should load 
 assert.equal(pageSource.includes("/api/session/${encodeURIComponent(sessionId)}/messages"), true, "app shell should persist chat history by session");
 assert.equal(pageSource.includes("{#snippet rail()}"), true, "top-level app should provide the WorkspaceRoot rail slot");
 assert.equal(pageSource.includes("sessionId: activeSessionId"), true, "generate requests should carry active session id");
+assert.equal(pageSource.includes("...createWorkspaceRequestHeaders()"), true, "generate transport must use the same signed host-context headers as workspace persistence calls");
+assert.equal(pageSource.includes("function createWorkspaceRequestHeaders"), true, "workspace request headers should be centralized for generate/session/document/artifact calls");
 assert.equal(pageSource.includes('"createSession", "submitPrompt"'), true, "page context should expose a semantic createSession action before submitPrompt");
 assert.equal(pageSource.includes("createSession: async () =>"), true, "page-control contract should expose a deterministic fresh-session semantic action for smoke tests");
 assert.equal(pageSource.includes("await createSession({ force: true })"), true, "fresh-session semantic action should route through the same session creation path as the app shell");
@@ -340,6 +358,10 @@ assert.equal(openDocumentEditorSource.includes("const document = await createIni
 assert.equal(openDocumentEditorSource.indexOf("documentEditorOpen = true;") > openDocumentEditorSource.indexOf("const document = await createInitialWorkspaceDocument();"), true, "document iframe should open only after openDocumentEditor has created or selected a document snapshot");
 assert.equal(pageSource.includes("if (/\\b(document|markdown|html|code|editor|workspace)\\b/i.test(trimmed))"), false, "chat submit should not prematurely open the document iframe before a tool-created document exists");
 assert.equal(pageSource.includes("lastPersistStatus"), true, "page assertions should track post-stream persistence state for crash regression gates");
+for (const [componentName, componentSource] of Object.entries(boundInputComponentSources)) {
+  assert.equal(componentSource.includes("function valueBinding()"), false, `${componentName} must not recreate bound props in handlers because getBoundProp reads Svelte context`);
+  assert.equal(componentSource.includes("valueBinding().current"), false, `${componentName} must not call getBoundProp from click/input handlers`);
+}
 assert.equal(pageContextRouteSource.includes("client.page_context.updated"), true, "dev page context endpoint should persist a telemetry breadcrumb");
 assert.equal(pageContextRouteSource.includes("Dev page context is disabled"), true, "dev page context endpoint should be gated outside local/dev observability mode");
 assert.equal(pageSource.includes("if (!dev) return"), true, "client page context posting should be disabled outside SvelteKit dev mode");

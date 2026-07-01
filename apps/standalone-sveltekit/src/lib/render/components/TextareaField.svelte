@@ -14,17 +14,15 @@
 
   let { props, bindings }: Props = $props();
 
-  function valueBinding() {
-    return getBoundProp<string | null>(
-      () => props.value ?? null,
-      () => bindings?.value,
-    );
-  }
+  const valueBinding = getBoundProp<string | null>(
+    () => props.value ?? null,
+    () => bindings?.value,
+  );
 
-  let value = $derived(valueBinding().current ?? "");
+  let value = $derived(valueBinding.current ?? "");
 
   function handleInput(e: Event) {
-    valueBinding().current = (e.target as HTMLTextAreaElement).value;
+    valueBinding.current = (e.target as HTMLTextAreaElement).value;
   }
 </script>
 

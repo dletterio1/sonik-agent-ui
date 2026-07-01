@@ -207,7 +207,11 @@ assert.ok(learnedIntake.forbiddenUnlessExplicit.includes("booking.create.booking
 assert.equal(learnedIntake.metadata.execution, "none");
 assert.equal(learnedIntake.metadata.approval, "not_granted");
 assert.ok(learnedIntake.metadata.questionPolicy.neverInvent.includes("pricing"));
-assert.ok(learnedIntake.metadata.interactiveSurfaceTemplate.questions.length >= 3);
+assert.ok(learnedIntake.metadata.interactiveSurfaceTemplate.questions.length >= 8, "booking context intake should expose deterministic setup questions beyond the first three basics");
+const learnedIntakeQuestionIds = learnedIntake.metadata.interactiveSurfaceTemplate.questions.map((question) => question.id);
+for (const expectedQuestionId of ["q_open_days", "q_operating_hours", "q_table_layout", "q_service_periods", "q_menu_requirements"]) {
+  assert.ok(learnedIntakeQuestionIds.includes(expectedQuestionId), `${expectedQuestionId} must be a deterministic booking-intake field, not model-improvised JSON`);
+}
 assert.ok(learnedIntake.metadata.interactiveSurfaceTemplate.questions.every((question) => question.writesTo?.startsWith("/manifest/")), "all intake answers write only into manifest draft state");
 assert.ok(!JSON.stringify(learnedIntake.metadata.interactiveSurfaceTemplate).includes("commitCommand"), "renderer template must not mention command execution");
 assert.ok(!JSON.stringify(learnedIntake.metadata.interactiveSurfaceTemplate).includes("executeCommand"), "renderer template must not mention command execution");

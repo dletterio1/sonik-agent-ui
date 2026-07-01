@@ -62,6 +62,9 @@ assert.deepEqual(learned.commandSequence, [], "intake skill is preview/manifest 
 assert.equal(learned.metadata.execution, "none");
 assert.equal(learned.metadata.approval, "not_granted");
 assert.ok(learned.metadata.interactiveSurfaceTemplate.questions.some((question) => question.id === "q_intake_mode"));
+for (const expectedQuestionId of ["q_open_days", "q_operating_hours", "q_table_layout", "q_service_periods", "q_menu_requirements"]) {
+  assert.ok(learned.metadata.interactiveSurfaceTemplate.questions.some((question) => question.id === expectedQuestionId), `${expectedQuestionId} should be available before the model asks for schedule/table/menu setup`);
+}
 
 const surface = structuredClone(learned.metadata.interactiveSurfaceTemplate);
 surface.artifactId = artifactId;
@@ -117,6 +120,31 @@ await updateIntakeArtifactState(null, {
 });
 await updateIntakeArtifactState(null, {
   artifactId,
+  submission: { questionId: "q_open_days", value: ["tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] },
+  requestId: "req-open-design-intake-answer-open-days",
+});
+await updateIntakeArtifactState(null, {
+  artifactId,
+  submission: { questionId: "q_operating_hours", value: "Tuesday through Sunday, 9am to 5pm" },
+  requestId: "req-open-design-intake-answer-hours",
+});
+await updateIntakeArtifactState(null, {
+  artifactId,
+  submission: { questionId: "q_table_layout", value: "Tables 1-10 are 2-tops, 11-20 are 4-tops, and 21-25 are 6-tops" },
+  requestId: "req-open-design-intake-answer-table-layout",
+});
+await updateIntakeArtifactState(null, {
+  artifactId,
+  submission: { questionId: "q_service_periods", value: "Breakfast 9-11, lunch 11-4, dinner 4-5; each service period needs a separate menu" },
+  requestId: "req-open-design-intake-answer-service-periods",
+});
+await updateIntakeArtifactState(null, {
+  artifactId,
+  submission: { questionId: "q_menu_requirements", value: ["breakfast", "lunch", "dinner"] },
+  requestId: "req-open-design-intake-answer-menus",
+});
+await updateIntakeArtifactState(null, {
+  artifactId,
   submission: { questionId: "q_confirmation_mode", value: "instant_confirm" },
   requestId: "req-open-design-intake-answer-confirmation",
 });
@@ -126,6 +154,11 @@ assert.equal(validation.validation.ok, true, JSON.stringify(validation.validatio
 assert.equal(validation.validation.manifestType, "venue_schedule");
 assert.equal(validation.manifest.intakeMode, "venue_schedule");
 assert.equal(validation.manifest.inventory.coreDescription, "Member tee times every 10 minutes plus private dining reservation requests");
+assert.deepEqual(validation.manifest.schedule.openDays, ["tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]);
+assert.equal(validation.manifest.schedule.operatingHoursDescription, "Tuesday through Sunday, 9am to 5pm");
+assert.equal(validation.manifest.inventory.tableLayoutDescription, "Tables 1-10 are 2-tops, 11-20 are 4-tops, and 21-25 are 6-tops");
+assert.equal(validation.manifest.schedule.servicePeriodsDescription, "Breakfast 9-11, lunch 11-4, dinner 4-5; each service period needs a separate menu");
+assert.deepEqual(validation.manifest.menus.required, ["breakfast", "lunch", "dinner"]);
 assert.equal(validation.commandPreview[0].commandId, "booking.create.context");
 assert.equal(validation.commandPreview[0].mode, "preview_only");
 assert.equal(validation.execution, "none");
@@ -142,7 +175,9 @@ assert.equal(exported.exportPayload.manifest.status, "exported");
 assert.equal(exported.exportPayload.commandPreview[0].commandId, "booking.create.context");
 
 const versions = await listRequestWorkspaceArtifactVersions(null, artifactId);
-assert.deepEqual(versions.map((version) => version.version_number), [4, 3, 2, 1], "answers should produce durable artifact versions");
+const versionNumbers = versions.map((version) => version.version_number);
+assert.equal(versionNumbers.length, 9, "deterministic intake answers should produce durable artifact versions");
+assert.deepEqual(versionNumbers, [9, 8, 7, 6, 5, 4, 3, 2, 1], "artifact versions should remain latest-first and preserve every answer update");
 
 const telemetry = await listRequestWorkspaceTelemetryEvents(null, sessionId);
 const events = telemetry.map((event) => event.event);

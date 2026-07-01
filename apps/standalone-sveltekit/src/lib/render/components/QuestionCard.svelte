@@ -34,14 +34,12 @@
 
   let error = $state<string | null>(null);
 
-  function valueBinding() {
-    return getBoundProp<AnswerValue>(
-      () => props.value ?? null,
-      () => bindings?.value,
-    );
-  }
+  const valueBinding = getBoundProp<AnswerValue>(
+    () => props.value ?? null,
+    () => bindings?.value,
+  );
 
-  let value = $derived(valueBinding().current ?? null);
+  let value = $derived(valueBinding.current ?? null);
   const choices = $derived(props.choices ?? []);
   const isChoice = $derived(["single_choice", "choice_cards", "confirmation"].includes(props.answerType));
   const isMulti = $derived(props.answerType === "multi_choice");
@@ -54,19 +52,18 @@
   function choose(choiceValue: Choice["value"], disabled?: boolean | null) {
     if (disabled) return;
     error = null;
-    const binding = valueBinding();
     if (isMulti) {
-      const current = Array.isArray(binding.current) ? [...binding.current] : [];
-      binding.current = current.includes(choiceValue) ? current.filter((item) => item !== choiceValue) : [...current, choiceValue];
+      const current = Array.isArray(valueBinding.current) ? [...valueBinding.current] : [];
+      valueBinding.current = current.includes(choiceValue) ? current.filter((item) => item !== choiceValue) : [...current, choiceValue];
       return;
     }
-    binding.current = choiceValue;
+    valueBinding.current = choiceValue;
   }
 
   function handleText(e: Event) {
     error = null;
     const raw = (e.target as HTMLInputElement | HTMLTextAreaElement).value;
-    valueBinding().current = props.answerType === "number" && raw !== "" ? Number(raw) : raw;
+    valueBinding.current = props.answerType === "number" && raw !== "" ? Number(raw) : raw;
   }
 
   function questionSpec() {
@@ -92,7 +89,7 @@
     try {
       const updates = createQuestionStateUpdateRecord({
         question: questionSpec(),
-        value: skipped ? undefined : valueBinding().current,
+        value: skipped ? undefined : valueBinding.current,
         skipped,
         writesTo: props.writesTo,
       });

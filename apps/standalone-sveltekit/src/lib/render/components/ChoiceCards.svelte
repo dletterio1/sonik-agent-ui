@@ -15,14 +15,12 @@
 
   let { props, bindings }: Props = $props();
 
-  function valueBinding() {
-    return getBoundProp<unknown>(
-      () => props.value,
-      () => bindings?.value,
-    );
-  }
+  const valueBinding = getBoundProp<unknown>(
+    () => props.value,
+    () => bindings?.value,
+  );
 
-  let current = $derived(valueBinding().current);
+  let current = $derived(valueBinding.current);
   const isMultiple = $derived(props.mode === "multiple");
 
   function selected(value: Choice["value"]) {
@@ -32,11 +30,11 @@
   function choose(value: Choice["value"], disabled?: boolean | null) {
     if (disabled) return;
     if (isMultiple) {
-      const arr = Array.isArray(valueBinding().current) ? [...valueBinding().current as Array<Choice["value"]>] : [];
-      valueBinding().current = arr.includes(value) ? arr.filter((item) => item !== value) : [...arr, value];
+      const arr = Array.isArray(valueBinding.current) ? [...valueBinding.current as Array<Choice["value"]>] : [];
+      valueBinding.current = arr.includes(value) ? arr.filter((item) => item !== value) : [...arr, value];
       return;
     }
-    valueBinding().current = value;
+    valueBinding.current = value;
   }
 </script>
 

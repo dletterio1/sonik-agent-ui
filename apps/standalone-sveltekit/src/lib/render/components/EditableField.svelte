@@ -15,18 +15,16 @@
 
   let { props, bindings }: Props = $props();
 
-  function valueBinding() {
-    return getBoundProp<string | number | null>(
-      () => props.value ?? null,
-      () => bindings?.value,
-    );
-  }
+  const valueBinding = getBoundProp<string | number | null>(
+    () => props.value ?? null,
+    () => bindings?.value,
+  );
 
-  let value = $derived(valueBinding().current ?? "");
+  let value = $derived(valueBinding.current ?? "");
 
   function handleInput(e: Event) {
     const raw = (e.target as HTMLInputElement).value;
-    valueBinding().current = props.type === "number" && raw !== "" ? Number(raw) : raw;
+    valueBinding.current = props.type === "number" && raw !== "" ? Number(raw) : raw;
   }
 </script>
 
