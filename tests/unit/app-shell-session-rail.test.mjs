@@ -389,6 +389,8 @@ const artifactToolSource = await readFile("apps/standalone-sveltekit/src/lib/too
 const jsonArtifactSpecSource = await readFile("apps/standalone-sveltekit/src/lib/artifacts/json-artifact-spec.ts", "utf8");
 const artifactGuidanceSource = await readFile("apps/standalone-sveltekit/src/lib/artifacts/artifact-generation-guidance.ts", "utf8");
 const agentSource = await readFile("apps/standalone-sveltekit/src/lib/agent.ts", "utf8");
+const componentRegistrySource = await readFile("apps/standalone-sveltekit/src/lib/render/component-registry.ts", "utf8");
+const rootReadmeSource = await readFile("README.md", "utf8");
 assert.equal(artifactToolSource.includes("validateSpec"), true, "artifact tool should use shared json-render structural validation");
 assert.equal(artifactToolSource.includes("explorerCatalog.validate"), true, "artifact tool should validate against the component catalog");
 assert.equal(artifactToolSource.includes("Object.keys(elements).length > 0"), true, "artifact tool schema should reject empty elements maps");
@@ -413,6 +415,12 @@ assert.equal(agentSource.includes("ARTIFACT TOOL OBJECT EXAMPLES"), true, "agent
 assert.equal(agentSource.includes("DATA BINDING FOR INLINE SPEC FENCES AND NON-TOOL UI SPECS"), true, "agent instructions should scope broad $state guidance away from strict tool input");
 assert.equal(agentSource.includes("For inline JSON-render responses outside createJsonArtifact"), true, "agent instructions should keep generic $state data guidance outside strict createJsonArtifact input");
 assert.equal(artifactToolSource.includes("Intentional contract mirror"), true, "artifact tool should document catalog-to-tool schema coupling as an intentional contract");
+assert.equal(componentRegistrySource.includes("JSON_RENDER_COMPONENT_GROUPS"), true, "json-render components should have a human/agent-readable grouped registry map");
+assert.equal(componentRegistrySource.includes("JSON_RENDER_COMPONENT_REGISTRY_PATHS"), true, "json-render component registry should document the catalog/registry/runtime paths");
+assert.equal(componentRegistrySource.includes("QuestionCard"), true, "json-render registry map should include stateful intake components");
+assert.equal(componentRegistrySource.includes("durable effects require a trusted controller"), true, "json-render action components should document the controller boundary");
+assert.equal(rootReadmeSource.includes("## JSON-render component registry"), true, "core README should point humans and agents to the JSON-render component registry");
+assert.equal(rootReadmeSource.includes("component-registry.ts"), true, "core README should include the component registry map path");
 
 const artifactWarehouseSource = await readFile("apps/standalone-sveltekit/src/lib/artifacts/artifact-warehouse.ts", "utf8");
 const canvasToolbarSource = await readFile("packages/workspace-core/src/components/CanvasToolbar.svelte", "utf8");
