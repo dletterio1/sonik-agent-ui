@@ -33,6 +33,20 @@ export type CreateIntakeArtifactInput = {
   requestId?: string | null;
 };
 
+export type RecordIntakeQuestionAskedInput = {
+  artifactId: string;
+  questionId: string;
+  requestId?: string | null;
+};
+
+export type IntakeQuestionAskedReceipt = {
+  artifact: IntakeArtifactRecord;
+  version: WorkspaceArtifactVersionRecord;
+  question: AskUserQuestionSpec;
+  execution: "none";
+  approval: "not_granted";
+};
+
 export type UpdateIntakeArtifactStateInput = {
   artifactId: string;
   /** Deprecated compatibility input. The persisted artifact question contract is authoritative. */
@@ -99,6 +113,32 @@ export async function createIntakeArtifact(event: RequestWorkspaceEvent | null |
     payload: { artifactId: artifact.id, version: artifact.version, skillId: surface.skillId ?? null, surfaceId: surface.id },
   });
   return artifact;
+}
+
+export async function recordIntakeQuestionAsked(event: RequestWorkspaceEvent | null | undefined, input: RecordIntakeQuestionAskedInput): Promise<IntakeQuestionAskedReceipt> {
+  const artifact = await requireIntakeArtifact(event, input.artifactId);
+  const version = latestArtifactVersion(await listRequestWorkspaceArtifactVersions(event as RequestWorkspaceEvent, artifact.id));
+  if (!isSpec(version.content)) throw new Error(`Intake artifact ${artifact.id} latest version is not a JSON-render spec.`);
+  const question = resolvePersistedQuestion(version.content, input.questionId);
+
+  await recordIntakeTelemetry(event, {
+    sessionId: artifact.session_id,
+    requestId: input.requestId,
+    event: "tool.askUserQuestion",
+    ok: true,
+    payload: {
+      artifactId: artifact.id,
+      version: version.version_number,
+      questionId: question.id,
+      answerType: question.answerType,
+      required: question.required,
+      writesTo: question.writesTo ?? null,
+      execution: "none",
+      approval: "not_granted",
+    },
+  });
+
+  return { artifact, version, question, execution: "none", approval: "not_granted" };
 }
 
 export async function updateIntakeArtifactState(event: RequestWorkspaceEvent | null | undefined, input: UpdateIntakeArtifactStateInput): Promise<IntakeArtifactRecord> {
