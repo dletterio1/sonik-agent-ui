@@ -1947,3 +1947,77 @@ export function classifyRunErrorCode(input: {
   }
   return "UNKNOWN";
 }
+
+// Where a generate turn started, from the client's point of view. Mirrors Open
+// Design's `ChatAnalyticsEntryFrom`, retargeted to Sonik's actual entry points.
+// Analytics-only: the server NEVER trusts these for behavior — they only shape
+// run/telemetry analytics props (see AgentAnalyticsHints).
+export const AGENT_ANALYTICS_ENTRY_FROM = [
+  // A turn launched from a workflow launcher chip (the "Set up a venue" /
+  // "Create an event" suggestion buttons on the empty-state composer). The chip
+  // prefills a skill-composed prompt; the run fires on that chip's send.
+  "workflow_launcher",
+  // A plain composer send: the user typed a prompt and submitted it. This is the
+  // default entry point when nothing more specific applies.
+  "composer",
+  // A turn that submits answers to an inline question-form clarification (the
+  // user answering an ask-user-question surface, still clarifying the current
+  // intent rather than a fresh create/edit request). Lets analytics separate
+  // clarification turns from initiating turns.
+  "question_answer",
+  // A turn started by the "Continue the run" affordance on a resumable failed
+  // run (Phase 1). Sends RESUME_CONTINUE_PROMPT rather than the original user
+  // turn, so isolating it makes the recovery mechanism's usage and success rate
+  // measurable — deliberately distinct from retry-from-scratch.
+  "resume_continue",
+] as const;
+export type AgentAnalyticsEntryFrom = (typeof AGENT_ANALYTICS_ENTRY_FROM)[number];
+
+export function isAgentAnalyticsEntryFrom(value: unknown): value is AgentAnalyticsEntryFrom {
+  return typeof value === "string" && (AGENT_ANALYTICS_ENTRY_FROM as readonly string[]).includes(value);
+}
+
+/**
+ * Session-dimension analytics hints stamped onto a run and its telemetry so a
+ * session's run sequence is analysable ("did this session reach an artifact, and
+ * on which turn?"). Computed client-side and sent with the generate request.
+ *
+ * IMPORTANT: hints are analytics-only. They are NEVER trusted for behavior and
+ * are kept out of the agent/tool inputs entirely — the server sanitizes them and
+ * records them alongside the run (as an `analytics_hints` status event) and on
+ * the run telemetry, but never feeds them into prompt composition, tool
+ * selection, or command policy. Absent/dropped hints reproduce today's behavior.
+ */
+export interface AgentAnalyticsHints {
+  /** How this turn started (see AGENT_ANALYTICS_ENTRY_FROM). */
+  entryFrom?: AgentAnalyticsEntryFrom;
+  /** 0-based turn index within the client analytics session. Lets a run be
+   *  placed in its session's turn sequence ("reached an artifact on turn N"). */
+  turnIndex?: number;
+  /** True when this is the first run of the session; equals `turnIndex === 0`. */
+  isFirstRun?: boolean;
+  /** True when the session already had a generated artifact when this run
+   *  started — the run is an edit/iteration rather than a first creation. */
+  hasExistingArtifact?: boolean;
+}
+
+const MAX_ANALYTICS_TURN_INDEX = 100_000;
+
+/**
+ * Validate + bound an untrusted analytics-hints payload (e.g. from the request
+ * body). Drops any field that is malformed rather than throwing, so a bad hint
+ * never breaks a turn. Returns undefined when nothing usable remains, so the
+ * caller can treat "no hints" as today's behavior (hints are droppable).
+ */
+export function sanitizeAgentAnalyticsHints(value: unknown): AgentAnalyticsHints | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const hints: AgentAnalyticsHints = {};
+  if (isAgentAnalyticsEntryFrom(record.entryFrom)) hints.entryFrom = record.entryFrom;
+  if (typeof record.turnIndex === "number" && Number.isFinite(record.turnIndex) && record.turnIndex >= 0) {
+    hints.turnIndex = Math.min(Math.floor(record.turnIndex), MAX_ANALYTICS_TURN_INDEX);
+  }
+  if (typeof record.isFirstRun === "boolean") hints.isFirstRun = record.isFirstRun;
+  if (typeof record.hasExistingArtifact === "boolean") hints.hasExistingArtifact = record.hasExistingArtifact;
+  return Object.keys(hints).length > 0 ? hints : undefined;
+}
