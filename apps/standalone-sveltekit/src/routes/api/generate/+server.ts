@@ -21,7 +21,7 @@ import {
   type AgentRunContextSelection,
 } from "@sonik-agent-ui/tool-contracts/run-context";
 import { instrumentGenerateStream } from "$lib/server/stream-telemetry";
-import { createDevSmokeStream, readDevSmokeFailMode, readDevSmokeRunId, shouldUseDevSmokeStream, writeDevSmokeStreamTelemetry } from "$lib/server/dev-smoke-stream";
+import { createDevSmokeStream, readDevSmokeFailMode, readDevSmokeRunId, readDevSmokeScenario, shouldUseDevSmokeStream, writeDevSmokeStreamTelemetry } from "$lib/server/dev-smoke-stream";
 import { startRunRecorder, teeRunEvents, type RunRecorder } from "$lib/server/run-event-log";
 import { getRequestWorkspacePersistence, syncRequestActiveWorkspaceDocumentSnapshot, type WorkspaceDocumentRecord } from "$lib/server/workspace-request-store";
 import { createStandaloneCommandIndexSummary } from "$lib/server/tool-manifest";
@@ -372,6 +372,7 @@ export const POST: RequestHandler = async (event) => {
       messageId: lastMessage?.id,
       startedAt,
       failMode: readDevSmokeFailMode(request),
+      scenario: readDevSmokeScenario(request),
     };
     await writeDevSmokeStreamTelemetry(smokeInput);
     const smokeStream = createDevSmokeStream(smokeInput);

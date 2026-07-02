@@ -987,9 +987,11 @@
     const searchParams = new URLSearchParams(window.location.search);
     if (searchParams.get("smokeMockStream") !== "1") return {};
     const smokeRunId = searchParams.get("smokeRunId") ?? "agent-ui-smoke-local";
+    const smokeScenario = searchParams.get("smokeScenario");
     return {
       "x-sonik-agent-ui-smoke-stream": "true",
       "x-sonik-agent-ui-smoke-run-id": smokeRunId,
+      ...(smokeScenario ? { "x-sonik-agent-ui-smoke-scenario": smokeScenario } : {}),
     };
   }
 

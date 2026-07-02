@@ -37,6 +37,17 @@ import {
   assert.deepEqual(artifact[0].dataPart, { type: "flat", spec: { root: "main", elements: {}, state: {} } });
 }
 
+// --- mapper: live tool-input streaming chunks are NOT persisted as run events ---
+// (donor marks tool_input_delta NOT persisted; only the completed tool_use is)
+{
+  const mapper = createRunEventMapper();
+  assert.deepEqual(mapper.map({ type: "tool-input-start", toolCallId: "c", toolName: "createJsonArtifact" }), [], "tool-input-start is transport-only");
+  assert.deepEqual(mapper.map({ type: "tool-input-delta", toolCallId: "c", inputTextDelta: '{"spec":' }), [], "tool-input-delta is transport-only");
+  assert.deepEqual(mapper.map({ type: "tool-input-delta", toolCallId: "c", inputTextDelta: '{"root":"main"}}' }), [], "additional deltas are still not persisted");
+  const toolUse = mapper.map({ type: "tool-input-available", toolCallId: "c", toolName: "createJsonArtifact", input: { spec: { root: "main" } } });
+  assert.deepEqual(toolUse, [{ kind: "tool_use", id: "c", name: "createJsonArtifact", input: { spec: { root: "main" } } }], "only the completed tool input persists");
+}
+
 // --- mapper: interleaved text flushes before a tool event to preserve order ---
 {
   const mapper = createRunEventMapper();
