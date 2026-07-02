@@ -33,6 +33,10 @@
     toolLabels?: Record<string, [string, string]>;
     activity?: AgentActivityStatus | null;
     onSubmit: (text: string) => void;
+    /** Fires when a workflow launcher suggestion chip is chosen, before the
+     *  prompt is submitted. Lets the host mark the turn's analytics entry point
+     *  (workflow_launcher) distinctly from a plain composer send. */
+    onSelectSuggestion?: (suggestion: AgentSuggestion) => void;
     onStop?: () => void;
     onClear?: () => void;
     /** Recovery affordance for a resumable/failed run, keyed off the run's error code. */
@@ -67,6 +71,7 @@
     toolLabels = {},
     activity = null,
     onSubmit,
+    onSelectSuggestion,
     onStop,
     onClear,
     runRecovery = null,
@@ -129,7 +134,7 @@
           <div class="flex flex-wrap gap-2 justify-center">
             {#each suggestions as suggestion (suggestion.label)}
               <button
-                onclick={() => submit(suggestion.prompt)}
+                onclick={() => { onSelectSuggestion?.(suggestion); submit(suggestion.prompt); }}
                 class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-card text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                 {suggestion.label}
               </button>

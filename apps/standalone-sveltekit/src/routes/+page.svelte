@@ -12,7 +12,7 @@
   import { AgentConversation, getSpec, getText, snapshotDataParts, type AgentActivityStatus, type AgentChatMessage } from "@sonik-agent-ui/chat-surface";
   import { createJsonRenderArtifactSignature, upsertJsonRenderArtifact, type JsonRenderArtifact } from "@sonik-agent-ui/artifact-model";
   import { DEFAULT_WORKSPACE_SESSION_NAME, deriveWorkspaceSessionTitle, isDefaultWorkspaceSessionName } from "@sonik-agent-ui/workspace-session";
-  import { RESUME_CONTINUE_PROMPT, describeRunError, isRunErrorCode } from "@sonik-agent-ui/tool-contracts";
+  import { RESUME_CONTINUE_PROMPT, describeRunError, isRunErrorCode, type AgentAnalyticsEntryFrom, type AgentAnalyticsHints } from "@sonik-agent-ui/tool-contracts";
   import {
     createEmptyAgentRunContextSelection,
     reconcileAgentContextSelection,
@@ -186,6 +186,14 @@
   let resumableRun = $state<WorkspaceRunSummary | null>(null);
   // Composer context selection for the next turn (chips + authoritative dismissals).
   let runContextSelection = $state<AgentRunContextSelection>(createEmptyAgentRunContextSelection());
+  // Analytics-only run hints, computed client-side at send time. `analyticsTurnIndex`
+  // is 0-based per workspace session (reset on clear/switch); `pendingAnalyticsEntryFrom`
+  // records how the next turn started (default composer; workflow launcher / Continue
+  // override it); `pendingAnalyticsHints` is the object read by the transport for the
+  // in-flight send. Never influences behavior — analytics dimension only.
+  let analyticsTurnIndex = 0;
+  let pendingAnalyticsEntryFrom: AgentAnalyticsEntryFrom = "composer";
+  let pendingAnalyticsHints: AgentAnalyticsHints | null = null;
   // Per-turn provenance: user message id -> the context items sent with that turn.
   let turnContextByMessageId = new SvelteMap<string, AgentContextItem[]>();
   let persistedMessageIds = new SvelteSet<string>();
@@ -238,6 +246,7 @@
             },
             pageContext: createPageContextSnapshot(),
             contextSelection: $state.snapshot(runContextSelection),
+            analyticsHints: pendingAnalyticsHints ?? undefined,
           },
         };
       },
@@ -1700,6 +1709,10 @@
     persistedMessageIds = new SvelteSet(detail.messages.map((message) => message.id));
     reattachRunState(detail);
     rehydrateRunContextState(detail);
+    // Entering a session restarts its per-session analytics turn sequence.
+    analyticsTurnIndex = 0;
+    pendingAnalyticsEntryFrom = "composer";
+    pendingAnalyticsHints = null;
     activeDocument = detail.activeDocument;
     documentSeed = detail.activeDocument;
     documentPreferredView = detail.activeDocument ? inferPreferredDocumentView(detail.activeDocument.language) : "auto";
@@ -2035,6 +2048,20 @@
   // Message Handling
   // =============================================================================
 
+  // Compute the analytics hints for the turn about to be sent and stash them for
+  // the transport (see prepareSendMessagesRequest). Advances the per-session turn
+  // index. Analytics-only: dropped hints reproduce today's behavior.
+  function stampAnalyticsHints(entryFrom: AgentAnalyticsEntryFrom) {
+    const turnIndex = analyticsTurnIndex;
+    pendingAnalyticsHints = {
+      entryFrom,
+      turnIndex,
+      isFirstRun: turnIndex === 0,
+      hasExistingArtifact: Boolean(activeArtifact),
+    };
+    analyticsTurnIndex = turnIndex + 1;
+  }
+
   function handleSubmit(message: string) {
     const trimmed = message.trim();
     if (getSubmitDisabledReason(trimmed)) return;
@@ -2046,6 +2073,10 @@
     logSessionTelemetry("chat.submit.start", { sessionId: activeSessionId, reason: `${trimmed.length} chars` });
     // A fresh user turn supersedes any pending run recovery.
     resumableRun = null;
+    // Entry point defaults to composer; a workflow launcher chip sets it just
+    // before this call and we consume + reset it here.
+    stampAnalyticsHints(pendingAnalyticsEntryFrom);
+    pendingAnalyticsEntryFrom = "composer";
     maybeNameNewChat(trimmed);
     const turnContext = ($state.snapshot(runContextSelection).items ?? []) as AgentContextItem[];
     conversation.sendMessage({ text: trimmed });
@@ -2065,6 +2096,7 @@
     if (!run) return;
     resumableRun = null;
     logSessionTelemetry("chat.continue.start", { sessionId: activeSessionId, reason: run.error_code ?? run.status });
+    stampAnalyticsHints("resume_continue");
     conversation.sendMessage({ text: RESUME_CONTINUE_PROMPT });
   }
 
@@ -2077,6 +2109,10 @@
     // effect re-seeds fresh page/document chips for the new turn.
     runContextSelection = createEmptyAgentRunContextSelection();
     turnContextByMessageId.clear();
+    // New conversation → restart the per-session analytics turn sequence.
+    analyticsTurnIndex = 0;
+    pendingAnalyticsEntryFrom = "composer";
+    pendingAnalyticsHints = null;
     lastPersistStatus = "idle";
     input = "";
     artifactWarehouse.clearActiveArtifact(activeSessionId);
@@ -2213,6 +2249,7 @@
       activity={agentActivity}
       bind:input
       onSubmit={handleSubmit}
+      onSelectSuggestion={() => { pendingAnalyticsEntryFrom = "workflow_launcher"; }}
       onStop={handleStop}
       onClear={handleClear}
       runRecovery={runRecovery}
