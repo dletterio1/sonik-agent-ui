@@ -1,5 +1,4 @@
 import type { Spec } from "@json-render/core";
-import { parsePartialJson } from "./partial-json.ts";
 import { CREATE_JSON_ARTIFACT_TOOL_PART_TYPE, type JsonArtifactToolCandidate } from "./tool-artifact-extraction.ts";
 
 /**
@@ -22,9 +21,12 @@ import { CREATE_JSON_ARTIFACT_TOOL_PART_TYPE, type JsonArtifactToolCandidate } f
  * stable artifact id, so the partial -> final transition is an in-place version
  * bump — no second artifact, no tear.
  *
- * A provider that surfaces the tool input as a raw (possibly truncated) JSON
- * string instead of a parsed object is absorbed by the partial-json island so a
- * mid-token delta never throws into the render tree.
+ * This is purely additive: it reads the SDK's already-parsed partial input and
+ * never touches the completed-tool-call path. When no tool-input deltas arrive
+ * (a provider that does not stream tool args), there is no `input-streaming`
+ * part, this returns null, and the existing completed-output rendering runs
+ * exactly as before. A structurally incomplete partial simply yields null (keep
+ * last good) — an incomplete object never throws into the render tree.
  */
 
 interface StreamingToolPartLike {
@@ -57,7 +59,7 @@ export function findStreamingJsonArtifactSpecCandidate(
     // Output already present: the completed-output lane owns this call.
     if (part.output !== undefined && part.output !== null) continue;
 
-    const partial = coercePartialToolInput(part.input);
+    const partial = isRecord(part.input) ? part.input : null;
     const spec = extractRenderablePartialSpec(partial);
     if (!spec) continue;
 
@@ -70,22 +72,6 @@ export function findStreamingJsonArtifactSpecCandidate(
     };
   }
 
-  return null;
-}
-
-/**
- * Normalizes a streaming tool input into a plain record. The SDK usually hands
- * us an already-parsed `DeepPartial` object; a provider that instead surfaces
- * the raw (possibly truncated) JSON string is repaired by the partial-json
- * island. Anything that does not resolve to an object yields null so the caller
- * keeps its last good preview.
- */
-function coercePartialToolInput(input: unknown): Record<string, unknown> | null {
-  if (isRecord(input)) return input;
-  if (typeof input === "string") {
-    const parsed = parsePartialJson(input);
-    return isRecord(parsed) ? parsed : null;
-  }
   return null;
 }
 

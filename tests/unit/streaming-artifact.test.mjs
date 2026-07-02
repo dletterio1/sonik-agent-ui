@@ -73,18 +73,19 @@ const renderableSpec = {
   assert.equal(findStreamingJsonArtifactSpecCandidate("msg-4", parts), null, "non-createJsonArtifact tools keep collapsed rendering");
 }
 
-// --- absorbs a raw truncated JSON string input without throwing ---
+// --- a structurally incomplete partial object never throws; it yields no
+//     preview until it is renderable (the SDK's parsed DeepPartial grows in
+//     place, so this is what an early delta looks like) ---
 {
-  const truncated = '{"title":"Dash","spec":{"root":"main","elements":{"main":{"type":"Card","props":{"title":"Live';
-  const parts = [
-    { type: "tool-createJsonArtifact", toolCallId: "call-6", state: "input-streaming", input: truncated },
+  const early = [
+    { type: "tool-createJsonArtifact", toolCallId: "call-6", state: "input-streaming", input: { title: "Dash", spec: { root: "main" } } },
   ];
-  const candidate = findStreamingJsonArtifactSpecCandidate("msg-5", parts);
-  assert.ok(candidate, "the partial-json island repairs a mid-token string into a renderable spec");
-  assert.equal(candidate.spec.root, "main");
-  // a hopelessly early fragment yields no preview rather than throwing
-  const early = [{ type: "tool-createJsonArtifact", toolCallId: "call-7", state: "input-streaming", input: '{"ti' }];
-  assert.equal(findStreamingJsonArtifactSpecCandidate("msg-6", early), null);
+  assert.equal(findStreamingJsonArtifactSpecCandidate("msg-5", early), null, "no elements map yet -> keep last good, no throw");
+  // A non-object input (never produced by the SDK, but must not throw) yields null.
+  const stringInput = [
+    { type: "tool-createJsonArtifact", toolCallId: "call-7", state: "input-streaming", input: '{"title":"Dash"' },
+  ];
+  assert.equal(findStreamingJsonArtifactSpecCandidate("msg-6", stringInput), null);
 }
 
 // --- newest streaming call wins ---
