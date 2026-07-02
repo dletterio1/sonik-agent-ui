@@ -32,8 +32,7 @@ function asString(value: unknown): string {
  * Maps live UI-message stream chunks to the persisted run event union. Text and
  * reasoning deltas are coalesced (flushed on their `*-end`, when a different
  * event interleaves, or past TEXT_FLUSH_CHARS) so the log mirrors the stream
- * without persisting raw transport chunks — the same producer/persisted line
- * Open Design draws with `daemonAgentPayloadToPersistedAgentEvent`.
+ * without persisting raw transport chunks.
  */
 export function createRunEventMapper() {
   let textBuffer = "";
@@ -364,8 +363,8 @@ export async function startRunRecorder(
  * semantics: chunks pass through untouched, mapped events persist as they flow,
  * and the run is finalized on completion (succeeded), error (failed +
  * AGENT_STREAM_FAILED, resumable), or cancel/disconnect (canceled, resumable).
- * Mirrors instrumentGenerateStream's ReadableStream wrapper so it gets a real
- * cancel hook when the client disconnects mid-turn.
+ * Uses a ReadableStream wrapper so a real cancel hook fires when the client
+ * disconnects mid-turn.
  */
 export function teeRunEvents<T>(source: ReadableStream<T>, recorder: RunRecorder): ReadableStream<T> {
   let reader: ReadableStreamDefaultReader<T> | null = null;

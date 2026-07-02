@@ -1,24 +1,19 @@
 // Per-turn system-prompt composition for the Sonik Agent UI.
 //
 // The agent's standing instructions used to be one monolithic `AGENT_INSTRUCTIONS`
-// string. This module decomposes that text — verbatim, this is a MOVE not a
-// rewrite — into a minimal always-on core plus named, seedable modules, so a run
-// can compose exactly the rules it needs and record which modules reached the
-// model. Per-turn skill bodies (resolved from the runtime skill registry) append
-// after the core for that run only, mirroring Open Design's `ChatRequest.skillIds`
-// (concatenated into the system prompt, never persisted onto the project).
+// string. This module decomposes that text into a minimal always-on core plus
+// named, seedable modules, so a run can compose exactly the rules it needs and
+// record which modules reached the model. Per-turn skill bodies (resolved from
+// the runtime skill registry) append after the core for that run only.
 //
-// IMPORTANT — zero behavior change by default: today the monolith is entirely
-// unconditional (every rule reaches the model on every turn). To preserve that,
-// every module seeds unconditionally by default (`seedWhen` returns true). The
-// seam is now data-driven, so narrowing a module's seeding condition (e.g. only
-// seed booking conventions when booking runtime is available) is a one-line,
-// deliberate follow-up — it is intentionally NOT done here because it would be a
-// behavior change. See the per-module notes below.
+// Every module seeds unconditionally by default (`seedWhen` returns true) so the
+// monolith's current unconditional behavior is preserved; narrowing a module's
+// seeding condition (e.g. only seed booking conventions when booking runtime is
+// available) is a deliberate one-line follow-up. See the per-module notes below.
 //
-// Dependency-light on purpose: this file imports only the render catalog and the
-// artifact tool guidance (both pure), never the AI SDK or the tool graph, so the
-// prompt-assembly test can import and assert on it in isolation.
+// This file imports only the render catalog and the artifact tool guidance
+// (both pure), never the AI SDK or the tool graph, so the prompt-assembly test
+// can import and assert on it in isolation.
 
 import { explorerCatalog } from "./render/catalog.ts";
 import { JSON_ARTIFACT_TOOL_OBJECT_GUIDANCE } from "./artifacts/artifact-generation-guidance.ts";

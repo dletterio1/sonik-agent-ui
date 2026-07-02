@@ -6,14 +6,8 @@
 // server (explicit selection wins over implicit host/page context), and persisted
 // on the run record so it can be replayed as provenance and re-hydrated on reload.
 //
-// Modelled on Open Design's `RunContextSelection` / `WorkspaceContextItem`
-// (packages/contracts/src/api/context.ts) and the kind-label / detail-line
-// discipline in apps/web/src/components/workspace-context.ts, retargeted to the
-// kinds Sonik actually has. Open Design's filesystem-project kinds (local-code,
-// folder, browser, terminal, side-chat, design-files, design-system) are
-// deliberately omitted — Sonik has no local-fs projects. Kept dependency-light
-// (no zod, no AI SDK) so producer (composer), consumer (api/generate), and the
-// persistence layer share one type and cannot drift.
+// Kept dependency-light (no zod, no AI SDK) so producer (composer), consumer
+// (api/generate), and the persistence layer share one type and cannot drift.
 
 export const AGENT_CONTEXT_KINDS = [
   "document",
@@ -54,8 +48,7 @@ export interface AgentRunContextSelection {
   items: AgentContextItem[];
   /** Ids of auto-seeded items the user explicitly removed. Removal is
    *  authoritative: a dismissed id stays out of the selection across re-seeds,
-   *  sends, and reloads — the recurring bug class in Open Design's #4869 commit
-   *  trail was removal that did not survive one of those transitions. */
+   *  sends, and reloads. */
   dismissedAutoSeedIds: string[];
 }
 
@@ -63,8 +56,8 @@ export function createEmptyAgentRunContextSelection(): AgentRunContextSelection 
   return { items: [], dismissedAutoSeedIds: [] };
 }
 
-// Human label for a context kind. Hardcoded English mirroring the donor's
-// `workspaceContextKindLabel`; these labels are not localized.
+// Human label for a context kind. Hardcoded English; these labels are not
+// localized.
 export function agentContextKindLabel(kind: AgentContextKind): string {
   switch (kind) {
     case "document": return "Document";
@@ -79,8 +72,7 @@ export function agentContextKindLabel(kind: AgentContextKind): string {
 
 // The single most useful identifier to surface for a context item: the explicit
 // detail, else the route, else the underlying reference id. Empty when the item
-// carries no locator (the hover card then shows only the kind). Mirrors the
-// donor's `workspaceContextDetailLine` fallback discipline.
+// carries no locator (the hover card then shows only the kind).
 export function agentContextDetailLine(item: AgentContextItem): string {
   return item.detail?.trim() || item.route?.trim() || item.ref?.trim() || "";
 }
@@ -210,10 +202,6 @@ export function removeAgentContextItem(
     ? dedupeStrings([...current.dismissedAutoSeedIds, id]).slice(0, MAX_DISMISSED_IDS)
     : current.dismissedAutoSeedIds;
   return { items, dismissedAutoSeedIds };
-}
-
-export function selectionHasKind(selection: AgentRunContextSelection | null | undefined, kind: AgentContextKind): boolean {
-  return Boolean(selection?.items?.some((item) => item.kind === kind));
 }
 
 /** Derived view the server uses to layer an explicit selection over implicit

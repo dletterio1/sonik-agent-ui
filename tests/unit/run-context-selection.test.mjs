@@ -9,7 +9,6 @@ import {
   reconcileAgentContextSelection,
   addAgentContextItem,
   removeAgentContextItem,
-  selectionHasKind,
   resolveAgentContextSelection,
 } from "../../packages/tool-contracts/src/run-context.ts";
 
@@ -39,8 +38,6 @@ const seedDoc = { id: "document:doc-1", kind: "document", label: "Brief", source
 // --- reconcile seeds a fresh selection ----------------------------------
 let selection = reconcileAgentContextSelection({ previous: createEmptyAgentRunContextSelection(), seeds: [seedPage, seedDoc] });
 assert.equal(selection.items.length, 2);
-assert.equal(selectionHasKind(selection, "document"), true);
-assert.equal(selectionHasKind(selection, "page"), true);
 
 // --- authoritative removal: removed auto chip stays removed on reseed ----
 selection = removeAgentContextItem(selection, "document:doc-1");

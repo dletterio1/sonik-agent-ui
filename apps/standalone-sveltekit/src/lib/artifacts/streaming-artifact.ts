@@ -4,29 +4,22 @@ import { CREATE_JSON_ARTIFACT_TOOL_PART_TYPE, type JsonArtifactToolCandidate } f
 /**
  * Live tool-input streaming for the JSON-render canvas.
  *
- * The AI SDK ("ai" v6) already owns the transport this needs: it emits
- * `tool-input-start` / `tool-input-delta` / `tool-input-available` chunks, and
- * `processUIMessageStream` (used by `@ai-sdk/svelte`'s Chat) accumulates the
- * `inputTextDelta`s by `toolCallId` and runs its own `parsePartialJson` over the
- * growing buffer. The result surfaces on the tool part as
- * `{ state: "input-streaming", input: DeepPartial<input> }`. So the accumulation
- * + partial-json parse the donor's `tool_input_delta` describes is provided for
- * free — we consume the SDK's parsed partial rather than re-teeing raw deltas.
+ * The AI SDK ("ai" v6) emits `tool-input-start` / `tool-input-delta` /
+ * `tool-input-available` chunks; `processUIMessageStream` accumulates the
+ * `inputTextDelta`s by `toolCallId` and runs `parsePartialJson` over the
+ * growing buffer, surfacing `{ state: "input-streaming", input: DeepPartial<input> }`
+ * on the tool part. This consumes that already-parsed partial rather than
+ * re-teeing raw deltas.
  *
- * This reads the partial `spec` off a still-streaming `createJsonArtifact` tool
- * call and guards it down to a *minimally renderable* spec so the canvas can
- * mount progressively while the arguments are still arriving. Once the tool
- * reaches `output-available`, the completed spec (see
- * `findJsonArtifactToolCandidate`) is authoritative; both candidates share one
- * stable artifact id, so the partial -> final transition is an in-place version
- * bump — no second artifact, no tear.
+ * Reads the partial `spec` off a still-streaming `createJsonArtifact` tool call
+ * and guards it down to a minimally renderable spec so the canvas can mount
+ * progressively. Once the tool reaches `output-available`, the completed spec
+ * (see `findJsonArtifactToolCandidate`) is authoritative; both candidates share
+ * one stable artifact id, so the partial -> final transition is an in-place
+ * version bump with no tear.
  *
- * This is purely additive: it reads the SDK's already-parsed partial input and
- * never touches the completed-tool-call path. When no tool-input deltas arrive
- * (a provider that does not stream tool args), there is no `input-streaming`
- * part, this returns null, and the existing completed-output rendering runs
- * exactly as before. A structurally incomplete partial simply yields null (keep
- * last good) — an incomplete object never throws into the render tree.
+ * A structurally incomplete partial yields null (keep last good) rather than
+ * throwing into the render tree.
  */
 
 interface StreamingToolPartLike {
