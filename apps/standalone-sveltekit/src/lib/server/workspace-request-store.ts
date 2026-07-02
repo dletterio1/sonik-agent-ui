@@ -10,6 +10,9 @@ import type {
   WorkspaceLayoutSnapshotRecord,
   WorkspaceMessageRecord,
   WorkspaceMode,
+  WorkspaceRunEventRecord,
+  WorkspaceRunRecord,
+  WorkspaceRunStatus,
   WorkspaceSessionRecord,
   WorkspaceTelemetryEventRecord,
   WorkspaceToolCallRecord,
@@ -140,6 +143,30 @@ export async function listRequestWorkspaceTelemetryEvents(event: RequestWorkspac
   }
 }
 
+export async function createRequestWorkspaceRun(event: RequestWorkspaceEvent, input: { id?: string; session_id?: string | null; message_id?: string | null; request_id?: string | null; trace_id?: string | null; traceparent?: string | null } = {}): Promise<WorkspaceRunRecord> {
+  return getRequestWorkspacePersistence(event).createRun(input);
+}
+
+export async function getRequestWorkspaceRun(event: RequestWorkspaceEvent, id: string): Promise<WorkspaceRunRecord | null> {
+  return getRequestWorkspacePersistence(event).getRun(id);
+}
+
+export async function listRequestWorkspaceRuns(event: RequestWorkspaceEvent, sessionId: string): Promise<WorkspaceRunRecord[]> {
+  return getRequestWorkspacePersistence(event).listRuns(sessionId);
+}
+
+export async function updateRequestWorkspaceRun(event: RequestWorkspaceEvent, id: string, input: { status?: WorkspaceRunStatus; resumable?: boolean; error?: string | null; error_code?: string | null; message_id?: string | null; ended_at?: string | null }): Promise<WorkspaceRunRecord | null> {
+  return getRequestWorkspacePersistence(event).updateRun(id, input);
+}
+
+export async function appendRequestWorkspaceRunEvent<TEvent = unknown>(event: RequestWorkspaceEvent, input: { run_id: string; session_id?: string | null; seq?: number; kind: string; event: TEvent }): Promise<WorkspaceRunEventRecord<TEvent>> {
+  return getRequestWorkspacePersistence(event).appendRunEvent<TEvent>(input);
+}
+
+export async function listRequestWorkspaceRunEvents<TEvent = unknown>(event: RequestWorkspaceEvent, runId: string): Promise<WorkspaceRunEventRecord<TEvent>[]> {
+  return getRequestWorkspacePersistence(event).listRunEvents<TEvent>(runId);
+}
+
 export type {
   DocumentLibraryResult,
   WorkspaceArtifactKind,
@@ -149,6 +176,9 @@ export type {
   WorkspaceLayoutSnapshotRecord,
   WorkspaceMessageRecord,
   WorkspaceMode,
+  WorkspaceRunEventRecord,
+  WorkspaceRunRecord,
+  WorkspaceRunStatus,
   WorkspaceSessionRecord,
   WorkspaceTelemetryEventRecord,
   WorkspaceToolCallRecord,

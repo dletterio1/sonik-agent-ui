@@ -34,6 +34,17 @@ const migrations = [
 			)::text
 		`,
 	},
+	{
+		version: "0003",
+		name: "agent_run_lifecycle",
+		file: "packages/workspace-session/migrations/postgres/0003_agent_run_lifecycle.sql",
+		baselineCheck: `
+				select (
+					to_regclass('sonik_agent_ui.agent_workspace_runs') is not null
+					and to_regclass('sonik_agent_ui.agent_workspace_run_events') is not null
+				)::text
+			`,
+	},
 ];
 
 if (!databaseUrl) {
