@@ -18,6 +18,18 @@ is written to `.omx/logs/agent-ui-release-gate-<timestamp>.json`.
 Run it with no extra env ("no-live-infra mode") to exercise the local checks and
 see every deploy-time check report SKIPPED with the env it needs.
 
+### Local prerequisites
+
+The `embed-smoke` and `run-reattach-smoke` checks spawn a local dev server and
+exercise run persistence, so that server needs working workspace persistence.
+The standalone worker defaults to `SONIK_AGENT_UI_PERSISTENCE_MODE=cloud`
+(`apps/standalone-sveltekit/wrangler.jsonc`), which fails closed without a
+database — the smokes then get HTTP 500s. For a DB-less local run, point the dev
+server at in-memory persistence by adding `SONIK_AGENT_UI_PERSISTENCE_MODE=memory`
+to `apps/standalone-sveltekit/.dev.vars` (or provide a real `DATABASE_URL`).
+Use `AGENT_UI_GATE_SKIP=embed-smoke,run-reattach-smoke` to run the rest of the
+gate when neither is available (each is then reported as an explicit SKIP).
+
 ## Checks
 
 | Check | Category | Proves | Runs when |
