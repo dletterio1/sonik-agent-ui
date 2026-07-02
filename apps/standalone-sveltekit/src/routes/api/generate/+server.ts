@@ -13,8 +13,10 @@ import { pipeArtifactToolOutputsToSpecParts } from "$lib/artifacts/artifact-stre
 import { logArtifactTelemetry } from "$lib/artifacts/artifact-telemetry";
 import { writeAgentTelemetry } from "$lib/server/agent-telemetry";
 import { createTelemetryCorrelation, sanitizePageContext } from "@sonik-agent-ui/agent-observability";
+import { classifyRunErrorCode } from "@sonik-agent-ui/tool-contracts";
 import { instrumentGenerateStream } from "$lib/server/stream-telemetry";
 import { createDevSmokeStream, readDevSmokeRunId, shouldUseDevSmokeStream, writeDevSmokeStreamTelemetry } from "$lib/server/dev-smoke-stream";
+import { startRunRecorder, teeRunEvents, type RunRecorder } from "$lib/server/run-event-log";
 import { getRequestWorkspacePersistence, syncRequestActiveWorkspaceDocumentSnapshot, type WorkspaceDocumentRecord } from "$lib/server/workspace-request-store";
 import { createStandaloneCommandIndexSummary } from "$lib/server/tool-manifest";
 import { createRuntimeSkillIndexSummary } from "$lib/server/skill-registry";
@@ -40,6 +42,7 @@ import type { RequestHandler } from "./$types";
 const PAGE_CONTEXT_FIELD_MAX_CHARS = 160;
 const PAGE_CONTEXT_LIST_MAX_ITEMS = 8;
 const APPROVED_COMMAND_IDS_MAX_ITEMS = 128;
+const AGENT_UI_RUN_ID_HEADER = "x-sonik-agent-ui-run-id";
 
 
 function createServiceBindingFetcher(binding: unknown): typeof fetch | undefined {
@@ -304,6 +307,17 @@ export const POST: RequestHandler = async (event) => {
     pageContext: telemetryPageContext,
     ok: true,
   }).catch(() => undefined);
+  // A run is one persisted, resumable agent turn. Requires a session to key the
+  // run to; without one (or when cloud persistence lacks host context) the
+  // recorder is null and we degrade to the existing non-persisted streaming.
+  const runRecorder: RunRecorder | null = telemetrySessionId
+    ? await startRunRecorder(requestPersistence, {
+        sessionId: telemetrySessionId,
+        messageId: null,
+        correlation,
+      })
+    : null;
+
   if (shouldUseDevSmokeStream(request)) {
     const smokeInput = {
       requestId,
@@ -315,10 +329,12 @@ export const POST: RequestHandler = async (event) => {
       startedAt,
     };
     await writeDevSmokeStreamTelemetry(smokeInput);
+    const smokeStream = createDevSmokeStream(smokeInput);
     const response = createUIMessageStreamResponse({
-      stream: createDevSmokeStream(smokeInput),
+      stream: runRecorder ? teeRunEvents(smokeStream, runRecorder) : smokeStream,
     });
     for (const [key, value] of Object.entries(correlationHeaders)) response.headers.set(key, value);
+    if (runRecorder) response.headers.set(AGENT_UI_RUN_ID_HEADER, runRecorder.runId);
     return response;
   }
 
@@ -355,7 +371,7 @@ export const POST: RequestHandler = async (event) => {
             },
           },
         );
-        writer.merge(instrumentGenerateStream(aiStream, {
+        const instrumented = instrumentGenerateStream(aiStream, {
           requestId,
           traceId,
           traceparent,
@@ -367,7 +383,8 @@ export const POST: RequestHandler = async (event) => {
           startedAt,
           waitingMs: 10_000,
           waitingIntervalMs: 20_000,
-        }));
+        });
+        writer.merge(runRecorder ? teeRunEvents(instrumented, runRecorder) : instrumented);
         void writeAgentTelemetry({
           source: "server",
           event: "api.generate.stream_attached",
@@ -385,6 +402,7 @@ export const POST: RequestHandler = async (event) => {
       },
       onError: (error) => {
         const message = error instanceof Error ? error.message : String(error);
+        void runRecorder?.finalize({ status: "failed", error: message, errorCode: classifyRunErrorCode({ message }), resumable: true });
         void writeAgentTelemetry({
           source: "server",
           event: "api.generate.stream_error",
@@ -404,9 +422,11 @@ export const POST: RequestHandler = async (event) => {
 
     const response = createUIMessageStreamResponse({ stream });
     for (const [key, value] of Object.entries(correlationHeaders)) response.headers.set(key, value);
+    if (runRecorder) response.headers.set(AGENT_UI_RUN_ID_HEADER, runRecorder.runId);
     return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    void runRecorder?.finalize({ status: "failed", error: message, errorCode: classifyRunErrorCode({ message }), resumable: true });
     void writeAgentTelemetry({
       source: "server",
       event: "api.generate.error",
