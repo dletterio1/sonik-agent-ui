@@ -99,4 +99,33 @@ const renderableSpec = {
   assert.equal(candidate.id, "json-render-tool:msg-7:new");
 }
 
+// --- a structurally-valid spec whose root prop is a partially-streamed
+//     directive-shaped value that throws on resolution yields null (keep last
+//     good), never propagating the throw into the render tree ---
+{
+  // `$cond` whose condition streamed in transiently as a string (not yet the
+  // object it will become) throws inside resolvePropValue when the canvas
+  // resolves it. It passes the structural guard but must not mount.
+  const throwingRootPropSpec = {
+    root: "main",
+    elements: {
+      main: { type: "Card", props: { heading: { $cond: "user.active", $then: "Yes", $else: "No" } } },
+    },
+  };
+  assert.equal(isMinimallyRenderableSpec(throwingRootPropSpec), true, "the malicious spec is structurally renderable");
+  assert.equal(
+    extractRenderablePartialSpec({ spec: throwingRootPropSpec }),
+    null,
+    "a root prop that throws on resolution yields null (keep last good), not a throw",
+  );
+  const parts = [
+    { type: "tool-createJsonArtifact", toolCallId: "call-throw", state: "input-streaming", input: { title: "Dash", spec: throwingRootPropSpec } },
+  ];
+  assert.equal(
+    findStreamingJsonArtifactSpecCandidate("msg-throw", parts),
+    null,
+    "the streaming candidate boundary swallows a throwing partial instead of surfacing it",
+  );
+}
+
 console.log("streaming-artifact tests passed");

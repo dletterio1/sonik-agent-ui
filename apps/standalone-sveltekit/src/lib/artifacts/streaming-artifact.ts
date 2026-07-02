@@ -1,4 +1,4 @@
-import type { Spec } from "@json-render/core";
+import { resolveElementProps, type Spec } from "@json-render/core";
 import { CREATE_JSON_ARTIFACT_TOOL_PART_TYPE, type JsonArtifactToolCandidate } from "./tool-artifact-extraction.ts";
 
 /**
@@ -78,7 +78,24 @@ export function findStreamingJsonArtifactSpecCandidate(
 export function extractRenderablePartialSpec(input: Record<string, unknown> | null): Spec | null {
   if (!input) return null;
   const spec = input.spec;
-  return isMinimallyRenderableSpec(spec) ? spec : null;
+  if (!isMinimallyRenderableSpec(spec)) return null;
+  // Structural validity is not enough: a partially-streamed directive-shaped root
+  // prop (e.g. a `$cond` whose condition has not finished streaming into an object)
+  // passes the structural guard but throws when the canvas resolves it inside a
+  // $derived. Dry-run the root element's prop resolution here so a throwing partial
+  // yields null (keep last good) rather than propagating into the render tree.
+  return rootPropsResolveCleanly(spec) ? spec : null;
+}
+
+function rootPropsResolveCleanly(spec: Spec): boolean {
+  const rootElement = spec.elements[spec.root] as { props?: unknown } | undefined;
+  if (!isRecord(rootElement?.props)) return true;
+  try {
+    resolveElementProps(rootElement.props, { stateModel: isRecord(spec.state) ? spec.state : {} });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function isMinimallyRenderableSpec(value: unknown): value is Spec {
