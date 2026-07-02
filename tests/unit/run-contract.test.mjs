@@ -9,7 +9,7 @@ import {
   describeRunError,
   isResumableErrorCode,
   classifyRunErrorCode,
-} from "../../packages/tool-contracts/src/run.ts";
+} from "../../packages/tool-contracts/src/index.ts";
 
 assert.deepEqual([...RUN_STATUSES], ["running", "succeeded", "failed", "canceled"]);
 assert.equal(isRunStatus("running"), true);

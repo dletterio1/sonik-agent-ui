@@ -7,6 +7,7 @@ import { writeAgentTelemetry } from "$lib/server/agent-telemetry";
 
 export const DEV_SMOKE_STREAM_HEADER = "x-sonik-agent-ui-smoke-stream";
 export const DEV_SMOKE_RUN_ID_HEADER = "x-sonik-agent-ui-smoke-run-id";
+export const DEV_SMOKE_FAIL_HEADER = "x-sonik-agent-ui-smoke-fail";
 
 export interface DevSmokeStreamInput {
   requestId: string;
@@ -16,11 +17,17 @@ export interface DevSmokeStreamInput {
   messageId?: string;
   runId?: string;
   startedAt: number;
+  /** Dev-only: emit one delta then error the stream, to exercise run failure + reattach. */
+  failMode?: boolean;
 }
 
 export function readDevSmokeRunId(request: Request): string | undefined {
   const value = request.headers.get(DEV_SMOKE_RUN_ID_HEADER);
   return typeof value === "string" && /^[A-Za-z0-9_.:-]{6,160}$/.test(value) ? value : undefined;
+}
+
+export function readDevSmokeFailMode(request: Request): boolean {
+  return dev && request.headers.get(DEV_SMOKE_FAIL_HEADER) === "true";
 }
 
 export function shouldUseDevSmokeStream(request: Request): boolean {
@@ -42,6 +49,7 @@ export async function writeDevSmokeStreamTelemetry(input: DevSmokeStreamInput): 
 }
 
 export function createDevSmokeStream(input: DevSmokeStreamInput): ReadableStream<UIMessageChunk> {
+  if (input.failMode) return createDevSmokeFailStream(input);
   const stream = createUIMessageStream({
     execute: async ({ writer }) => {
       const id = "smoke-text";
@@ -83,6 +91,30 @@ export function createDevSmokeStream(input: DevSmokeStreamInput): ReadableStream
   });
 
   return instrumentGenerateStream(safeStream, {
+    requestId: input.requestId,
+    traceId: input.traceId,
+    traceparent: input.traceparent,
+    sessionId: input.sessionId,
+    messageId: input.messageId,
+    runId: input.runId,
+    startedAt: input.startedAt,
+  });
+}
+
+// Dev-only: stream one visible delta then error the stream, so teeRunEvents
+// persists partial text + finalizes the run failed + resumable. Used by the
+// run-reattach smoke to produce a deterministic interrupted run.
+function createDevSmokeFailStream(input: DevSmokeStreamInput): ReadableStream<UIMessageChunk> {
+  const id = "smoke-text";
+  const raw = new ReadableStream<UIMessageChunk>({
+    async start(controller) {
+      controller.enqueue({ type: "text-start", id });
+      controller.enqueue({ type: "text-delta", id, delta: "Partial answer before the stream was interrupted" });
+      await sleep(25);
+      controller.error(new Error("dev smoke injected stream failure"));
+    },
+  });
+  return instrumentGenerateStream(raw, {
     requestId: input.requestId,
     traceId: input.traceId,
     traceparent: input.traceparent,

@@ -15,7 +15,7 @@ import { writeAgentTelemetry } from "$lib/server/agent-telemetry";
 import { createTelemetryCorrelation, sanitizePageContext } from "@sonik-agent-ui/agent-observability";
 import { classifyRunErrorCode } from "@sonik-agent-ui/tool-contracts";
 import { instrumentGenerateStream } from "$lib/server/stream-telemetry";
-import { createDevSmokeStream, readDevSmokeRunId, shouldUseDevSmokeStream, writeDevSmokeStreamTelemetry } from "$lib/server/dev-smoke-stream";
+import { createDevSmokeStream, readDevSmokeFailMode, readDevSmokeRunId, shouldUseDevSmokeStream, writeDevSmokeStreamTelemetry } from "$lib/server/dev-smoke-stream";
 import { startRunRecorder, teeRunEvents, type RunRecorder } from "$lib/server/run-event-log";
 import { getRequestWorkspacePersistence, syncRequestActiveWorkspaceDocumentSnapshot, type WorkspaceDocumentRecord } from "$lib/server/workspace-request-store";
 import { createStandaloneCommandIndexSummary } from "$lib/server/tool-manifest";
@@ -327,6 +327,7 @@ export const POST: RequestHandler = async (event) => {
       sessionId: telemetrySessionId,
       messageId: lastMessage?.id,
       startedAt,
+      failMode: readDevSmokeFailMode(request),
     };
     await writeDevSmokeStreamTelemetry(smokeInput);
     const smokeStream = createDevSmokeStream(smokeInput);
