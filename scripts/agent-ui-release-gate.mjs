@@ -122,20 +122,23 @@ function deployedCommitCheck({ name, title, urlEnv, shaEnv }) {
 // --- check registry ------------------------------------------------------
 
 const checks = [
-  // Composed local checks (spawn their own dev server where needed).
+  // Composed local checks (each spawns its own dev server on the fixed dev port).
+  // The run-reattach smoke runs before the embed smoke so it always starts from a
+  // free port and its own fresh server, rather than racing the embed smoke's
+  // teardown on the shared port.
   { name: "build", title: "pnpm build", category: "local", run: () => runCommand("pnpm", ["build"]) },
   { name: "unit", title: "pnpm test (unit suite)", category: "local", run: () => runCommand("pnpm", ["test"]) },
-  {
-    name: "embed-smoke",
-    title: "Agent UI embed smoke",
-    category: "local",
-    run: () => runCommand("pnpm", ["smoke:agent-ui:embed"], { env: { AGENT_UI_EMBED_SMOKE_REAL_MODEL: "false" } }),
-  },
   {
     name: "run-reattach-smoke",
     title: "Run persistence + reattach smoke (local dev server)",
     category: "local",
     run: () => runCommand("pnpm", ["smoke:agent-ui:run-reattach"]),
+  },
+  {
+    name: "embed-smoke",
+    title: "Agent UI embed smoke",
+    category: "local",
+    run: () => runCommand("pnpm", ["smoke:agent-ui:embed"], { env: { AGENT_UI_EMBED_SMOKE_REAL_MODEL: "false" } }),
   },
 
   // Booking Pipe-B smokes need deployed workers + test credentials, so they are
