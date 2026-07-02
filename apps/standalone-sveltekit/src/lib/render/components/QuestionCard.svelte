@@ -5,9 +5,14 @@
   import { Badge } from "$lib/components/ui/badge";
   import { createAskUserQuestionSpec } from "@sonik-agent-ui/tool-contracts";
   import { createQuestionStateUpdateRecord } from "../question-state";
+  import {
+    emitComponentPropValidationTelemetry,
+    formatQuestionSubmitError,
+    sanitizeQuestionCardProps,
+    type Choice,
+  } from "../component-prop-safety";
 
   type AnswerValue = string | number | boolean | Array<string | number | boolean> | null;
-  type Choice = { value: string | number | boolean; label?: string | null; description?: string | null; disabled?: boolean | null };
 
   interface Props extends BaseComponentProps<{
     questionId: string;
@@ -31,19 +36,29 @@
 
   let { props, bindings, emit }: Props = $props();
   const stateContext = getStateContext();
+  let normalized = $derived(sanitizeQuestionCardProps(props));
+  let safeProps = $derived(normalized.props);
+  let lastTelemetryKey = $state<string | null>(null);
 
   let error = $state<string | null>(null);
 
+  $effect(() => {
+    const telemetry = normalized.telemetry;
+    const key = telemetry ? `${telemetry.component}:${telemetry.reason}:${telemetry.issuePaths.join(",")}` : null;
+    if (telemetry && key !== lastTelemetryKey) emitComponentPropValidationTelemetry(telemetry);
+    lastTelemetryKey = key;
+  });
+
   const valueBinding = getBoundProp<AnswerValue>(
-    () => props.value ?? null,
+    () => safeProps.value ?? null,
     () => bindings?.value,
   );
 
   let value = $derived(valueBinding.current ?? null);
-  const choices = $derived(props.choices ?? []);
-  const isChoice = $derived(["single_choice", "choice_cards", "confirmation"].includes(props.answerType));
-  const isMulti = $derived(props.answerType === "multi_choice");
-  const isLongText = $derived(["long_text", "textarea", "weekly_schedule"].includes(props.answerType));
+  const choices = $derived(safeProps.choices ?? []);
+  const isChoice = $derived(["single_choice", "choice_cards", "confirmation"].includes(safeProps.answerType));
+  const isMulti = $derived(safeProps.answerType === "multi_choice");
+  const isLongText = $derived(["long_text", "textarea", "weekly_schedule"].includes(safeProps.answerType));
 
   function isSelected(choiceValue: Choice["value"]) {
     return Array.isArray(value) ? value.includes(choiceValue) : value === choiceValue;
@@ -63,25 +78,25 @@
   function handleText(e: Event) {
     error = null;
     const raw = (e.target as HTMLInputElement | HTMLTextAreaElement).value;
-    valueBinding.current = props.answerType === "number" && raw !== "" ? Number(raw) : raw;
+    valueBinding.current = safeProps.answerType === "number" && raw !== "" ? Number(raw) : raw;
   }
 
   function questionSpec() {
     return createAskUserQuestionSpec({
-      id: props.questionId,
-      title: props.title,
-      body: props.body,
-      whyThisMatters: props.whyThisMatters ?? undefined,
-      answerType: props.answerType,
+      id: safeProps.questionId,
+      title: safeProps.title,
+      body: safeProps.body,
+      whyThisMatters: safeProps.whyThisMatters ?? undefined,
+      answerType: safeProps.answerType,
       choices,
-      required: props.required === true,
-      allowSkip: props.allowSkip !== false,
-      skipValue: props.skipValue ?? "unknown",
-      writesTo: props.writesTo ?? undefined,
-      minSelections: props.minSelections ?? 0,
-      maxSelections: props.maxSelections ?? undefined,
-      confidence: props.confidence ?? undefined,
-      reviewRequired: props.reviewRequired === true,
+      required: safeProps.required === true,
+      allowSkip: safeProps.allowSkip !== false,
+      skipValue: safeProps.skipValue ?? "unknown",
+      writesTo: safeProps.writesTo ?? undefined,
+      minSelections: safeProps.minSelections ?? 0,
+      maxSelections: safeProps.maxSelections ?? undefined,
+      confidence: safeProps.confidence ?? undefined,
+      reviewRequired: safeProps.reviewRequired === true,
     });
   }
 
@@ -91,14 +106,16 @@
         question: questionSpec(),
         value: skipped ? undefined : valueBinding.current,
         skipped,
-        writesTo: props.writesTo,
+        writesTo: safeProps.writesTo,
       });
       stateContext.update(updates);
       error = null;
       emit(skipped ? "skip" : "submit");
     } catch (err) {
-      error = err instanceof Error ? err.message : "Answer could not be saved.";
-      stateContext.set(`/questionErrors/${props.questionId}`, error);
+      const formatted = formatQuestionSubmitError(err);
+      error = formatted.message;
+      emitComponentPropValidationTelemetry(formatted.telemetry);
+      stateContext.set(`/questionErrors/${safeProps.questionId}`, error);
     }
   }
 </script>
@@ -108,27 +125,27 @@
     <div class="flex items-start justify-between gap-4">
       <div class="min-w-0">
         <div class="flex flex-wrap items-center gap-2">
-          <h3 class="text-base font-semibold">{props.title}</h3>
-          {#if props.required}
+          <h3 class="text-base font-semibold">{safeProps.title}</h3>
+          {#if safeProps.required}
             <Badge variant="destructive">Required</Badge>
           {/if}
-          {#if props.reviewRequired}
+          {#if safeProps.reviewRequired}
             <Badge variant="outline">Review</Badge>
           {/if}
-          {#if typeof props.confidence === "number"}
-            <Badge variant="secondary">{Math.round(props.confidence * 100)}% confidence</Badge>
+          {#if typeof safeProps.confidence === "number"}
+            <Badge variant="secondary">{Math.round(safeProps.confidence * 100)}% confidence</Badge>
           {/if}
         </div>
-        <p class="mt-1 text-sm text-muted-foreground">{props.body}</p>
-        {#if props.whyThisMatters}
-          <p class="mt-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">{props.whyThisMatters}</p>
+        <p class="mt-1 text-sm text-muted-foreground">{safeProps.body}</p>
+        {#if safeProps.whyThisMatters}
+          <p class="mt-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">{safeProps.whyThisMatters}</p>
         {/if}
       </div>
     </div>
 
     {#if isChoice || isMulti}
       <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-        {#each choices as choice}
+        {#each choices as choice (choice.value)}
           <button
             type="button"
             class="rounded-lg border p-3 text-left transition hover:border-primary/60 disabled:cursor-not-allowed disabled:opacity-50 {isSelected(choice.value) ? 'border-primary bg-primary/5 ring-2 ring-primary/15' : 'border-border bg-background'}"
@@ -152,7 +169,7 @@
     {:else}
       <input
         class="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-        type={props.answerType === "number" ? "number" : props.answerType === "date" ? "date" : props.answerType === "datetime" ? "datetime-local" : "text"}
+        type={safeProps.answerType === "number" ? "number" : safeProps.answerType === "date" ? "date" : safeProps.answerType === "datetime" ? "datetime-local" : "text"}
         value={String(value ?? "")}
         oninput={handleText}
       />
@@ -163,12 +180,12 @@
     {/if}
 
     <div class="flex flex-wrap items-center gap-2">
-      <Button type="button" onclick={() => submit(false)}>{props.submitLabel ?? "Save answer"}</Button>
-      {#if props.allowSkip !== false}
-        <Button type="button" variant="outline" onclick={() => submit(true)}>{props.skipLabel ?? "Mark unknown"}</Button>
+      <Button type="button" onclick={() => submit(false)}>{safeProps.submitLabel ?? "Save answer"}</Button>
+      {#if safeProps.allowSkip !== false}
+        <Button type="button" variant="outline" onclick={() => submit(true)}>{safeProps.skipLabel ?? "Mark unknown"}</Button>
       {/if}
-      {#if props.writesTo}
-        <span class="text-xs text-muted-foreground">Writes to {props.writesTo}</span>
+      {#if safeProps.writesTo}
+        <span class="text-xs text-muted-foreground">Writes to {safeProps.writesTo}</span>
       {/if}
     </div>
   </div>

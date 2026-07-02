@@ -1,25 +1,38 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { dev } from "$app/environment";
   import { env as publicEnv } from "$env/dynamic/public";
   import type { PageData } from "./$types";
-  import { SvelteSet } from "svelte/reactivity";
+  import { SvelteSet, SvelteMap } from "svelte/reactivity";
   import { Chat } from "@ai-sdk/svelte";
   import { DefaultChatTransport } from "ai";
   import type { DataPart, Spec } from "@json-render/svelte";
   import type { StateStore } from "@json-render/core";
   import { JsonArtifactRenderer } from "@sonik-agent-ui/json-ui-runtime";
   import { AgentConversation, getSpec, getText, snapshotDataParts, type AgentActivityStatus, type AgentChatMessage } from "@sonik-agent-ui/chat-surface";
-  import { upsertJsonRenderArtifact, type JsonRenderArtifact } from "@sonik-agent-ui/artifact-model";
+  import { createJsonRenderArtifactSignature, upsertJsonRenderArtifact, type JsonRenderArtifact } from "@sonik-agent-ui/artifact-model";
   import { DEFAULT_WORKSPACE_SESSION_NAME, deriveWorkspaceSessionTitle, isDefaultWorkspaceSessionName } from "@sonik-agent-ui/workspace-session";
+  import { RESUME_CONTINUE_PROMPT, describeRunError, isRunErrorCode, type AgentAnalyticsEntryFrom, type AgentAnalyticsHints } from "@sonik-agent-ui/tool-contracts";
+  import {
+    createEmptyAgentRunContextSelection,
+    reconcileAgentContextSelection,
+    addAgentContextItem,
+    removeAgentContextItem,
+    parseAgentRunContextSelection,
+    type AgentContextItem,
+    type AgentRunContextSelection,
+  } from "@sonik-agent-ui/tool-contracts/run-context";
+  import { deriveAgentContextCandidates } from "$lib/agent-context/context-sources";
   import { promoteJsonRenderArtifact } from "$lib/artifacts/json-render-promotion";
   import { findDocumentArtifactToolCandidate, findJsonArtifactToolCandidate, type PreferredDocumentView } from "$lib/artifacts/tool-artifact-extraction";
+  import { findStreamingJsonArtifactSpecCandidate } from "$lib/artifacts/streaming-artifact";
   import { hasActiveArtifactUpdateIntent, hasExplicitArtifactIntent } from "$lib/artifacts/artifact-promotion";
   import { logArtifactTelemetry, summarizeSpec } from "$lib/artifacts/artifact-telemetry";
   import { createInMemoryArtifactWarehouse, type ArtifactWarehouseSnapshot, type ArtifactWarehouseVersion } from "$lib/artifacts/artifact-warehouse";
   import ArtifactInspector from "$lib/artifacts/ArtifactInspector.svelte";
   import SessionRail from "$lib/session/SessionRail.svelte";
   import ThemePicker from "$lib/theme/ThemePicker.svelte";
+  import { applyEmbeddedThemeSetting } from "$lib/theme/theme-runtime";
   import {
     appendArtifactObservationEvent,
     createArtifactObservationEvent,
@@ -47,6 +60,10 @@
     createJsonRenderStateStore,
     type JsonRenderStateChange,
   } from "$lib/render/json-render-state-controller";
+  import {
+    createQuestionAnswerTurnPayload,
+    serializeQuestionAnswerTurnMessage,
+  } from "$lib/render/question-answer-loop";
   import { createWorkflowSuggestions } from "$lib/agent-workflows/suggestions";
 
   interface ActiveDocumentSnapshot {
@@ -106,10 +123,27 @@
     created_at: string;
   }
 
+  interface WorkspaceRunSummary {
+    id: string;
+    status: "running" | "succeeded" | "failed" | "canceled";
+    resumable: boolean;
+    error: string | null;
+    error_code: string | null;
+    message_id: string | null;
+    context_selection?: AgentRunContextSelection | null;
+    started_at: string;
+    ended_at: string | null;
+  }
+
   interface WorkspaceSessionDetail {
     session: WorkspaceSessionSummary;
     activeDocument: ActiveDocumentSnapshot | null;
     messages: WorkspaceMessageSnapshot[];
+    runs?: WorkspaceRunSummary[];
+    reattach?: {
+      run: WorkspaceRunSummary;
+      message: { id: string; role: "assistant"; content: string; parts: DataPart[] } | null;
+    } | null;
     telemetry?: unknown[];
     artifactState?: {
       persistence: "cloud-or-memory-v1";
@@ -154,9 +188,27 @@
   let activeSessionId = $state<string | null>(null);
   let sessionRailBusy = $state(false);
   let sessionRailError = $state<string | null>(null);
+  let resumableRun = $state<WorkspaceRunSummary | null>(null);
+  // Composer context selection for the next turn (chips + authoritative dismissals).
+  let runContextSelection = $state<AgentRunContextSelection>(createEmptyAgentRunContextSelection());
+  // Analytics-only run hints, computed client-side at send time. `analyticsTurnIndex`
+  // is 0-based per workspace session (reset on clear/switch); `pendingAnalyticsEntryFrom`
+  // records how the next turn started (default composer; workflow launcher / Continue
+  // override it); `pendingAnalyticsHints` is the object read by the transport for the
+  // in-flight send. Never influences behavior — analytics dimension only.
+  let analyticsTurnIndex = 0;
+  let pendingAnalyticsEntryFrom: AgentAnalyticsEntryFrom = "composer";
+  let pendingAnalyticsHints: AgentAnalyticsHints | null = null;
+  // Per-turn provenance: user message id -> the context items sent with that turn.
+  let turnContextByMessageId = new SvelteMap<string, AgentContextItem[]>();
   let persistedMessageIds = new SvelteSet<string>();
   let reportedToolErrorKeys = new SvelteSet<string>();
   let processedJsonRenderPromotionKeys = new SvelteSet<string>();
+  // Live tool-input streaming: the partial-spec signature currently mounted as a
+  // preview, and the artifact ids we have already logged a first preview mount
+  // for. Non-reactive bookkeeping so the preview effect skips no-op re-runs.
+  let lastStreamingPreviewSignature: string | null = null;
+  let streamingPreviewMountedIds = new SvelteSet<string>();
   let messagePersistInFlight = false;
   let pendingDocumentSnapshot: ActiveDocumentSnapshot | null = null;
   let documentPersistPromise: Promise<void> | null = null;
@@ -170,6 +222,8 @@
   let sessionBootstrapPromise: Promise<void> | null = null;
   let hostContextWaitTimer: number | null = null;
   let hostPageContext = $state<AgentHostMergedPageContext | null>(null);
+  let embeddedHostContextExpected = $state(false);
+  let embeddedUrlTheme: string | null = null;
   let embedMode = $state<AgentEmbedMode>(getInitialEmbedIntent().mode);
   let embedRailMode = $state<AgentEmbedRailMode>(getInitialEmbedIntent().railMode);
   let streamStartedAt = $state<number | null>(null);
@@ -198,6 +252,8 @@
               pageContext: createPageContextSnapshot(),
             },
             pageContext: createPageContextSnapshot(),
+            contextSelection: $state.snapshot(runContextSelection),
+            analyticsHints: pendingAnalyticsHints ?? undefined,
           },
         };
       },
@@ -277,6 +333,22 @@
       };
     }
 
+    return null;
+  });
+  // Live preview of a createJsonArtifact spec while its tool-call arguments are
+  // still streaming. Only fires while streaming and only until the completed
+  // tool output exists — at that point findJsonArtifactToolCandidate owns the
+  // artifact (latestJsonRenderSpec below), so the partial preview hands off to
+  // the authoritative, persisted version with no double-render.
+  const streamingJsonRenderPreview = $derived.by<{ id: string; spec: Spec; title?: string } | null>(() => {
+    if (!isStreaming) return null;
+    for (let index = conversation.messages.length - 1; index >= 0; index -= 1) {
+      const message = conversation.messages[index];
+      if (!message || message.role !== "assistant") continue;
+      const parts = snapshotDataParts(message.parts as DataPart[]);
+      if (findJsonArtifactToolCandidate(message.id, parts as unknown[])) return null;
+      return findStreamingJsonArtifactSpecCandidate(message.id, parts as unknown[]);
+    }
     return null;
   });
   const latestDocumentArtifact = $derived.by<{ id: string; document: ActiveDocumentSnapshot; action: "create" | "update"; title: string; preferredView?: PreferredDocumentView } | null>(() => {
@@ -427,6 +499,51 @@
       persistJsonRenderArtifactSnapshot(promotedSnapshot, "agent");
       activeArtifactStatus = createArtifactStatus(promotedSnapshot.artifact, event);
       pendingArtifactIntent = null;
+    }
+  });
+
+  // Mount the streaming createJsonArtifact spec into the live canvas as its
+  // arguments arrive. This stays in memory only — no warehouse version commit
+  // and no /api/artifact persistence per delta — so the completed tool output
+  // (handled by the promotion effect above) remains the single authoritative,
+  // persisted spec. Reusing the same artifact id makes partial -> final an
+  // in-place update rather than a swap.
+  $effect(() => {
+    const preview = streamingJsonRenderPreview;
+    if (!preview) {
+      lastStreamingPreviewSignature = null;
+      return;
+    }
+
+    let signature: string;
+    let upsert: ReturnType<typeof upsertJsonRenderArtifact>;
+    try {
+      signature = createJsonRenderArtifactSignature(preview.spec);
+      if (signature === lastStreamingPreviewSignature && activeArtifact?.id === preview.id) return;
+      upsert = upsertJsonRenderArtifact({
+        previous: activeArtifact?.id === preview.id ? activeArtifact : null,
+        id: preview.id,
+        title: preview.title ?? "Live artifact",
+        spec: preview.spec,
+      });
+    } catch (error) {
+      reportClientEffectError("json_artifact.stream_preview_error", error, { messageId: preview.id });
+      return;
+    }
+
+    lastStreamingPreviewSignature = signature;
+    activeArtifact = upsert.artifact;
+    pendingArtifactIntent = null;
+
+    if (!streamingPreviewMountedIds.has(preview.id)) {
+      streamingPreviewMountedIds.add(preview.id);
+      logArtifactTelemetry({
+        source: "client",
+        event: "artifact.stream.preview_mounted",
+        artifactId: preview.id,
+        ...summarizeSpec(preview.spec),
+        ok: true,
+      });
     }
   });
 
@@ -659,11 +776,11 @@
     }
   }
 
-  async function persistActiveArtifactStatePatch(): Promise<void> {
+  async function persistActiveArtifactStatePatch(): Promise<{ artifact: WorkspaceArtifactSnapshot; activeArtifactVersions: WorkspaceArtifactVersionSnapshot[] } | null> {
     clearActiveArtifactStateSaveTimer();
     const artifact = activeArtifact;
     const changes = pendingActiveArtifactStateChanges;
-    if (!artifact || changes.length === 0) return;
+    if (!artifact || changes.length === 0) return null;
 
     let payload: ReturnType<typeof buildJsonRenderStatePatchPayload>;
     try {
@@ -679,7 +796,7 @@
         root: artifact.content.root,
         elementCount: Object.keys(artifact.content.elements ?? {}).length,
       });
-      return;
+      return null;
     }
 
     pendingActiveArtifactStateChanges = [];
@@ -702,7 +819,7 @@
           error: body?.error ?? "Artifact version conflict",
         });
         if (activeSessionId) await switchSession(activeSessionId, { force: true });
-        return;
+        return null;
       }
       if (!response.ok) throw new Error(await readWorkspaceResponseError(response));
       const result = await response.json() as { artifact: WorkspaceArtifactSnapshot; activeArtifactVersions: WorkspaceArtifactVersionSnapshot[] };
@@ -724,6 +841,7 @@
         elementCount: payload.changes.length,
         ok: true,
       });
+      return result;
     } catch (error) {
       pendingActiveArtifactStateChanges = mergeStateChanges(pendingActiveArtifactStateChanges, payload.changes);
       reportClientEffectError("json_render.state_patch.error", error, {
@@ -731,6 +849,7 @@
         root: artifact.content.root,
         elementCount: Object.keys(artifact.content.elements ?? {}).length,
       });
+      return null;
     }
   }
 
@@ -886,9 +1005,11 @@
     const searchParams = new URLSearchParams(window.location.search);
     if (searchParams.get("smokeMockStream") !== "1") return {};
     const smokeRunId = searchParams.get("smokeRunId") ?? "agent-ui-smoke-local";
+    const smokeScenario = searchParams.get("smokeScenario");
     return {
       "x-sonik-agent-ui-smoke-stream": "true",
       "x-sonik-agent-ui-smoke-run-id": smokeRunId,
+      ...(smokeScenario ? { "x-sonik-agent-ui-smoke-scenario": smokeScenario } : {}),
     };
   }
 
@@ -946,14 +1067,33 @@
         issuedAt: hostPageContext?.issuedAt ?? null,
         expiresAt: hostPageContext?.expiresAt ?? null,
         signature: hostPageContext?.signature ?? null,
-        hostSession: {
-          ...hostSession,
+        hostSession: createSignedWorkspaceHostSession(hostSession, {
           authenticated,
           organizationId,
           userId,
-          principalId: hostSession.principalId ?? userId,
-        },
+        }),
       }),
+    };
+  }
+
+  function createSignedWorkspaceHostSession(
+    hostSession: NonNullable<AgentHostMergedPageContext["hostSession"]>,
+    input: { authenticated: boolean; organizationId: string; userId: string },
+  ) {
+    // This object is HMAC-covered by the embedding host. Do not spread sanitized
+    // display-only fields (for example hostSession.theme) into the header: adding
+    // even a harmless null changes the stable JSON payload and makes the cloud
+    // runtime reject the session as missing-host-context.
+    return {
+      source: hostSession.source,
+      sessionId: hostSession.sessionId ?? null,
+      userId: input.userId,
+      principalId: hostSession.principalId ?? input.userId,
+      organizationId: input.organizationId,
+      authenticated: input.authenticated,
+      scopes: hostSession.scopes ?? [],
+      expiresAt: hostSession.expiresAt ?? null,
+      ...(hostSession.metadata ? { metadata: hostSession.metadata } : {}),
     };
   }
 
@@ -997,8 +1137,7 @@
   }
 
   function isEmbeddedHostContextExpected(): boolean {
-    if (typeof window === "undefined") return false;
-    return new URLSearchParams(window.location.search).has("agentUiHostOrigin");
+    return embeddedHostContextExpected;
   }
 
   function headersToRecord(headers: HeadersInit | undefined): Record<string, string> {
@@ -1084,6 +1223,7 @@
       return;
     }
     hostPageContext = nextContext;
+    applyEmbeddedThemeFromHost(nextContext.theme ?? embeddedUrlTheme);
     logArtifactTelemetry({
       source: "client",
       event: "host.page_context.updated",
@@ -1112,7 +1252,17 @@
       artifactType: activeDocument?.language ?? (activeArtifact ? "json-render" : null),
       conversationStatus: conversation.status,
       messageCount: conversation.messages.length,
-      visibleActions: ["theme-picker", "workspace-docs", "start-over", "createSession", "submitPrompt", "stop", "clearChat", "clearArtifact", "openWorkspaceDocument"],
+      visibleActions: [
+        ...(isEmbeddedHostContextExpected() ? [] : ["theme-picker"]),
+        "workspace-docs",
+        "start-over",
+        "createSession",
+        "submitPrompt",
+        "stop",
+        "clearChat",
+        "clearArtifact",
+        "openWorkspaceDocument",
+      ],
       visibleWarnings: sessionRailError ? [sessionRailError] : undefined,
       commandFamilies: documentEditorOpen ? ["local-ui", "document", "artifact"] : activeArtifact ? ["local-ui", "artifact"] : ["local-ui", "discovery"],
       skillFamilies: documentEditorOpen || activeArtifact ? ["workspace"] : ["chat"],
@@ -1240,6 +1390,8 @@
 
   function applyEmbedUrlOptions(): void {
     const params = new URLSearchParams(window.location.search);
+    embeddedHostContextExpected = params.has("agentUiHostOrigin");
+    embeddedUrlTheme = params.get("theme");
     const nextIntent = normalizeAgentEmbedIntent({
       embedMode: params.get("embedMode"),
       agentUiMode: params.get("agentUiMode"),
@@ -1248,6 +1400,12 @@
     });
     embedMode = nextIntent.mode;
     embedRailMode = nextIntent.railMode;
+    applyEmbeddedThemeFromHost(embeddedUrlTheme);
+  }
+
+  function applyEmbeddedThemeFromHost(hostTheme?: string | null): void {
+    if (!isEmbeddedHostContextExpected()) return;
+    applyEmbeddedThemeSetting({ hostTheme });
   }
 
   function installDevLongTaskTelemetry(): (() => void) | undefined {
@@ -1488,6 +1646,42 @@
     }
   }
 
+  async function refreshActiveSessionRunState(reason: string): Promise<void> {
+    const sessionId = activeSessionId;
+    if (!sessionId) return;
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      try {
+        const response = await workspaceFetch(`/api/session/${encodeURIComponent(sessionId)}`);
+        if (!response.ok) throw new Error(await readWorkspaceResponseError(response));
+        const detail = (await response.json()) as WorkspaceSessionDetail;
+        if (activeSessionId !== sessionId) return;
+
+        sessions = upsertSessionSummary(sessions, detail.session);
+        reattachRunState(detail);
+        rehydrateRunContextState(detail);
+
+        const latestRun = detail.runs?.at(-1);
+        if (!latestRun || latestRun.status !== "running" || latestRun.resumable) {
+          logSessionTelemetry("session.run.refresh", { sessionId, reason });
+          return;
+        }
+      } catch (error) {
+        logSessionTelemetry("session.run.refresh_error", {
+          sessionId,
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+          reason,
+        });
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+
+    logSessionTelemetry("session.run.refresh_timeout", { sessionId, ok: false, reason });
+  }
+
   async function archiveSession(sessionId: string): Promise<void> {
     if (isStreaming) {
       sessionRailError = "Stop the current stream before archiving sessions.";
@@ -1595,6 +1789,12 @@
       parts: normalizePersistedParts(message),
     })) as typeof conversation.messages;
     persistedMessageIds = new SvelteSet(detail.messages.map((message) => message.id));
+    reattachRunState(detail);
+    rehydrateRunContextState(detail);
+    // Entering a session restarts its per-session analytics turn sequence.
+    analyticsTurnIndex = 0;
+    pendingAnalyticsEntryFrom = "composer";
+    pendingAnalyticsHints = null;
     activeDocument = detail.activeDocument;
     documentSeed = detail.activeDocument;
     documentPreferredView = detail.activeDocument ? inferPreferredDocumentView(detail.activeDocument.language) : "auto";
@@ -1618,6 +1818,70 @@
     pendingDocumentSnapshot = null;
     lastPersistedDocumentSignature = detail.activeDocument ? createDocumentSnapshotSignature(detail.activeDocument) : "";
   }
+
+  // Reattach a persisted run after reload: a non-succeeded latest run may carry
+  // a rebuilt assistant message (from its event log) that the client never got
+  // to persist because the stream was interrupted; a resumable run also drives
+  // the Continue affordance.
+  function reattachRunState(detail: WorkspaceSessionDetail): void {
+    resumableRun = null;
+    const reattach = detail.reattach;
+    if (!reattach?.run || reattach.run.status === "succeeded") return;
+
+    const rebuilt = reattach.message;
+    const runCount = detail.runs?.length ?? 0;
+    const localAssistantCount = conversation.messages.filter((message) => message.role === "assistant").length;
+    const localAssistantTurnExists = runCount > 0 && localAssistantCount >= runCount;
+    if (rebuilt && rebuilt.parts.length > 0 && !localAssistantTurnExists && !persistedMessageIds.has(rebuilt.id)) {
+      conversation.messages = [
+        ...conversation.messages,
+        { id: rebuilt.id, role: "assistant", parts: snapshotDataParts(rebuilt.parts) },
+      ] as typeof conversation.messages;
+      // The reattached message is a view of an unfinished run, not a new turn to
+      // persist — mark it so the persist effect leaves it alone.
+      persistedMessageIds.add(rebuilt.id);
+    }
+
+    if (reattach.run.resumable) {
+      resumableRun = reattach.run;
+      logSessionTelemetry("session.run.reattached", {
+        sessionId: detail.session.id,
+        reason: reattach.run.error_code ?? reattach.run.status,
+      });
+    }
+  }
+
+  // Restore composer context + per-turn provenance from persisted runs on reload.
+  // The most recent run's persisted selection re-seeds the composer so removed
+  // chips stay removed (its dismissedAutoSeedIds survive); each run's selection
+  // is paired to its user turn (runs and user messages are 1:1, both ordered) for
+  // historical provenance.
+  function rehydrateRunContextState(detail: WorkspaceSessionDetail): void {
+    turnContextByMessageId.clear();
+    const runs = detail.runs ?? [];
+    const userMessageIds = detail.messages.filter((message) => message.role === "user").map((message) => message.id);
+    runs.forEach((run, index) => {
+      const items = (run.context_selection?.items ?? []) as AgentContextItem[];
+      const userId = userMessageIds[index];
+      if (userId && items.length > 0) turnContextByMessageId.set(userId, items);
+    });
+    const latest = [...runs].reverse().find((run) => run.context_selection);
+    runContextSelection = latest?.context_selection
+      ? parseAgentRunContextSelection(latest.context_selection) ?? createEmptyAgentRunContextSelection()
+      : createEmptyAgentRunContextSelection();
+  }
+
+  const runRecovery = $derived.by(() => {
+    if (!resumableRun) return null;
+    const code = isRunErrorCode(resumableRun.error_code) ? resumableRun.error_code : null;
+    const affordance = describeRunError(code);
+    return {
+      title: affordance.title,
+      guidance: affordance.guidance,
+      actionLabel: affordance.actionLabel,
+      canContinue: affordance.resumable && resumableRun.resumable,
+    };
+  });
 
   function hydrateArtifactState(detail: WorkspaceSessionDetail): (ArtifactWarehouseSnapshot<Spec> & { artifact: JsonRenderArtifact }) | null {
     const activeArtifactRecord = detail.artifactState?.activeArtifact;
@@ -1808,6 +2072,44 @@
   const workflowSuggestions = $derived(createWorkflowSuggestions(createPageContextSnapshot()));
 
   // =============================================================================
+  // Composer Context Selection
+  // =============================================================================
+
+  // Auto-seed candidates (current page + active document) and the full attachable
+  // catalog for the plus menu, derived from live host/page + workspace state.
+  const contextCandidates = $derived(deriveAgentContextCandidates({
+    pageContext: createPageContextSnapshot(),
+    activeDocument: activeDocument ? { id: activeDocument.id, title: activeDocument.title, language: activeDocument.language } : null,
+    activeArtifact: activeArtifact ? { id: activeArtifact.id, title: activeArtifact.title } : null,
+  }));
+
+  // Reconcile fresh seeds into the selection whenever host/page context changes.
+  // reconcile keeps manual chips and honors dismissedAutoSeedIds, so a chip the
+  // user removed does not reappear (authoritative removal); idempotent, so this
+  // never loops even though it may reassign the selection.
+  $effect(() => {
+    const seeds = contextCandidates.seeds;
+    const next = reconcileAgentContextSelection({ previous: untrack(() => runContextSelection), seeds });
+    if (JSON.stringify(next) !== untrack(() => JSON.stringify(runContextSelection))) {
+      runContextSelection = next;
+    }
+  });
+
+  function handleAttachContext(item: AgentContextItem): void {
+    runContextSelection = addAgentContextItem(runContextSelection, item);
+    logArtifactTelemetry({ source: "client", event: "composer.context.attach", sessionId: activeSessionId ?? undefined, reason: item.kind, ok: true });
+  }
+
+  function handleRemoveContext(id: string): void {
+    runContextSelection = removeAgentContextItem(runContextSelection, id);
+    logArtifactTelemetry({ source: "client", event: "composer.context.remove", sessionId: activeSessionId ?? undefined, reason: id, ok: true });
+  }
+
+  function messageContextItems(message: AgentChatMessage): AgentContextItem[] | undefined {
+    return turnContextByMessageId.get(message.id);
+  }
+
+  // =============================================================================
   // Tool Labels
   // =============================================================================
 
@@ -1831,6 +2133,20 @@
   // Message Handling
   // =============================================================================
 
+  // Compute the analytics hints for the turn about to be sent and stash them for
+  // the transport (see prepareSendMessagesRequest). Advances the per-session turn
+  // index. Analytics-only: dropped hints reproduce today's behavior.
+  function stampAnalyticsHints(entryFrom: AgentAnalyticsEntryFrom) {
+    const turnIndex = analyticsTurnIndex;
+    pendingAnalyticsHints = {
+      entryFrom,
+      turnIndex,
+      isFirstRun: turnIndex === 0,
+      hasExistingArtifact: Boolean(activeArtifact),
+    };
+    analyticsTurnIndex = turnIndex + 1;
+  }
+
   function handleSubmit(message: string) {
     const trimmed = message.trim();
     if (getSubmitDisabledReason(trimmed)) return;
@@ -1840,14 +2156,127 @@
     }
 
     logSessionTelemetry("chat.submit.start", { sessionId: activeSessionId, reason: `${trimmed.length} chars` });
+    // A fresh user turn supersedes any pending run recovery.
+    resumableRun = null;
+    // Entry point defaults to composer; a workflow launcher chip sets it just
+    // before this call and we consume + reset it here.
+    stampAnalyticsHints(pendingAnalyticsEntryFrom);
+    pendingAnalyticsEntryFrom = "composer";
     maybeNameNewChat(trimmed);
+    const turnContext = ($state.snapshot(runContextSelection).items ?? []) as AgentContextItem[];
     conversation.sendMessage({ text: trimmed });
+    // Associate the selection sent with this turn to the just-appended user
+    // message so it renders as provenance (survives reload via persisted runs).
+    const sentUserMessage = conversation.messages.at(-1);
+    if (turnContext.length > 0 && sentUserMessage?.role === "user") {
+      turnContextByMessageId.set(sentUserMessage.id, turnContext);
+    }
+  }
+
+  function sendUserTurnWithEntryFrom(message: string, entryFrom: AgentAnalyticsEntryFrom): void {
+    const trimmed = message.trim();
+    if (!trimmed || isStreaming) return;
+    resumableRun = null;
+    stampAnalyticsHints(entryFrom);
+    pendingAnalyticsEntryFrom = "composer";
+    const turnContext = ($state.snapshot(runContextSelection).items ?? []) as AgentContextItem[];
+    conversation.sendMessage({ text: trimmed });
+    const sentUserMessage = conversation.messages.at(-1);
+    if (turnContext.length > 0 && sentUserMessage?.role === "user") {
+      turnContextByMessageId.set(sentUserMessage.id, turnContext);
+    }
+  }
+
+  async function handleJsonRenderAction(actionName: string, params?: Record<string, unknown>): Promise<void> {
+    if (actionName === "submitAnswer") {
+      await handleSubmitAnswerAction(params ?? {});
+      return;
+    }
+    logArtifactTelemetry({
+      source: "client",
+      event: "json_render.action.ignored",
+      sessionId: activeSessionId ?? undefined,
+      artifactId: activeArtifact?.id,
+      artifactVersion: activeArtifact?.version,
+      reason: actionName,
+      ok: false,
+      error: "No trusted host action handler is registered for this action.",
+    });
+  }
+
+  async function handleSubmitAnswerAction(params: Record<string, unknown>): Promise<void> {
+    const artifactBeforePersist = activeArtifact;
+    if (!artifactBeforePersist) {
+      logArtifactTelemetry({
+        source: "client",
+        event: "question_answer.submit.blocked",
+        sessionId: activeSessionId ?? undefined,
+        reason: "missing_active_artifact",
+        ok: false,
+        error: "Question answers require an active persisted artifact.",
+      });
+      return;
+    }
+
+    const persisted = await persistActiveArtifactStatePatch();
+    if (!persisted) {
+      logArtifactTelemetry({
+        source: "client",
+        event: "question_answer.submit.blocked",
+        sessionId: activeSessionId ?? undefined,
+        artifactId: artifactBeforePersist.id,
+        artifactVersion: artifactBeforePersist.version,
+        reason: "artifact_state_not_persisted",
+        ok: false,
+        error: "Question answer state was not persisted; generate turn was not sent.",
+      });
+      return;
+    }
+
+    const payload = createQuestionAnswerTurnPayload({
+      actionParams: params,
+      artifactId: persisted.artifact.id,
+      artifactVersion: persisted.artifact.version,
+      sessionId: activeSessionId,
+    });
+    const message = serializeQuestionAnswerTurnMessage(payload);
+    logArtifactTelemetry({
+      source: "client",
+      event: "question_answer.submit.generate",
+      sessionId: activeSessionId ?? undefined,
+      artifactId: payload.artifact.id,
+      artifactVersion: payload.artifact.version,
+      reason: payload.submission.questionId,
+      ok: true,
+    });
+    sendUserTurnWithEntryFrom(message, "question_answer");
+  }
+
+  // Continue a resumable failed/interrupted run. Distinct from retry-from-scratch:
+  // this sends the canonical continuation prompt so the agent picks up its
+  // interrupted work rather than re-running the original user turn.
+  function handleContinue() {
+    const run = resumableRun;
+    if (!run) return;
+    resumableRun = null;
+    logSessionTelemetry("chat.continue.start", { sessionId: activeSessionId, reason: run.error_code ?? run.status });
+    stampAnalyticsHints("resume_continue");
+    conversation.sendMessage({ text: RESUME_CONTINUE_PROMPT });
   }
 
   function handleClear() {
     conversation.messages = [];
     persistedMessageIds.clear();
     reportedToolErrorKeys.clear();
+    resumableRun = null;
+    // A cleared chat drops manual chips and prior dismissals; the reconcile
+    // effect re-seeds fresh page/document chips for the new turn.
+    runContextSelection = createEmptyAgentRunContextSelection();
+    turnContextByMessageId.clear();
+    // New conversation → restart the per-session analytics turn sequence.
+    analyticsTurnIndex = 0;
+    pendingAnalyticsEntryFrom = "composer";
+    pendingAnalyticsHints = null;
     lastPersistStatus = "idle";
     input = "";
     artifactWarehouse.clearActiveArtifact(activeSessionId);
@@ -1873,6 +2302,7 @@
 
   function handleStop() {
     void conversation.stop();
+    void refreshActiveSessionRunState("chat.stop");
   }
 
   function handleClearArtifact() {
@@ -1984,12 +2414,22 @@
       activity={agentActivity}
       bind:input
       onSubmit={handleSubmit}
+      onSelectSuggestion={() => { pendingAnalyticsEntryFrom = "workflow_launcher"; }}
       onStop={handleStop}
       onClear={handleClear}
+      runRecovery={runRecovery}
+      onContinue={handleContinue}
+      contextItems={runContextSelection.items}
+      contextSources={contextCandidates.sources}
+      onAttachContext={handleAttachContext}
+      onRemoveContext={handleRemoveContext}
+      messageContext={messageContextItems}
       shouldRenderArtifact={shouldRenderInlineArtifact}
     >
       {#snippet actions()}
-        <ThemePicker />
+        {#if !isEmbeddedHostContextExpected()}
+          <ThemePicker />
+        {/if}
         <button
           type="button"
           onclick={openDocumentEditor}
@@ -2049,6 +2489,7 @@
           loading={isStreaming}
           store={activeArtifactStateStore}
           onStateChange={handleActiveArtifactStateChange}
+          onAction={handleJsonRenderAction}
         />
       {/if}
     </CanvasViewport>

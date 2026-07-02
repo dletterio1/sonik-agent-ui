@@ -66,7 +66,14 @@ assert.equal(pageSource.includes("{#snippet rail()}"), true, "top-level app shou
 assert.equal(pageSource.includes("sessionId: activeSessionId"), true, "generate requests should carry active session id");
 assert.equal(pageSource.includes("...createWorkspaceRequestHeaders()"), true, "generate transport must use the same signed host-context headers as workspace persistence calls");
 assert.equal(pageSource.includes("function createWorkspaceRequestHeaders"), true, "workspace request headers should be centralized for generate/session/document/artifact calls");
-assert.equal(pageSource.includes('"createSession", "submitPrompt"'), true, "page context should expose a semantic createSession action before submitPrompt");
+const visibleActionsBlock = pageSource.match(/visibleActions:\s*\[([\s\S]*?)\],\n\s*visibleWarnings:/)?.[1] ?? "";
+assert.equal(visibleActionsBlock.includes('"createSession"'), true, "page context should expose a semantic createSession action");
+assert.equal(visibleActionsBlock.includes('"submitPrompt"'), true, "page context should expose a semantic submitPrompt action");
+assert.equal(
+  visibleActionsBlock.indexOf('"createSession"') < visibleActionsBlock.indexOf('"submitPrompt"'),
+  true,
+  "page context should expose createSession before submitPrompt",
+);
 assert.equal(pageSource.includes("createSession: async () =>"), true, "page-control contract should expose a deterministic fresh-session semantic action for smoke tests");
 assert.equal(pageSource.includes("await createSession({ force: true })"), true, "fresh-session semantic action should route through the same session creation path as the app shell");
 assert.equal(pageSource.includes("function deriveChatTitle"), true, "app shell should derive deterministic first-message chat titles locally");
@@ -135,7 +142,11 @@ assert.equal(generateRoute.includes("fallback: createBookingRuntimeAuthContextFr
 assert.equal(generateRoute.includes("const APPROVED_COMMAND_IDS_MAX_ITEMS = 128"), true, "generate route should preserve generated booking command grants beyond the old demo-only 20-id cap");
 assert.equal(generateRoute.includes(".slice(0, APPROVED_COMMAND_IDS_MAX_ITEMS)"), true, "generate route should still bound trusted approved command ids with a named guardrail");
 assert.equal(generateRoute.includes("bookingRuntimeCredentialed"), true, "generate telemetry should expose credential posture without logging credentials");
-assert.equal(generateRoute.includes("createAgent({ activeDocument, sessionId: telemetrySessionId, pageContext, hostSession, approvedCommandIds, bookingServiceBaseUrl, bookingRuntimeAuth, bookingRuntimeFetcher, persistence: requestPersistence })"), true, "agent tools should receive active workspace session id, page context, trusted host session, approval grants, configured booking runtime base URL, server-side auth mode, and injectable runtime fetcher");
+assert.equal(generateRoute.includes("createAgent({ activeDocument: effectiveActiveDocument, sessionId: telemetrySessionId, pageContext, hostSession, approvedCommandIds, bookingServiceBaseUrl, bookingRuntimeAuth, bookingRuntimeFetcher, persistence: requestPersistence, skillIds })"), true, "agent tools should receive the selection-gated active document, active workspace session id, page context, trusted host session, approval grants, configured booking runtime base URL, server-side auth mode, injectable runtime fetcher, and the per-turn composed skill ids");
+assert.equal(generateRoute.includes("resolveAgentContextSelection(runContextSelection)"), true, "generate route should resolve the explicit composer context selection");
+assert.equal(generateRoute.includes("includeActiveDocument: selectionResolution.includeActiveDocument"), true, "generate route should gate the effective document on the composer selection (authoritative removal at the server boundary when the chip is deselected)");
+assert.equal(generateRoute.includes("selectedDocumentId: selectionResolution.documentIds[0]"), true, "generate route should feed the chip-selected document rather than always the request's active document");
+assert.equal(generateRoute.includes("contextSelection: runContextSelection ?? null"), true, "generate route should persist the composer selection on the run record");
 assert.equal(generateRoute.includes("CURRENT HOST/PAGE CONTEXT:"), true, "generate route should inject host page context as first-class model context, not only telemetry/tool metadata");
 assert.equal(generateRoute.includes("If the user asks where they are"), true, "generate route should instruct page-location questions to answer from the donated page context");
 assert.equal(generateRoute.includes("visibleActions: routeStringArray(record.visibleActions"), true, "generate route should preserve host-visible action labels in the page context summary");
@@ -292,6 +303,9 @@ assert.equal(pageSource.includes("SONIK_AGENT_UI_PAGE_CONTEXT_REQUEST"), true, "
 assert.equal(pageSource.includes("sessionBootstrapPromise"), true, "embedded session bootstrap should guard repeated host page-context messages while initialization is in flight");
 assert.equal(pageSource.includes("if (!authenticated || !organizationId || !userId || !hostSession) return {}"), true, "workspace authority headers should require an authenticated donated hostSession, not display-only page context");
 assert.equal(pageSource.includes("signature: hostPageContext?.signature ?? null"), true, "workspace authority headers should forward signed host-context proof into cloud API requests");
+assert.equal(pageSource.includes("function createSignedWorkspaceHostSession"), true, "workspace authority headers should canonicalize the signed hostSession envelope before re-encoding it");
+assert.equal(pageSource.includes("...hostSession,"), false, "workspace authority headers must not spread sanitized display-only hostSession fields into the HMAC-covered envelope");
+assert.equal(pageSource.includes("hostSession.theme"), true, "the regression guard should document that display-only hostSession.theme exists outside the signed workspace header");
 assert.equal(agentEmbedSource.includes("signatureVersion"), true, "agent embed sanitizer should preserve signed host-context proof fields across postMessage donation");
 assert.equal(pageSource.includes("workspace.persistence.runtime"), true, "embedded app should log safe runtime persistence diagnostics from response headers");
 assert.equal(pageSource.includes("readWorkspaceResponseError"), true, "client workspace fetch failures should parse structured error envelopes before falling back to bounded text");
@@ -358,6 +372,11 @@ assert.equal(openDocumentEditorSource.includes("const document = await createIni
 assert.equal(openDocumentEditorSource.indexOf("documentEditorOpen = true;") > openDocumentEditorSource.indexOf("const document = await createInitialWorkspaceDocument();"), true, "document iframe should open only after openDocumentEditor has created or selected a document snapshot");
 assert.equal(pageSource.includes("if (/\\b(document|markdown|html|code|editor|workspace)\\b/i.test(trimmed))"), false, "chat submit should not prematurely open the document iframe before a tool-created document exists");
 assert.equal(pageSource.includes("lastPersistStatus"), true, "page assertions should track post-stream persistence state for crash regression gates");
+assert.equal(pageSource.includes("runRecovery={runRecovery}"), true, "chat shell should pass resumable run recovery into the conversation surface");
+assert.equal(pageSource.includes("onContinue={handleContinue}"), true, "chat shell should wire Continue to the canonical resume prompt handler");
+assert.equal(agentConversationSource.includes("data-run-recovery-action=\"continue\""), true, "conversation surface should expose a machine-readable Continue affordance");
+assert.equal(agentConversationSource.indexOf("data-run-recovery") < agentConversationSource.indexOf("{#if isEmpty}"), true, "Continue recovery should render before the empty/non-empty split so embedded sidecars can resume even without rebuilt messages");
+assert.equal(pageSource.includes("refreshActiveSessionRunState(\"chat.stop\")"), true, "client Stop should refresh the active session so a canceled resumable run immediately shows Continue");
 for (const [componentName, componentSource] of Object.entries(boundInputComponentSources)) {
   assert.equal(componentSource.includes("function valueBinding()"), false, `${componentName} must not recreate bound props in handlers because getBoundProp reads Svelte context`);
   assert.equal(componentSource.includes("valueBinding().current"), false, `${componentName} must not call getBoundProp from click/input handlers`);
@@ -388,7 +407,7 @@ assert.equal(agentTelemetrySource.includes("Cloudflare Workers do not provide a 
 const artifactToolSource = await readFile("apps/standalone-sveltekit/src/lib/tools/artifact.ts", "utf8");
 const jsonArtifactSpecSource = await readFile("apps/standalone-sveltekit/src/lib/artifacts/json-artifact-spec.ts", "utf8");
 const artifactGuidanceSource = await readFile("apps/standalone-sveltekit/src/lib/artifacts/artifact-generation-guidance.ts", "utf8");
-const agentSource = await readFile("apps/standalone-sveltekit/src/lib/agent.ts", "utf8");
+const agentPromptSource = await readFile("apps/standalone-sveltekit/src/lib/agent-prompt.ts", "utf8");
 const componentRegistrySource = await readFile("apps/standalone-sveltekit/src/lib/render/component-registry.ts", "utf8");
 const rootReadmeSource = await readFile("README.md", "utf8");
 assert.equal(artifactToolSource.includes("validateSpec"), true, "artifact tool should use shared json-render structural validation");
@@ -410,10 +429,10 @@ assert.equal(artifactGuidanceSource.includes("getJsonArtifactToolDescription"), 
 assert.equal(artifactGuidanceSource.includes("JSON.stringify(starterToolInput"), true, "artifact guidance should derive the minimal prompt example from the validated starter object");
 assert.equal(artifactGuidanceSource.includes("JSON.stringify(dashboardToolInput"), true, "artifact guidance should derive the dashboard prompt example from the validated dashboard object");
 assert.equal(artifactToolSource.includes("getJsonArtifactToolDescription()"), true, "artifact tool should consume centralized generation guidance instead of duplicating examples");
-assert.equal(agentSource.includes("JSON_ARTIFACT_TOOL_OBJECT_GUIDANCE"), true, "agent instructions should include object-form artifact examples for live model generation quality");
-assert.equal(agentSource.includes("ARTIFACT TOOL OBJECT EXAMPLES"), true, "agent instructions should have a dedicated artifact tool object section");
-assert.equal(agentSource.includes("DATA BINDING FOR INLINE SPEC FENCES AND NON-TOOL UI SPECS"), true, "agent instructions should scope broad $state guidance away from strict tool input");
-assert.equal(agentSource.includes("For inline JSON-render responses outside createJsonArtifact"), true, "agent instructions should keep generic $state data guidance outside strict createJsonArtifact input");
+assert.equal(agentPromptSource.includes("JSON_ARTIFACT_TOOL_OBJECT_GUIDANCE"), true, "agent instructions should include object-form artifact examples for live model generation quality");
+assert.equal(agentPromptSource.includes("ARTIFACT TOOL OBJECT EXAMPLES"), true, "agent instructions should have a dedicated artifact tool object section");
+assert.equal(agentPromptSource.includes("DATA BINDING FOR INLINE SPEC FENCES AND NON-TOOL UI SPECS"), true, "agent instructions should scope broad $state guidance away from strict tool input");
+assert.equal(agentPromptSource.includes("For inline JSON-render responses outside createJsonArtifact"), true, "agent instructions should keep generic $state data guidance outside strict createJsonArtifact input");
 assert.equal(artifactToolSource.includes("Intentional contract mirror"), true, "artifact tool should document catalog-to-tool schema coupling as an intentional contract");
 assert.equal(componentRegistrySource.includes("JSON_RENDER_COMPONENT_GROUPS"), true, "json-render components should have a human/agent-readable grouped registry map");
 assert.equal(componentRegistrySource.includes("JSON_RENDER_COMPONENT_REGISTRY_PATHS"), true, "json-render component registry should document the catalog/registry/runtime paths");
