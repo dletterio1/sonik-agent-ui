@@ -12,6 +12,7 @@
   import { AgentConversation, getSpec, getText, snapshotDataParts, type AgentActivityStatus, type AgentChatMessage } from "@sonik-agent-ui/chat-surface";
   import { upsertJsonRenderArtifact, type JsonRenderArtifact } from "@sonik-agent-ui/artifact-model";
   import { DEFAULT_WORKSPACE_SESSION_NAME, deriveWorkspaceSessionTitle, isDefaultWorkspaceSessionName } from "@sonik-agent-ui/workspace-session";
+  import { RESUME_CONTINUE_PROMPT, describeRunError, isRunErrorCode } from "@sonik-agent-ui/tool-contracts";
   import { promoteJsonRenderArtifact } from "$lib/artifacts/json-render-promotion";
   import { findDocumentArtifactToolCandidate, findJsonArtifactToolCandidate, type PreferredDocumentView } from "$lib/artifacts/tool-artifact-extraction";
   import { hasActiveArtifactUpdateIntent, hasExplicitArtifactIntent } from "$lib/artifacts/artifact-promotion";
@@ -106,10 +107,26 @@
     created_at: string;
   }
 
+  interface WorkspaceRunSummary {
+    id: string;
+    status: "running" | "succeeded" | "failed" | "canceled";
+    resumable: boolean;
+    error: string | null;
+    error_code: string | null;
+    message_id: string | null;
+    started_at: string;
+    ended_at: string | null;
+  }
+
   interface WorkspaceSessionDetail {
     session: WorkspaceSessionSummary;
     activeDocument: ActiveDocumentSnapshot | null;
     messages: WorkspaceMessageSnapshot[];
+    runs?: WorkspaceRunSummary[];
+    reattach?: {
+      run: WorkspaceRunSummary;
+      message: { id: string; role: "assistant"; content: string; parts: DataPart[] } | null;
+    } | null;
     telemetry?: unknown[];
     artifactState?: {
       persistence: "cloud-or-memory-v1";
@@ -154,6 +171,7 @@
   let activeSessionId = $state<string | null>(null);
   let sessionRailBusy = $state(false);
   let sessionRailError = $state<string | null>(null);
+  let resumableRun = $state<WorkspaceRunSummary | null>(null);
   let persistedMessageIds = new SvelteSet<string>();
   let reportedToolErrorKeys = new SvelteSet<string>();
   let processedJsonRenderPromotionKeys = new SvelteSet<string>();
@@ -1595,6 +1613,7 @@
       parts: normalizePersistedParts(message),
     })) as typeof conversation.messages;
     persistedMessageIds = new SvelteSet(detail.messages.map((message) => message.id));
+    reattachRunState(detail);
     activeDocument = detail.activeDocument;
     documentSeed = detail.activeDocument;
     documentPreferredView = detail.activeDocument ? inferPreferredDocumentView(detail.activeDocument.language) : "auto";
@@ -1618,6 +1637,47 @@
     pendingDocumentSnapshot = null;
     lastPersistedDocumentSignature = detail.activeDocument ? createDocumentSnapshotSignature(detail.activeDocument) : "";
   }
+
+  // Reattach a persisted run after reload: a non-succeeded latest run may carry
+  // a rebuilt assistant message (from its event log) that the client never got
+  // to persist because the stream was interrupted; a resumable run also drives
+  // the Continue affordance.
+  function reattachRunState(detail: WorkspaceSessionDetail): void {
+    resumableRun = null;
+    const reattach = detail.reattach;
+    if (!reattach?.run || reattach.run.status === "succeeded") return;
+
+    const rebuilt = reattach.message;
+    if (rebuilt && rebuilt.parts.length > 0 && !persistedMessageIds.has(rebuilt.id)) {
+      conversation.messages = [
+        ...conversation.messages,
+        { id: rebuilt.id, role: "assistant", parts: snapshotDataParts(rebuilt.parts) },
+      ] as typeof conversation.messages;
+      // The reattached message is a view of an unfinished run, not a new turn to
+      // persist — mark it so the persist effect leaves it alone.
+      persistedMessageIds.add(rebuilt.id);
+    }
+
+    if (reattach.run.resumable) {
+      resumableRun = reattach.run;
+      logSessionTelemetry("session.run.reattached", {
+        sessionId: detail.session.id,
+        reason: reattach.run.error_code ?? reattach.run.status,
+      });
+    }
+  }
+
+  const runRecovery = $derived.by(() => {
+    if (!resumableRun) return null;
+    const code = isRunErrorCode(resumableRun.error_code) ? resumableRun.error_code : null;
+    const affordance = describeRunError(code);
+    return {
+      title: affordance.title,
+      guidance: affordance.guidance,
+      actionLabel: affordance.actionLabel,
+      canContinue: affordance.resumable && resumableRun.resumable,
+    };
+  });
 
   function hydrateArtifactState(detail: WorkspaceSessionDetail): (ArtifactWarehouseSnapshot<Spec> & { artifact: JsonRenderArtifact }) | null {
     const activeArtifactRecord = detail.artifactState?.activeArtifact;
@@ -1840,14 +1900,28 @@
     }
 
     logSessionTelemetry("chat.submit.start", { sessionId: activeSessionId, reason: `${trimmed.length} chars` });
+    // A fresh user turn supersedes any pending run recovery.
+    resumableRun = null;
     maybeNameNewChat(trimmed);
     conversation.sendMessage({ text: trimmed });
+  }
+
+  // Continue a resumable failed/interrupted run. Distinct from retry-from-scratch:
+  // this sends the canonical continuation prompt so the agent picks up its
+  // interrupted work rather than re-running the original user turn.
+  function handleContinue() {
+    const run = resumableRun;
+    if (!run) return;
+    resumableRun = null;
+    logSessionTelemetry("chat.continue.start", { sessionId: activeSessionId, reason: run.error_code ?? run.status });
+    conversation.sendMessage({ text: RESUME_CONTINUE_PROMPT });
   }
 
   function handleClear() {
     conversation.messages = [];
     persistedMessageIds.clear();
     reportedToolErrorKeys.clear();
+    resumableRun = null;
     lastPersistStatus = "idle";
     input = "";
     artifactWarehouse.clearActiveArtifact(activeSessionId);
@@ -1986,6 +2060,8 @@
       onSubmit={handleSubmit}
       onStop={handleStop}
       onClear={handleClear}
+      runRecovery={runRecovery}
+      onContinue={handleContinue}
       shouldRenderArtifact={shouldRenderInlineArtifact}
     >
       {#snippet actions()}

@@ -15,6 +15,13 @@
     tone?: "neutral" | "waiting" | "tool" | "artifact" | "error";
   }
 
+  export interface AgentRunRecovery {
+    title: string;
+    guidance: string;
+    actionLabel: string | null;
+    canContinue: boolean;
+  }
+
   export interface AgentConversationProps {
     title?: string;
     messages: AgentChatMessage[];
@@ -27,6 +34,9 @@
     onSubmit: (text: string) => void;
     onStop?: () => void;
     onClear?: () => void;
+    /** Recovery affordance for a resumable/failed run, keyed off the run's error code. */
+    runRecovery?: AgentRunRecovery | null;
+    onContinue?: () => void;
     actions?: Snippet;
     renderArtifact: Snippet<[Spec, boolean]>;
     shouldRenderArtifact?: (message: AgentChatMessage) => boolean;
@@ -50,6 +60,8 @@
     onSubmit,
     onStop,
     onClear,
+    runRecovery = null,
+    onContinue,
     actions,
     renderArtifact,
     shouldRenderArtifact,
@@ -140,6 +152,29 @@
         {#if error?.message}
           <div class="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             {error.message}
+          </div>
+        {/if}
+
+        {#if runRecovery}
+          <div
+            class="flex flex-col gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm"
+            data-run-recovery
+          >
+            <div class="font-medium text-foreground">{runRecovery.title}</div>
+            <p class="text-muted-foreground">{runRecovery.guidance}</p>
+            {#if runRecovery.canContinue && runRecovery.actionLabel}
+              <div>
+                <button
+                  type="button"
+                  onclick={() => onContinue?.()}
+                  disabled={isStreaming}
+                  data-run-recovery-action="continue"
+                  class="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+                >
+                  {runRecovery.actionLabel}
+                </button>
+              </div>
+            {/if}
           </div>
         {/if}
       </div>
