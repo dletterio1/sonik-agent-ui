@@ -60,6 +60,10 @@
     createJsonRenderStateStore,
     type JsonRenderStateChange,
   } from "$lib/render/json-render-state-controller";
+  import {
+    createQuestionAnswerTurnPayload,
+    serializeQuestionAnswerTurnMessage,
+  } from "$lib/render/question-answer-loop";
   import { createWorkflowSuggestions } from "$lib/agent-workflows/suggestions";
 
   interface ActiveDocumentSnapshot {
@@ -772,11 +776,11 @@
     }
   }
 
-  async function persistActiveArtifactStatePatch(): Promise<void> {
+  async function persistActiveArtifactStatePatch(): Promise<{ artifact: WorkspaceArtifactSnapshot; activeArtifactVersions: WorkspaceArtifactVersionSnapshot[] } | null> {
     clearActiveArtifactStateSaveTimer();
     const artifact = activeArtifact;
     const changes = pendingActiveArtifactStateChanges;
-    if (!artifact || changes.length === 0) return;
+    if (!artifact || changes.length === 0) return null;
 
     let payload: ReturnType<typeof buildJsonRenderStatePatchPayload>;
     try {
@@ -792,7 +796,7 @@
         root: artifact.content.root,
         elementCount: Object.keys(artifact.content.elements ?? {}).length,
       });
-      return;
+      return null;
     }
 
     pendingActiveArtifactStateChanges = [];
@@ -815,7 +819,7 @@
           error: body?.error ?? "Artifact version conflict",
         });
         if (activeSessionId) await switchSession(activeSessionId, { force: true });
-        return;
+        return null;
       }
       if (!response.ok) throw new Error(await readWorkspaceResponseError(response));
       const result = await response.json() as { artifact: WorkspaceArtifactSnapshot; activeArtifactVersions: WorkspaceArtifactVersionSnapshot[] };
@@ -837,6 +841,7 @@
         elementCount: payload.changes.length,
         ok: true,
       });
+      return result;
     } catch (error) {
       pendingActiveArtifactStateChanges = mergeStateChanges(pendingActiveArtifactStateChanges, payload.changes);
       reportClientEffectError("json_render.state_patch.error", error, {
@@ -844,6 +849,7 @@
         root: artifact.content.root,
         elementCount: Object.keys(artifact.content.elements ?? {}).length,
       });
+      return null;
     }
   }
 
@@ -2109,6 +2115,85 @@
     }
   }
 
+  function sendUserTurnWithEntryFrom(message: string, entryFrom: AgentAnalyticsEntryFrom): void {
+    const trimmed = message.trim();
+    if (!trimmed || isStreaming) return;
+    resumableRun = null;
+    stampAnalyticsHints(entryFrom);
+    pendingAnalyticsEntryFrom = "composer";
+    const turnContext = ($state.snapshot(runContextSelection).items ?? []) as AgentContextItem[];
+    conversation.sendMessage({ text: trimmed });
+    const sentUserMessage = conversation.messages.at(-1);
+    if (turnContext.length > 0 && sentUserMessage?.role === "user") {
+      turnContextByMessageId.set(sentUserMessage.id, turnContext);
+    }
+  }
+
+  async function handleJsonRenderAction(actionName: string, params?: Record<string, unknown>): Promise<void> {
+    if (actionName === "submitAnswer") {
+      await handleSubmitAnswerAction(params ?? {});
+      return;
+    }
+    logArtifactTelemetry({
+      source: "client",
+      event: "json_render.action.ignored",
+      sessionId: activeSessionId ?? undefined,
+      artifactId: activeArtifact?.id,
+      artifactVersion: activeArtifact?.version,
+      reason: actionName,
+      ok: false,
+      error: "No trusted host action handler is registered for this action.",
+    });
+  }
+
+  async function handleSubmitAnswerAction(params: Record<string, unknown>): Promise<void> {
+    const artifactBeforePersist = activeArtifact;
+    if (!artifactBeforePersist) {
+      logArtifactTelemetry({
+        source: "client",
+        event: "question_answer.submit.blocked",
+        sessionId: activeSessionId ?? undefined,
+        reason: "missing_active_artifact",
+        ok: false,
+        error: "Question answers require an active persisted artifact.",
+      });
+      return;
+    }
+
+    const persisted = await persistActiveArtifactStatePatch();
+    if (!persisted) {
+      logArtifactTelemetry({
+        source: "client",
+        event: "question_answer.submit.blocked",
+        sessionId: activeSessionId ?? undefined,
+        artifactId: artifactBeforePersist.id,
+        artifactVersion: artifactBeforePersist.version,
+        reason: "artifact_state_not_persisted",
+        ok: false,
+        error: "Question answer state was not persisted; generate turn was not sent.",
+      });
+      return;
+    }
+
+    const payload = createQuestionAnswerTurnPayload({
+      actionParams: params,
+      artifactId: persisted.artifact.id,
+      artifactVersion: persisted.artifact.version,
+      sessionId: activeSessionId,
+    });
+    const message = serializeQuestionAnswerTurnMessage(payload);
+    logArtifactTelemetry({
+      source: "client",
+      event: "question_answer.submit.generate",
+      sessionId: activeSessionId ?? undefined,
+      artifactId: payload.artifact.id,
+      artifactVersion: payload.artifact.version,
+      reason: payload.submission.questionId,
+      ok: true,
+    });
+    sendUserTurnWithEntryFrom(message, "question_answer");
+  }
+
   // Continue a resumable failed/interrupted run. Distinct from retry-from-scratch:
   // this sends the canonical continuation prompt so the agent picks up its
   // interrupted work rather than re-running the original user turn.
@@ -2345,6 +2430,7 @@
           loading={isStreaming}
           store={activeArtifactStateStore}
           onStateChange={handleActiveArtifactStateChange}
+          onAction={handleJsonRenderAction}
         />
       {/if}
     </CanvasViewport>
