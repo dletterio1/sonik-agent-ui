@@ -15,6 +15,13 @@ function stableQuestionElementId(questionId: string, index: number): string {
   return `question-${index}-${escapeJsonPointerSegment(questionId).replace(/[^a-zA-Z0-9_~.-]/g, "-")}`;
 }
 
+function normalizeRenderedMaxSelections(answerType: string, minSelections: number, maxSelections: number | undefined): number | null {
+  if (answerType === "single_choice" || answerType === "choice_cards" || answerType === "confirmation") return 1;
+  if (answerType !== "multi_choice") return null;
+  if (typeof maxSelections === "number" && Number.isInteger(maxSelections) && maxSelections > 0) return Math.max(maxSelections, minSelections);
+  return minSelections > 0 ? minSelections : null;
+}
+
 export function createInteractiveSurfaceJsonRenderSpec(surfaceInput: unknown): JsonRenderSpecLike {
   const surface: InteractiveSurfaceSpec = createInteractiveSurfaceSpec(surfaceInput);
   const questionElementIds = surface.questions.map((question, index) => stableQuestionElementId(question.id, index));
@@ -67,7 +74,7 @@ export function createInteractiveSurfaceJsonRenderSpec(surfaceInput: unknown): J
         skipValue: question.skipValue,
         writesTo: question.writesTo ?? null,
         minSelections: question.minSelections,
-        maxSelections: question.maxSelections ?? null,
+        maxSelections: normalizeRenderedMaxSelections(question.answerType, question.minSelections, question.maxSelections),
         confidence: question.confidence ?? null,
         reviewRequired: question.reviewRequired,
         submitLabel: "Save answer",

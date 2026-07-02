@@ -12,6 +12,7 @@ import {
   type AskUserQuestionSpec,
   type QuestionAnswerSubmission,
 } from "@sonik-agent-ui/tool-contracts";
+import { normalizeRenderedMaxSelections } from "../render/question-max-selections.ts";
 import {
   createRequestWorkspaceArtifact,
   getRequestWorkspaceArtifact,
@@ -256,7 +257,7 @@ function createIntakeSurfaceSpec(surface: InteractiveSurfaceSpec): Spec {
         skipValue: question.skipValue,
         writesTo: question.writesTo ?? null,
         minSelections: question.minSelections,
-        maxSelections: question.maxSelections ?? null,
+        maxSelections: normalizeRenderedMaxSelections(question.answerType, question.minSelections, question.maxSelections) ?? null,
         confidence: question.confidence ?? null,
         reviewRequired: question.reviewRequired,
         submitLabel: "Save answer",
@@ -299,7 +300,7 @@ function resolvePersistedQuestion(content: Spec, questionId: string): AskUserQue
       skipValue: props.skipValue,
       writesTo: props.writesTo === null ? undefined : props.writesTo,
       minSelections: props.minSelections,
-      maxSelections: props.maxSelections === null ? undefined : props.maxSelections,
+      maxSelections: normalizeRenderedMaxSelections(props.answerType, props.minSelections, props.maxSelections),
       confidence: props.confidence === null ? undefined : props.confidence,
       reviewRequired: props.reviewRequired,
     });
