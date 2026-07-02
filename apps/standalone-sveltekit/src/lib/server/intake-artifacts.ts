@@ -259,8 +259,30 @@ function createIntakeSurfaceSpec(surface: InteractiveSurfaceSpec): Spec {
         maxSelections: question.maxSelections ?? null,
         confidence: question.confidence ?? null,
         reviewRequired: question.reviewRequired,
-        submitLabel: "Save answer",
+        submitLabel: "Continue",
         skipLabel: "Mark unknown",
+      },
+      on: {
+        submit: {
+          action: "submitAnswer",
+          params: {
+            questionId: question.id,
+            value: { $state: `/answers/${questionIdSegment}` },
+            skipped: false,
+            writesTo: question.writesTo ?? null,
+            submission: { $state: `/questionSubmissions/${questionIdSegment}` },
+          },
+        },
+        skip: {
+          action: "submitAnswer",
+          params: {
+            questionId: question.id,
+            value: { $state: `/answers/${questionIdSegment}` },
+            skipped: true,
+            writesTo: question.writesTo ?? null,
+            submission: { $state: `/questionSubmissions/${questionIdSegment}` },
+          },
+        },
       },
       children: [],
     };
