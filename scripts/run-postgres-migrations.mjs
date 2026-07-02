@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { buildPgEnv } from "./lib/postgres-connection.mjs";
 
 const repoRoot = process.cwd();
 const databaseUrl = process.env.DATABASE_URL;
@@ -67,11 +68,18 @@ if (!databaseUrl) {
 	process.exit(2);
 }
 
+// Supply the connection via PG* env vars, never as a psql argv: a non-zero psql
+// exit echoes its argv (password included) to stderr, which the release gate
+// captures and persists into evidence. Keeping credentials in the env keeps them
+// out of any error/log output.
+const pgEnv = buildPgEnv(databaseUrl);
+
 function psql(args, options = {}) {
-	return execFileSync("psql", [databaseUrl, "-v", "ON_ERROR_STOP=1", ...args], {
+	return execFileSync("psql", ["-v", "ON_ERROR_STOP=1", ...args], {
 		cwd: repoRoot,
 		encoding: "utf8",
 		stdio: options.stdio ?? ["ignore", "pipe", "inherit"],
+		env: { ...process.env, ...pgEnv },
 	});
 }
 

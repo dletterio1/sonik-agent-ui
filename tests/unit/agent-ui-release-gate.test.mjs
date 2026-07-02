@@ -4,6 +4,7 @@ import {
   runReleaseGateChecks,
   buildReport,
   formatReport,
+  scrubCredentials,
 } from "../../scripts/lib/agent-ui-release-gate-core.mjs";
 
 // Stubbed checks: the orchestration is proven without any live infra.
@@ -96,6 +97,33 @@ function stub(name, outcome) {
   assert.match(text, /\[PASS\] pnpm build/);
   assert.match(text, /\[SKIP\] migrations \(live\) — no DATABASE_URL/);
   assert.match(text, /GATE: GREEN/);
+}
+
+// --- credential scrubber redacts connection-string passwords -------------
+{
+  assert.equal(
+    scrubCredentials("psql: error connecting to postgres://neon_user:sup3r-s3cret@ep-x.neon.tech:5432/appdb?sslmode=require"),
+    "psql: error connecting to postgres://neon_user:***@ep-x.neon.tech:5432/appdb?sslmode=require",
+    "the password in a postgres connection string is redacted, host/db preserved",
+  );
+  // Other userinfo schemes are covered too (defense-in-depth).
+  assert.equal(scrubCredentials("mongodb+srv://svc:passw0rd@cluster/db"), "mongodb+srv://svc:***@cluster/db");
+  // Non-credentialed text is untouched.
+  assert.equal(scrubCredentials("just a normal log line https://example.com/x"), "just a normal log line https://example.com/x");
+  assert.equal(scrubCredentials(null), null, "non-strings pass through unchanged");
+}
+
+// --- the evidence writer scrubs credentialed URLs before persisting ------
+// The CLI serializes the report to JSON and scrubs it as the last step; proving
+// the scrubber over a serialized report is the unit-level guarantee that no
+// captured tail leaks a password into the on-disk evidence file.
+{
+  const evidenceJson = JSON.stringify({
+    results: [{ name: "migrations", status: "fail", detail: { tail: "FATAL: could not connect: postgres://u:topsecret@db.host/app" } }],
+  });
+  const scrubbed = scrubCredentials(evidenceJson);
+  assert.ok(!scrubbed.includes("topsecret"), "the persisted evidence JSON carries no password");
+  assert.match(scrubbed, /postgres:\/\/u:\*\*\*@db\.host\/app/, "the connection string is redacted, not dropped");
 }
 
 console.log("agent-ui-release-gate.test.mjs OK");

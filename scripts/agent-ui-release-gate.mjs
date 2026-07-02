@@ -16,7 +16,7 @@ import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CHECK_STATUS, runReleaseGateChecks, formatReport } from "./lib/agent-ui-release-gate-core.mjs";
+import { CHECK_STATUS, runReleaseGateChecks, formatReport, scrubCredentials } from "./lib/agent-ui-release-gate-core.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const runId = process.env.AGENT_UI_GATE_RUN_ID ?? `agent-ui-release-gate-${new Date().toISOString().replace(/[:.]/g, "-")}`;
@@ -45,7 +45,7 @@ function runCommand(command, args, { env } = {}) {
     const child = spawn(command, args, { cwd: repoRoot, env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
     let tail = "";
     const append = (chunk) => {
-      tail = `${tail}${chunk}`.slice(-4000);
+      tail = scrubCredentials(`${tail}${chunk}`).slice(-4000);
     };
     child.stdout.on("data", append);
     child.stderr.on("data", append);
@@ -220,9 +220,11 @@ async function main() {
   });
 
   await mkdir(path.dirname(evidencePath), { recursive: true });
+  // Final scrub: no credentialed connection string ever reaches the on-disk
+  // evidence file, regardless of which check produced the captured output.
   await writeFile(
     evidencePath,
-    JSON.stringify({ schemaVersion: "sonik.agent_ui.release_gate.v1", runId, finishedAt: new Date().toISOString(), ...report }, null, 2),
+    scrubCredentials(JSON.stringify({ schemaVersion: "sonik.agent_ui.release_gate.v1", runId, finishedAt: new Date().toISOString(), ...report }, null, 2)),
   );
 
   console.log(formatReport(report));

@@ -17,6 +17,17 @@ export const CHECK_STATUS = Object.freeze({
   SKIPPED: "skipped",
 });
 
+// Redact the password in a credentialed connection string (postgres://user:pass@…
+// and other userinfo URLs) before it reaches a log line or the persisted evidence
+// file. Defense-in-depth: the migration runner already keeps credentials out of
+// argv, but any captured output still passes through this scrubber.
+const CONNECTION_STRING_CREDENTIAL_PATTERN = /\b([a-z][a-z0-9+.-]*:\/\/[^\s:/@]+):[^\s/@]+@/gi;
+
+export function scrubCredentials(value) {
+  if (typeof value !== "string") return value;
+  return value.replace(CONNECTION_STRING_CREDENTIAL_PATTERN, "$1:***@");
+}
+
 const VALID_STATUSES = new Set(Object.values(CHECK_STATUS));
 
 function normalizeOutcome(outcome) {
