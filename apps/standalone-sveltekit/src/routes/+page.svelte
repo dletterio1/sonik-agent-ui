@@ -7,6 +7,7 @@
   import { Chat } from "@ai-sdk/svelte";
   import { DefaultChatTransport } from "ai";
   import type { DataPart, Spec } from "@json-render/svelte";
+  import type { StateStore } from "@json-render/core";
   import { JsonArtifactRenderer } from "@sonik-agent-ui/json-ui-runtime";
   import { AgentConversation, getSpec, getText, snapshotDataParts, type AgentActivityStatus, type AgentChatMessage } from "@sonik-agent-ui/chat-surface";
   import { upsertJsonRenderArtifact, type JsonRenderArtifact } from "@sonik-agent-ui/artifact-model";
@@ -40,6 +41,13 @@
     type AgentEmbedRailMode,
   } from "@sonik-agent-ui/agent-embed";
   import { registry } from "$lib/render/registry";
+  import {
+    applyJsonRenderStateChanges,
+    buildJsonRenderStatePatchPayload,
+    createJsonRenderStateStore,
+    type JsonRenderStateChange,
+  } from "$lib/render/json-render-state-controller";
+  import { createWorkflowSuggestions } from "$lib/agent-workflows/suggestions";
 
   interface ActiveDocumentSnapshot {
     id: string;
@@ -129,6 +137,10 @@
   let activeArtifact = $state<JsonRenderArtifact | null>(null);
   let activeArtifactStatus = $state<ArtifactStatus | null>(null);
   let activeArtifactVersions = $state<ArtifactWarehouseVersion<Spec>[]>([]);
+  let activeArtifactStateStore = $state<StateStore | undefined>();
+  let activeArtifactStateStoreKey = $state<string | null>(null);
+  let activeArtifactStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingActiveArtifactStateChanges: JsonRenderStateChange[] = [];
   let pendingArtifactIntent = $state<string | null>(null);
   let documentEditorOpen = $state(false);
   let activeDocument = $state<ActiveDocumentSnapshot | null>(null);
@@ -572,6 +584,188 @@
     });
   }
 
+
+  function ensureActiveArtifactStateStore(): void {
+    if (!activeArtifact) {
+      activeArtifactStateStore = undefined;
+      activeArtifactStateStoreKey = null;
+      pendingActiveArtifactStateChanges = [];
+      clearActiveArtifactStateSaveTimer();
+      return;
+    }
+    const key = `${activeArtifact.id}:${activeArtifact.version}`;
+    if (activeArtifactStateStoreKey === key && activeArtifactStateStore) return;
+    activeArtifactStateStore = createJsonRenderStateStore(activeArtifact.content);
+    activeArtifactStateStoreKey = key;
+    pendingActiveArtifactStateChanges = [];
+    clearActiveArtifactStateSaveTimer();
+  }
+
+  function handleActiveArtifactStateChange(changes: JsonRenderStateChange[]): void {
+    if (!activeArtifact) return;
+    let payload: ReturnType<typeof buildJsonRenderStatePatchPayload>;
+    try {
+      payload = buildJsonRenderStatePatchPayload({
+        artifactId: activeArtifact.id,
+        baseVersion: activeArtifact.version,
+        changes,
+      });
+    } catch (error) {
+      reportClientEffectError("json_render.state_patch.invalid", error, {
+        sessionId: activeSessionId,
+        root: activeArtifact.content.root,
+        elementCount: Object.keys(activeArtifact.content.elements ?? {}).length,
+      });
+      return;
+    }
+
+    activeArtifact = {
+      ...activeArtifact,
+      content: applyJsonRenderStateChanges(activeArtifact.content, payload.changes),
+      updatedAt: new Date().toISOString(),
+    };
+    pendingActiveArtifactStateChanges = mergeStateChanges(pendingActiveArtifactStateChanges, payload.changes);
+    logArtifactTelemetry({
+      source: "client",
+      event: "json_render.state_patch.requested",
+      sessionId: activeSessionId ?? undefined,
+      artifactId: payload.artifactId,
+      artifactVersion: payload.baseVersion,
+      reason: payload.summary,
+      elementCount: payload.changes.length,
+      ok: true,
+    });
+    scheduleActiveArtifactStatePersistence();
+  }
+
+  function mergeStateChanges(current: JsonRenderStateChange[], incoming: JsonRenderStateChange[]): JsonRenderStateChange[] {
+    const map = new Map<string, JsonRenderStateChange>();
+    for (const change of current) map.set(change.path, change);
+    for (const change of incoming) map.set(change.path, change);
+    return Array.from(map.values());
+  }
+
+  function scheduleActiveArtifactStatePersistence(): void {
+    clearActiveArtifactStateSaveTimer();
+    activeArtifactStateSaveTimer = setTimeout(() => {
+      void persistActiveArtifactStatePatch();
+    }, 600);
+  }
+
+  function clearActiveArtifactStateSaveTimer(): void {
+    if (activeArtifactStateSaveTimer) {
+      clearTimeout(activeArtifactStateSaveTimer);
+      activeArtifactStateSaveTimer = null;
+    }
+  }
+
+  async function persistActiveArtifactStatePatch(): Promise<void> {
+    clearActiveArtifactStateSaveTimer();
+    const artifact = activeArtifact;
+    const changes = pendingActiveArtifactStateChanges;
+    if (!artifact || changes.length === 0) return;
+
+    let payload: ReturnType<typeof buildJsonRenderStatePatchPayload>;
+    try {
+      payload = buildJsonRenderStatePatchPayload({
+        artifactId: artifact.id,
+        baseVersion: artifact.version,
+        changes,
+      });
+    } catch (error) {
+      pendingActiveArtifactStateChanges = [];
+      reportClientEffectError("json_render.state_patch.invalid", error, {
+        sessionId: activeSessionId,
+        root: artifact.content.root,
+        elementCount: Object.keys(artifact.content.elements ?? {}).length,
+      });
+      return;
+    }
+
+    pendingActiveArtifactStateChanges = [];
+    try {
+      const response = await workspaceFetch(`/api/artifact/${encodeURIComponent(payload.artifactId)}/state`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (response.status === 409) {
+        const body = await response.json().catch(() => null) as { latestVersion?: number; error?: string } | null;
+        logArtifactTelemetry({
+          source: "client",
+          event: "json_render.state_patch.conflict",
+          sessionId: activeSessionId ?? undefined,
+          artifactId: payload.artifactId,
+          artifactVersion: payload.baseVersion,
+          reason: body?.latestVersion ? `latest v${body.latestVersion}` : undefined,
+          ok: false,
+          error: body?.error ?? "Artifact version conflict",
+        });
+        if (activeSessionId) await switchSession(activeSessionId, { force: true });
+        return;
+      }
+      if (!response.ok) throw new Error(await readWorkspaceResponseError(response));
+      const result = await response.json() as { artifact: WorkspaceArtifactSnapshot; activeArtifactVersions: WorkspaceArtifactVersionSnapshot[] };
+      applyPersistedArtifactStatePatch(result);
+      if (pendingActiveArtifactStateChanges.length > 0 && activeArtifact?.id === result.artifact.id) {
+        activeArtifact = {
+          ...activeArtifact,
+          content: applyJsonRenderStateChanges(activeArtifact.content, pendingActiveArtifactStateChanges),
+          updatedAt: new Date().toISOString(),
+        };
+        scheduleActiveArtifactStatePersistence();
+      }
+      logArtifactTelemetry({
+        source: "client",
+        event: "json_render.state_patch.persisted",
+        sessionId: activeSessionId ?? undefined,
+        artifactId: result.artifact.id,
+        artifactVersion: result.artifact.version,
+        elementCount: payload.changes.length,
+        ok: true,
+      });
+    } catch (error) {
+      pendingActiveArtifactStateChanges = mergeStateChanges(pendingActiveArtifactStateChanges, payload.changes);
+      reportClientEffectError("json_render.state_patch.error", error, {
+        sessionId: activeSessionId,
+        root: artifact.content.root,
+        elementCount: Object.keys(artifact.content.elements ?? {}).length,
+      });
+    }
+  }
+
+  function applyPersistedArtifactStatePatch(result: { artifact: WorkspaceArtifactSnapshot; activeArtifactVersions: WorkspaceArtifactVersionSnapshot[] }): void {
+    const artifact = result.artifact;
+    const snapshot = artifactWarehouse.hydrateJsonRenderArtifact({
+      sessionId: artifact.session_id ?? activeSessionId,
+      artifact: {
+        id: artifact.id,
+        kind: "json-render",
+        title: artifact.title,
+        version: artifact.version,
+        content: artifact.content,
+        createdAt: artifact.created_at,
+        updatedAt: artifact.updated_at,
+      },
+      versions: result.activeArtifactVersions.map((version) => ({
+        versionId: version.id,
+        artifactId: version.artifact_id,
+        version: version.version_number,
+        payload: version.content,
+        source: version.source === "user" ? "user-edit" : version.source === "system" ? "system" : "agent",
+        createdAt: version.created_at,
+      })),
+    });
+    applyArtifactWarehouseSnapshot(snapshot);
+    if (activeArtifactStatus) {
+      activeArtifactStatus = {
+        ...activeArtifactStatus,
+        artifactVersion: snapshot.artifact.version,
+        updatedAt: snapshot.artifact.updatedAt,
+      };
+    }
+  }
+
   function handleArtifactVersionChange(version: number): void {
     if (!activeArtifact) return;
     const snapshot = artifactWarehouse.selectJsonRenderArtifactVersion({
@@ -742,6 +936,7 @@
     const authenticated = hostSession?.authenticated === true || hostPageContext?.authenticated === true;
     const userId = hostSession?.userId ?? hostSession?.principalId;
     if (!authenticated || !organizationId || !userId || !hostSession) return {};
+    if (isEmbeddedHostContextExpected() && !hasSignedHostContext(hostPageContext)) return {};
     return {
       "x-sonik-agent-ui-host-context": encodeWorkspaceHostContextHeader({
         authenticated,
@@ -760,6 +955,23 @@
         },
       }),
     };
+  }
+
+  function hasSignedHostContext(context: AgentHostMergedPageContext | null): boolean {
+    return Boolean(
+      context?.hostSession
+        && context.authenticated === true
+        && context.organizationId
+        && context.signatureVersion
+        && context.issuedAt
+        && context.expiresAt
+        && context.signature,
+    );
+  }
+
+  function isWorkspaceHostContextReady(): boolean {
+    if (!isEmbeddedHostContextExpected()) return true;
+    return hasSignedHostContext(hostPageContext);
   }
 
   function encodeWorkspaceHostContextHeader(value: unknown): string {
@@ -1114,6 +1326,11 @@
     syncDevPageContext("state_changed");
   });
 
+
+  $effect(() => {
+    ensureActiveArtifactStateStore();
+  });
+
   $effect(() => {
     if (!activeSessionId) return;
     if (isStreaming) return;
@@ -1123,6 +1340,11 @@
   });
 
   function maybeBootstrapSessions(reason: string): void {
+    if (!isWorkspaceHostContextReady()) {
+      requestHostPageContext(`session_bootstrap_${reason}`);
+      logSessionTelemetry("session.bootstrap.waiting_for_signed_host_context", { ok: false, reason });
+      return;
+    }
     const hostPageKey = createHostPageContextKey();
     const bootstrapKey = hostPageKey ?? (isEmbeddedHostContextExpected() ? null : "standalone");
     if (!bootstrapKey) return;
@@ -1209,6 +1431,12 @@
   async function createSession({ force = false }: { force?: boolean } = {}): Promise<void> {
     if (isStreaming) {
       sessionRailError = "Stop the current stream before creating a new session.";
+      return;
+    }
+    if (!isWorkspaceHostContextReady()) {
+      sessionRailError = "Waiting for signed host context from the embedded page.";
+      requestHostPageContext("session_create_waiting_for_signed_host_context");
+      logSessionTelemetry("session.create.waiting_for_signed_host_context", { ok: false, reason: "missing_signed_host_context" });
       return;
     }
     if (sessionRailBusy && !force) return;
@@ -1574,27 +1802,10 @@
   }
 
   // =============================================================================
-  // Suggestions
+  // Workflow Suggestions
   // =============================================================================
 
-  const SUGGESTIONS = [
-    {
-      label: "Weather comparison",
-      prompt: "Compare the weather in New York, London, and Tokyo",
-    },
-    {
-      label: "GitHub repo stats",
-      prompt: "Show me stats for the vercel/next.js and vercel/ai GitHub repos",
-    },
-    {
-      label: "Crypto dashboard",
-      prompt: "Build a crypto dashboard for Bitcoin, Ethereum, and Solana",
-    },
-    {
-      label: "Hacker News top stories",
-      prompt: "Show me the top 15 Hacker News stories right now",
-    },
-  ];
+  const workflowSuggestions = $derived(createWorkflowSuggestions(createPageContextSnapshot()));
 
   // =============================================================================
   // Tool Labels
@@ -1643,6 +1854,10 @@
     activeArtifact = null;
     activeArtifactStatus = null;
     activeArtifactVersions = [];
+    activeArtifactStateStore = undefined;
+    activeArtifactStateStoreKey = null;
+    pendingActiveArtifactStateChanges = [];
+    clearActiveArtifactStateSaveTimer();
     pendingArtifactIntent = null;
     streamStartedAt = null;
     lastActivityTelemetrySignature = "";
@@ -1665,6 +1880,10 @@
     activeArtifact = null;
     activeArtifactStatus = null;
     activeArtifactVersions = [];
+    activeArtifactStateStore = undefined;
+    activeArtifactStateStoreKey = null;
+    pendingActiveArtifactStateChanges = [];
+    clearActiveArtifactStateSaveTimer();
     pendingArtifactIntent = null;
     streamStartedAt = null;
     lastActivityTelemetrySignature = "";
@@ -1760,7 +1979,7 @@
       messages={conversation.messages as AgentChatMessage[]}
       status={conversation.status}
       error={conversation.error}
-      suggestions={SUGGESTIONS}
+      suggestions={workflowSuggestions}
       toolLabels={TOOL_LABELS}
       activity={agentActivity}
       bind:input
@@ -1828,6 +2047,8 @@
           spec={activeArtifact.content}
           {registry}
           loading={isStreaming}
+          store={activeArtifactStateStore}
+          onStateChange={handleActiveArtifactStateChange}
         />
       {/if}
     </CanvasViewport>

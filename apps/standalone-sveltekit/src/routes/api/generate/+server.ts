@@ -17,6 +17,7 @@ import { instrumentGenerateStream } from "$lib/server/stream-telemetry";
 import { createDevSmokeStream, readDevSmokeRunId, shouldUseDevSmokeStream, writeDevSmokeStreamTelemetry } from "$lib/server/dev-smoke-stream";
 import { getRequestWorkspacePersistence, syncRequestActiveWorkspaceDocumentSnapshot, type WorkspaceDocumentRecord } from "$lib/server/workspace-request-store";
 import { createStandaloneCommandIndexSummary } from "$lib/server/tool-manifest";
+import { createRuntimeSkillIndexSummary } from "$lib/server/skill-registry";
 import {
   createBookingRuntimeAuthContextFromEnv,
   createBookingRuntimeAuthContextFromTrustedHostHeader,
@@ -38,7 +39,16 @@ import type { RequestHandler } from "./$types";
 
 const PAGE_CONTEXT_FIELD_MAX_CHARS = 160;
 const PAGE_CONTEXT_LIST_MAX_ITEMS = 8;
+const APPROVED_COMMAND_IDS_MAX_ITEMS = 128;
 
+
+function createServiceBindingFetcher(binding: unknown): typeof fetch | undefined {
+  if (!binding || typeof binding !== "object") return undefined;
+  const candidate = binding as { fetch?: typeof fetch };
+  if (typeof candidate.fetch !== "function") return undefined;
+  const bindingFetch = candidate.fetch.bind(candidate);
+  return ((input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => bindingFetch(input, init)) as typeof fetch;
+}
 
 function createAgentHostSessionEnvelope(event: RequestEvent): HostSessionEnvelope | null {
   const snapshot = resolveTrustedHostSessionSnapshot(event);
@@ -59,7 +69,13 @@ function createAgentHostSessionEnvelope(event: RequestEvent): HostSessionEnvelop
 function approvedCommandIdsFromHostSession(hostSession: HostSessionEnvelope | null): string[] {
   const value = hostSession?.metadata?.approvedCommandIds;
   if (!Array.isArray(value)) return [];
-  return [...new Set(value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0))].slice(0, 20);
+  return [
+    ...new Set(
+      value
+        .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+        .map((entry) => entry.trim()),
+    ),
+  ].slice(0, APPROVED_COMMAND_IDS_MAX_ITEMS);
 }
 
 function resolveAgentPageContext(value: unknown, defaults: { activeDocument?: WorkspaceDocumentRecord | null } = {}): AgentPageContext | undefined {
@@ -195,6 +211,7 @@ export const POST: RequestHandler = async (event) => {
   const telemetryPageContext = sanitizePageContext(body?.pageContext ?? body?.workspace?.pageContext);
   const pageContextSource = resolvePageContextSource(body, activeDocument);
   const bookingServiceBaseUrl = env.SONIK_BOOKING_API_BASE_URL ?? env.BOOKING_SERVICE_BASE_URL ?? null;
+  const bookingRuntimeFetcher = createServiceBindingFetcher(event.platform?.env?.BOOKING_SERVICE);
   const bookingRuntimeAuth = createBookingRuntimeAuthContextFromTrustedHostHeader({
     header: request.headers.get(AGENT_UI_HOST_CONTEXT_HEADER),
     fallback: createBookingRuntimeAuthContextFromEnv(env),
@@ -234,8 +251,14 @@ export const POST: RequestHandler = async (event) => {
   const modelMessages = await convertToModelMessages(uiMessages);
   const contextSummary = summarizeWorkspaceContext({ activeDocument });
   const commandIndexSummary = createStandaloneCommandIndexSummary({ includeApprovalRequired: true, includeHostRuntime: true, hostSession: hostSession ?? undefined, hostSessionMode: hostSession ? undefined : "standalone-demo", sessionId: telemetrySessionId, pageContext, bookingServiceBaseUrl, bookingRuntimeAuth });
+  const skillIndexSummary = createRuntimeSkillIndexSummary({
+    ...pageContext,
+    authenticated: hostSession?.authenticated,
+    organizationId: hostSession?.organizationId,
+    scopes: hostSession?.scopes,
+  });
   const pageContextSummary = createCurrentPageContextSummary(pageContext);
-  const systemContext = [contextSummary, pageContextSummary, `CONTRACT-DERIVED COMMAND STARTUP INDEX:\n${commandIndexSummary}`].filter(Boolean).join("\n\n");
+  const systemContext = [contextSummary, pageContextSummary, `CONTEXT-RELEVANT SKILL STARTUP INDEX:\n${skillIndexSummary}`, `CONTRACT-DERIVED COMMAND STARTUP INDEX:\n${commandIndexSummary}`].filter(Boolean).join("\n\n");
   const contextualModelMessages = systemContext
     ? [{ role: "system" as const, content: systemContext }, ...modelMessages]
     : modelMessages;
@@ -263,6 +286,24 @@ export const POST: RequestHandler = async (event) => {
     },
     ok: true,
   }).catch(() => undefined);
+  void writeAgentTelemetry({
+    source: "server",
+    event: "api.generate.skill_index_context",
+    requestId,
+    traceId,
+    traceparent,
+    runId: smokeRunId,
+    sessionId: telemetrySessionId,
+    messageId: lastMessage?.id,
+    elementCount: skillIndexSummary.split("\n- ").length - 1,
+    surface: pageContext?.surface,
+    route: pageContext?.route,
+    commandFamilies: pageContext?.commandFamilies,
+    skillFamilies: pageContext?.skillFamilies,
+    contextSource: pageContextSource,
+    pageContext: telemetryPageContext,
+    ok: true,
+  }).catch(() => undefined);
   if (shouldUseDevSmokeStream(request)) {
     const smokeInput = {
       requestId,
@@ -281,7 +322,7 @@ export const POST: RequestHandler = async (event) => {
     return response;
   }
 
-  const agent = createAgent({ activeDocument, sessionId: telemetrySessionId, pageContext, hostSession, approvedCommandIds, bookingServiceBaseUrl, bookingRuntimeAuth, persistence: requestPersistence });
+  const agent = createAgent({ activeDocument, sessionId: telemetrySessionId, pageContext, hostSession, approvedCommandIds, bookingServiceBaseUrl, bookingRuntimeAuth, bookingRuntimeFetcher, persistence: requestPersistence });
 
   try {
     const result = await agent.stream({ messages: contextualModelMessages });

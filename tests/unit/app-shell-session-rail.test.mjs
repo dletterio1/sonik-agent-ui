@@ -33,6 +33,22 @@ const themePickerSource = await readFile("apps/standalone-sveltekit/src/lib/them
 const themeRegistrySource = await readFile("apps/standalone-sveltekit/src/lib/theme/theme-registry.ts", "utf8");
 const daisyThemeSource = await readFile("apps/standalone-sveltekit/src/lib/theme/foundations/themes/daisy.css", "utf8");
 
+const boundInputComponents = [
+  "QuestionCard",
+  "ChoiceCards",
+  "SelectInput",
+  "RadioGroup",
+  "TextInput",
+  "EditableField",
+  "TextareaField",
+];
+const boundInputComponentSources = Object.fromEntries(
+  await Promise.all(boundInputComponents.map(async (name) => [
+    name,
+    await readFile(`apps/standalone-sveltekit/src/lib/render/components/${name}.svelte`, "utf8"),
+  ])),
+);
+
 assert.equal(rootSource.includes("rail?: Snippet"), true, "WorkspaceRoot should expose an optional rail snippet");
 assert.equal(rootSource.includes("{@render rail()}"), true, "WorkspaceRoot should render the session rail beside chat/artifacts");
 assert.equal(rootSource.includes('data-has-rail={railVisible}'), true, "WorkspaceRoot should keep no-rail integrations compatible");
@@ -48,6 +64,8 @@ assert.equal(pageSource.includes("/api/sessions"), true, "app shell should load 
 assert.equal(pageSource.includes("/api/session/${encodeURIComponent(sessionId)}/messages"), true, "app shell should persist chat history by session");
 assert.equal(pageSource.includes("{#snippet rail()}"), true, "top-level app should provide the WorkspaceRoot rail slot");
 assert.equal(pageSource.includes("sessionId: activeSessionId"), true, "generate requests should carry active session id");
+assert.equal(pageSource.includes("...createWorkspaceRequestHeaders()"), true, "generate transport must use the same signed host-context headers as workspace persistence calls");
+assert.equal(pageSource.includes("function createWorkspaceRequestHeaders"), true, "workspace request headers should be centralized for generate/session/document/artifact calls");
 assert.equal(pageSource.includes('"createSession", "submitPrompt"'), true, "page context should expose a semantic createSession action before submitPrompt");
 assert.equal(pageSource.includes("createSession: async () =>"), true, "page-control contract should expose a deterministic fresh-session semantic action for smoke tests");
 assert.equal(pageSource.includes("await createSession({ force: true })"), true, "fresh-session semantic action should route through the same session creation path as the app shell");
@@ -114,8 +132,10 @@ assert.equal(generateRoute.includes("hostSession: hostSession ?? undefined"), tr
 assert.equal(generateRoute.includes('hostSessionMode: hostSession ? undefined : "standalone-demo"'), true, "generate route should fall back to explicit standalone fixture auth only without a trusted host session");
 assert.equal(generateRoute.includes("createBookingRuntimeAuthContextFromTrustedHostHeader"), true, "generate route should prefer the signed embedded host context for booking runtime auth");
 assert.equal(generateRoute.includes("fallback: createBookingRuntimeAuthContextFromEnv(env)"), true, "generate route should fall back to server env runtime auth when no signed host context is donated");
+assert.equal(generateRoute.includes("const APPROVED_COMMAND_IDS_MAX_ITEMS = 128"), true, "generate route should preserve generated booking command grants beyond the old demo-only 20-id cap");
+assert.equal(generateRoute.includes(".slice(0, APPROVED_COMMAND_IDS_MAX_ITEMS)"), true, "generate route should still bound trusted approved command ids with a named guardrail");
 assert.equal(generateRoute.includes("bookingRuntimeCredentialed"), true, "generate telemetry should expose credential posture without logging credentials");
-assert.equal(generateRoute.includes("createAgent({ activeDocument, sessionId: telemetrySessionId, pageContext, hostSession, approvedCommandIds, bookingServiceBaseUrl, bookingRuntimeAuth, persistence: requestPersistence })"), true, "agent tools should receive active workspace session id, page context, trusted host session, approval grants, configured booking runtime base URL, and server-side auth mode");
+assert.equal(generateRoute.includes("createAgent({ activeDocument, sessionId: telemetrySessionId, pageContext, hostSession, approvedCommandIds, bookingServiceBaseUrl, bookingRuntimeAuth, bookingRuntimeFetcher, persistence: requestPersistence })"), true, "agent tools should receive active workspace session id, page context, trusted host session, approval grants, configured booking runtime base URL, server-side auth mode, and injectable runtime fetcher");
 assert.equal(generateRoute.includes("CURRENT HOST/PAGE CONTEXT:"), true, "generate route should inject host page context as first-class model context, not only telemetry/tool metadata");
 assert.equal(generateRoute.includes("If the user asks where they are"), true, "generate route should instruct page-location questions to answer from the donated page context");
 assert.equal(generateRoute.includes("visibleActions: routeStringArray(record.visibleActions"), true, "generate route should preserve host-visible action labels in the page context summary");
@@ -338,6 +358,10 @@ assert.equal(openDocumentEditorSource.includes("const document = await createIni
 assert.equal(openDocumentEditorSource.indexOf("documentEditorOpen = true;") > openDocumentEditorSource.indexOf("const document = await createInitialWorkspaceDocument();"), true, "document iframe should open only after openDocumentEditor has created or selected a document snapshot");
 assert.equal(pageSource.includes("if (/\\b(document|markdown|html|code|editor|workspace)\\b/i.test(trimmed))"), false, "chat submit should not prematurely open the document iframe before a tool-created document exists");
 assert.equal(pageSource.includes("lastPersistStatus"), true, "page assertions should track post-stream persistence state for crash regression gates");
+for (const [componentName, componentSource] of Object.entries(boundInputComponentSources)) {
+  assert.equal(componentSource.includes("function valueBinding()"), false, `${componentName} must not recreate bound props in handlers because getBoundProp reads Svelte context`);
+  assert.equal(componentSource.includes("valueBinding().current"), false, `${componentName} must not call getBoundProp from click/input handlers`);
+}
 assert.equal(pageContextRouteSource.includes("client.page_context.updated"), true, "dev page context endpoint should persist a telemetry breadcrumb");
 assert.equal(pageContextRouteSource.includes("Dev page context is disabled"), true, "dev page context endpoint should be gated outside local/dev observability mode");
 assert.equal(pageSource.includes("if (!dev) return"), true, "client page context posting should be disabled outside SvelteKit dev mode");
@@ -365,6 +389,8 @@ const artifactToolSource = await readFile("apps/standalone-sveltekit/src/lib/too
 const jsonArtifactSpecSource = await readFile("apps/standalone-sveltekit/src/lib/artifacts/json-artifact-spec.ts", "utf8");
 const artifactGuidanceSource = await readFile("apps/standalone-sveltekit/src/lib/artifacts/artifact-generation-guidance.ts", "utf8");
 const agentSource = await readFile("apps/standalone-sveltekit/src/lib/agent.ts", "utf8");
+const componentRegistrySource = await readFile("apps/standalone-sveltekit/src/lib/render/component-registry.ts", "utf8");
+const rootReadmeSource = await readFile("README.md", "utf8");
 assert.equal(artifactToolSource.includes("validateSpec"), true, "artifact tool should use shared json-render structural validation");
 assert.equal(artifactToolSource.includes("explorerCatalog.validate"), true, "artifact tool should validate against the component catalog");
 assert.equal(artifactToolSource.includes("Object.keys(elements).length > 0"), true, "artifact tool schema should reject empty elements maps");
@@ -389,6 +415,12 @@ assert.equal(agentSource.includes("ARTIFACT TOOL OBJECT EXAMPLES"), true, "agent
 assert.equal(agentSource.includes("DATA BINDING FOR INLINE SPEC FENCES AND NON-TOOL UI SPECS"), true, "agent instructions should scope broad $state guidance away from strict tool input");
 assert.equal(agentSource.includes("For inline JSON-render responses outside createJsonArtifact"), true, "agent instructions should keep generic $state data guidance outside strict createJsonArtifact input");
 assert.equal(artifactToolSource.includes("Intentional contract mirror"), true, "artifact tool should document catalog-to-tool schema coupling as an intentional contract");
+assert.equal(componentRegistrySource.includes("JSON_RENDER_COMPONENT_GROUPS"), true, "json-render components should have a human/agent-readable grouped registry map");
+assert.equal(componentRegistrySource.includes("JSON_RENDER_COMPONENT_REGISTRY_PATHS"), true, "json-render component registry should document the catalog/registry/runtime paths");
+assert.equal(componentRegistrySource.includes("QuestionCard"), true, "json-render registry map should include stateful intake components");
+assert.equal(componentRegistrySource.includes("durable effects require a trusted controller"), true, "json-render action components should document the controller boundary");
+assert.equal(rootReadmeSource.includes("## JSON-render component registry"), true, "core README should point humans and agents to the JSON-render component registry");
+assert.equal(rootReadmeSource.includes("component-registry.ts"), true, "core README should include the component registry map path");
 
 const artifactWarehouseSource = await readFile("apps/standalone-sveltekit/src/lib/artifacts/artifact-warehouse.ts", "utf8");
 const canvasToolbarSource = await readFile("packages/workspace-core/src/components/CanvasToolbar.svelte", "utf8");

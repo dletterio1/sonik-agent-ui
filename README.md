@@ -219,6 +219,7 @@ packages/platform-adapters/       Host session, command adapter, and runtime con
 packages/svelte/                  @json-render/svelte runtime package
 packages/tool-contracts/          Command/tool schema, families, policy, manifest contracts
 packages/workspace-core/          Workspace store/runtime primitives
+packages/json-ui-runtime/         Reusable JSON artifact renderer bridge
 packages/workspace-session/       Persistence interfaces, in-memory adapter, cloud SQL migrations
 scripts/                          Generators, migrations, smoke/evidence scripts
 tests/                            Unit and smoke-support tests
@@ -226,6 +227,21 @@ json-render/                      Source scaffold retained for copy/retrofit ref
 ui-dojo/                          Source scaffold retained for copy/retrofit reference
 amplify-svelte/                   Source scaffold retained for theme/component reference
 ```
+
+## JSON-render component registry
+
+The ready-to-render JSON component surface is intentionally centralized in the standalone app until the next package extraction pass:
+
+- **Catalog/schema:** `apps/standalone-sveltekit/src/lib/render/catalog.ts`
+- **Svelte registry bindings:** `apps/standalone-sveltekit/src/lib/render/registry.ts`
+- **Human/agent registry map:** `apps/standalone-sveltekit/src/lib/render/component-registry.ts`
+- **Component implementations:** `apps/standalone-sveltekit/src/lib/render/components/`
+- **Reusable renderer bridge:** `packages/json-ui-runtime/src/renderer/JsonArtifactRenderer.svelte`
+- **Core renderer/action/state runtime:** `packages/svelte/src/` and `packages/core/src/`
+- **Ask-user/intake contracts:** `packages/tool-contracts/src/index.ts`
+- **Booking/event/campaign intake artifact factory:** `apps/standalone-sveltekit/src/lib/server/intake-artifacts.ts`
+
+Treat `catalog.ts` as the validation authority, `registry.ts` as the Svelte binding authority, and `component-registry.ts` as the orientation/index layer for agents, docs, and future package extraction. Stateful inputs such as `QuestionCard`, `ChoiceCards`, `EditableField`, `TextareaField`, `SelectInput`, `RadioGroup`, `Tabs`, and `Button` currently edit JSON-render state; durable persistence and command execution must be supplied by the trusted host/controller seam, not by the renderer component itself.
 
 ## Local development
 
