@@ -58,4 +58,20 @@ Files: `scripts/run-postgres-migrations.mjs:71`; `scripts/agent-ui-release-gate.
 
 ## Gate outcome for `codeReview`
 
-Not clean at first pass → blocker story recorded in the ledger (per ultragoal non-clean-review protocol). G005 checkpoint is deferred until the blocker story completes: majors 1–2 and minors 3, 4, 6 fixed and re-verified, minor 5 documented, and the fixes re-reviewed.
+Not clean at first pass → blocker story G006 recorded in the ledger (per ultragoal non-clean-review protocol), fixed, and re-reviewed.
+
+---
+
+## Re-review addendum (same reviewer, remediation diff `81a46c1..f840d1e`)
+
+**Verdict: APPROVE + CLEAR.** All six findings closed, each with a regression test reproducing the original failure scenario; no new defects; the six affected suites re-run green by the reviewer.
+
+- **MAJOR 1 closed** — `message_id` back-filled from the stream `start` chunk; reattach dedupes via `buildRunReattachMessage`/`runAssistantTurnPersisted`; tab-alive-then-reload yields one bubble, tab-killed still reattaches (tests at `run-event-log.test.mjs:222-310`).
+- **MAJOR 2 closed, all call sites** — single `psql()` helper now receives credentials via PG* env (`scripts/lib/postgres-connection.mjs`), never argv; `scrubCredentials` applied to both the gate tail capture and the on-disk evidence JSON.
+- **MINOR 3 closed** — error-part turns downgrade to `failed`+`resumable` with a classified code, exactly one error event.
+- **MINOR 4 closed** — root-prop resolution dry-run in try/catch; throwing partial yields null (keep last good).
+- **MINOR 5 closed** — PG15+ prerequisite documented.
+- **MINOR 6 closed, net security improvement** — chip-selected document loaded only when `session_id` matches; org scoping via the adapter's per-request RLS context.
+- **Slop-cleanup commit confirmed behavior-neutral** — zero residual references to any removed symbol.
+
+One non-blocking residual noted (narrow count-based dedup fallback edge when an earlier run produced zero assistant output AND the latest run's `message_id` was not captured) — accepted as-is; a normally-streaming turn always dedupes by id.
