@@ -14,6 +14,12 @@ import { logArtifactTelemetry } from "$lib/artifacts/artifact-telemetry";
 import { writeAgentTelemetry } from "$lib/server/agent-telemetry";
 import { createTelemetryCorrelation, sanitizePageContext } from "@sonik-agent-ui/agent-observability";
 import { classifyRunErrorCode } from "@sonik-agent-ui/tool-contracts";
+import {
+  parseAgentRunContextSelection,
+  resolveAgentContextSelection,
+  type AgentContextSelectionResolution,
+  type AgentRunContextSelection,
+} from "@sonik-agent-ui/tool-contracts/run-context";
 import { instrumentGenerateStream } from "$lib/server/stream-telemetry";
 import { createDevSmokeStream, readDevSmokeFailMode, readDevSmokeRunId, shouldUseDevSmokeStream, writeDevSmokeStreamTelemetry } from "$lib/server/dev-smoke-stream";
 import { startRunRecorder, teeRunEvents, type RunRecorder } from "$lib/server/run-event-log";
@@ -101,6 +107,32 @@ function resolveAgentPageContext(value: unknown, defaults: { activeDocument?: Wo
   if (!pageContext.artifactType && defaults.activeDocument?.language) pageContext.artifactType = defaults.activeDocument.language;
   if (!pageContext.surface && pageContext.activeDocumentId) pageContext.surface = "document";
   return hasPageContext(pageContext) ? pageContext : undefined;
+}
+
+// Layer an explicit composer selection over the implicit host/page context.
+// Explicit wins: the selection's page/document/artifact refs set the active
+// pointers and its command/skill families union in. Callers only invoke this
+// when the selection is explicit; an absent/empty selection leaves the implicit
+// page context untouched (graceful degradation to today's behavior).
+function applyRunContextSelectionToPageContext(
+  base: AgentPageContext | undefined,
+  resolution: AgentContextSelectionResolution,
+): AgentPageContext | undefined {
+  if (!resolution.explicit) return base;
+  const next: AgentPageContext = { ...(base ?? {}) };
+  if (resolution.page?.route) next.route = resolution.page.route;
+  if (resolution.page?.title) next.title = resolution.page.title;
+  const selectedDocumentId = resolution.documentIds[0];
+  if (selectedDocumentId) next.activeDocumentId = selectedDocumentId;
+  const selectedArtifactId = resolution.artifactIds[0];
+  if (selectedArtifactId) next.activeArtifactId = selectedArtifactId;
+  if (resolution.commandFamilies.length > 0) {
+    next.commandFamilies = [...new Set([...(next.commandFamilies ?? []), ...resolution.commandFamilies])].slice(0, PAGE_CONTEXT_LIST_MAX_ITEMS);
+  }
+  if (resolution.skillFamilies.length > 0) {
+    next.skillFamilies = [...new Set([...(next.skillFamilies ?? []), ...resolution.skillFamilies])].slice(0, PAGE_CONTEXT_LIST_MAX_ITEMS);
+  }
+  return hasPageContext(next) ? next : undefined;
 }
 
 function resolveActiveEntity(value: unknown): AgentPageContext["activeEntity"] | undefined {
@@ -210,7 +242,18 @@ export const POST: RequestHandler = async (event) => {
   const workspaceSessionId = routeString(body?.workspace?.sessionId, "workspace.sessionId", WORKSPACE_SESSION_ID_MAX_CHARS, "") || undefined;
   const telemetrySessionId = activeDocument?.session_id ?? workspaceSessionId;
   const smokeRunId = readDevSmokeRunId(request);
-  const pageContext = resolveAgentPageContext(body?.pageContext ?? body?.workspace?.pageContext, { activeDocument });
+  // Explicit composer context selection wins over implicit host/page context.
+  // When the user deselected the active-document chip, includeActiveDocument is
+  // false and the document is neither injected nor exposed to the agent for this
+  // turn (authoritative removal at the server boundary). Absent selection keeps
+  // the current implicit behavior.
+  const runContextSelection: AgentRunContextSelection | undefined = parseAgentRunContextSelection(body?.contextSelection ?? body?.workspace?.contextSelection);
+  const selectionResolution = resolveAgentContextSelection(runContextSelection);
+  const effectiveActiveDocument = selectionResolution.includeActiveDocument ? activeDocument : null;
+  const pageContext = applyRunContextSelectionToPageContext(
+    resolveAgentPageContext(body?.pageContext ?? body?.workspace?.pageContext, { activeDocument: effectiveActiveDocument }),
+    selectionResolution,
+  );
   const telemetryPageContext = sanitizePageContext(body?.pageContext ?? body?.workspace?.pageContext);
   const pageContextSource = resolvePageContextSource(body, activeDocument);
   const bookingServiceBaseUrl = env.SONIK_BOOKING_API_BASE_URL ?? env.BOOKING_SERVICE_BASE_URL ?? null;
@@ -252,7 +295,7 @@ export const POST: RequestHandler = async (event) => {
   void writeAgentTelemetry(startEvent).catch(() => undefined);
 
   const modelMessages = await convertToModelMessages(uiMessages);
-  const contextSummary = summarizeWorkspaceContext({ activeDocument });
+  const contextSummary = summarizeWorkspaceContext({ activeDocument: effectiveActiveDocument });
   const commandIndexSummary = createStandaloneCommandIndexSummary({ includeApprovalRequired: true, includeHostRuntime: true, hostSession: hostSession ?? undefined, hostSessionMode: hostSession ? undefined : "standalone-demo", sessionId: telemetrySessionId, pageContext, bookingServiceBaseUrl, bookingRuntimeAuth });
   const skillIndexSummary = createRuntimeSkillIndexSummary({
     ...pageContext,
@@ -315,6 +358,7 @@ export const POST: RequestHandler = async (event) => {
         sessionId: telemetrySessionId,
         messageId: null,
         correlation,
+        contextSelection: runContextSelection ?? null,
       })
     : null;
 
@@ -339,7 +383,7 @@ export const POST: RequestHandler = async (event) => {
     return response;
   }
 
-  const agent = createAgent({ activeDocument, sessionId: telemetrySessionId, pageContext, hostSession, approvedCommandIds, bookingServiceBaseUrl, bookingRuntimeAuth, bookingRuntimeFetcher, persistence: requestPersistence });
+  const agent = createAgent({ activeDocument: effectiveActiveDocument, sessionId: telemetrySessionId, pageContext, hostSession, approvedCommandIds, bookingServiceBaseUrl, bookingRuntimeAuth, bookingRuntimeFetcher, persistence: requestPersistence });
 
   try {
     const result = await agent.stream({ messages: contextualModelMessages });

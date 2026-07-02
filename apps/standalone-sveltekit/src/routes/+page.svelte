@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { dev } from "$app/environment";
   import { env as publicEnv } from "$env/dynamic/public";
   import type { PageData } from "./$types";
-  import { SvelteSet } from "svelte/reactivity";
+  import { SvelteSet, SvelteMap } from "svelte/reactivity";
   import { Chat } from "@ai-sdk/svelte";
   import { DefaultChatTransport } from "ai";
   import type { DataPart, Spec } from "@json-render/svelte";
@@ -13,6 +13,16 @@
   import { upsertJsonRenderArtifact, type JsonRenderArtifact } from "@sonik-agent-ui/artifact-model";
   import { DEFAULT_WORKSPACE_SESSION_NAME, deriveWorkspaceSessionTitle, isDefaultWorkspaceSessionName } from "@sonik-agent-ui/workspace-session";
   import { RESUME_CONTINUE_PROMPT, describeRunError, isRunErrorCode } from "@sonik-agent-ui/tool-contracts";
+  import {
+    createEmptyAgentRunContextSelection,
+    reconcileAgentContextSelection,
+    addAgentContextItem,
+    removeAgentContextItem,
+    parseAgentRunContextSelection,
+    type AgentContextItem,
+    type AgentRunContextSelection,
+  } from "@sonik-agent-ui/tool-contracts/run-context";
+  import { deriveAgentContextCandidates } from "$lib/agent-context/context-sources";
   import { promoteJsonRenderArtifact } from "$lib/artifacts/json-render-promotion";
   import { findDocumentArtifactToolCandidate, findJsonArtifactToolCandidate, type PreferredDocumentView } from "$lib/artifacts/tool-artifact-extraction";
   import { hasActiveArtifactUpdateIntent, hasExplicitArtifactIntent } from "$lib/artifacts/artifact-promotion";
@@ -114,6 +124,7 @@
     error: string | null;
     error_code: string | null;
     message_id: string | null;
+    context_selection?: AgentRunContextSelection | null;
     started_at: string;
     ended_at: string | null;
   }
@@ -172,6 +183,10 @@
   let sessionRailBusy = $state(false);
   let sessionRailError = $state<string | null>(null);
   let resumableRun = $state<WorkspaceRunSummary | null>(null);
+  // Composer context selection for the next turn (chips + authoritative dismissals).
+  let runContextSelection = $state<AgentRunContextSelection>(createEmptyAgentRunContextSelection());
+  // Per-turn provenance: user message id -> the context items sent with that turn.
+  let turnContextByMessageId = new SvelteMap<string, AgentContextItem[]>();
   let persistedMessageIds = new SvelteSet<string>();
   let reportedToolErrorKeys = new SvelteSet<string>();
   let processedJsonRenderPromotionKeys = new SvelteSet<string>();
@@ -216,6 +231,7 @@
               pageContext: createPageContextSnapshot(),
             },
             pageContext: createPageContextSnapshot(),
+            contextSelection: $state.snapshot(runContextSelection),
           },
         };
       },
@@ -1614,6 +1630,7 @@
     })) as typeof conversation.messages;
     persistedMessageIds = new SvelteSet(detail.messages.map((message) => message.id));
     reattachRunState(detail);
+    rehydrateRunContextState(detail);
     activeDocument = detail.activeDocument;
     documentSeed = detail.activeDocument;
     documentPreferredView = detail.activeDocument ? inferPreferredDocumentView(detail.activeDocument.language) : "auto";
@@ -1665,6 +1682,26 @@
         reason: reattach.run.error_code ?? reattach.run.status,
       });
     }
+  }
+
+  // Restore composer context + per-turn provenance from persisted runs on reload.
+  // The most recent run's persisted selection re-seeds the composer so removed
+  // chips stay removed (its dismissedAutoSeedIds survive); each run's selection
+  // is paired to its user turn (runs and user messages are 1:1, both ordered) for
+  // historical provenance.
+  function rehydrateRunContextState(detail: WorkspaceSessionDetail): void {
+    turnContextByMessageId.clear();
+    const runs = detail.runs ?? [];
+    const userMessageIds = detail.messages.filter((message) => message.role === "user").map((message) => message.id);
+    runs.forEach((run, index) => {
+      const items = (run.context_selection?.items ?? []) as AgentContextItem[];
+      const userId = userMessageIds[index];
+      if (userId && items.length > 0) turnContextByMessageId.set(userId, items);
+    });
+    const latest = [...runs].reverse().find((run) => run.context_selection);
+    runContextSelection = latest?.context_selection
+      ? parseAgentRunContextSelection(latest.context_selection) ?? createEmptyAgentRunContextSelection()
+      : createEmptyAgentRunContextSelection();
   }
 
   const runRecovery = $derived.by(() => {
@@ -1868,6 +1905,44 @@
   const workflowSuggestions = $derived(createWorkflowSuggestions(createPageContextSnapshot()));
 
   // =============================================================================
+  // Composer Context Selection
+  // =============================================================================
+
+  // Auto-seed candidates (current page + active document) and the full attachable
+  // catalog for the plus menu, derived from live host/page + workspace state.
+  const contextCandidates = $derived(deriveAgentContextCandidates({
+    pageContext: createPageContextSnapshot(),
+    activeDocument: activeDocument ? { id: activeDocument.id, title: activeDocument.title, language: activeDocument.language } : null,
+    activeArtifact: activeArtifact ? { id: activeArtifact.id, title: activeArtifact.title } : null,
+  }));
+
+  // Reconcile fresh seeds into the selection whenever host/page context changes.
+  // reconcile keeps manual chips and honors dismissedAutoSeedIds, so a chip the
+  // user removed does not reappear (authoritative removal); idempotent, so this
+  // never loops even though it may reassign the selection.
+  $effect(() => {
+    const seeds = contextCandidates.seeds;
+    const next = reconcileAgentContextSelection({ previous: untrack(() => runContextSelection), seeds });
+    if (JSON.stringify(next) !== untrack(() => JSON.stringify(runContextSelection))) {
+      runContextSelection = next;
+    }
+  });
+
+  function handleAttachContext(item: AgentContextItem): void {
+    runContextSelection = addAgentContextItem(runContextSelection, item);
+    logArtifactTelemetry({ source: "client", event: "composer.context.attach", sessionId: activeSessionId ?? undefined, reason: item.kind, ok: true });
+  }
+
+  function handleRemoveContext(id: string): void {
+    runContextSelection = removeAgentContextItem(runContextSelection, id);
+    logArtifactTelemetry({ source: "client", event: "composer.context.remove", sessionId: activeSessionId ?? undefined, reason: id, ok: true });
+  }
+
+  function messageContextItems(message: AgentChatMessage): AgentContextItem[] | undefined {
+    return turnContextByMessageId.get(message.id);
+  }
+
+  // =============================================================================
   // Tool Labels
   // =============================================================================
 
@@ -1903,7 +1978,14 @@
     // A fresh user turn supersedes any pending run recovery.
     resumableRun = null;
     maybeNameNewChat(trimmed);
+    const turnContext = ($state.snapshot(runContextSelection).items ?? []) as AgentContextItem[];
     conversation.sendMessage({ text: trimmed });
+    // Associate the selection sent with this turn to the just-appended user
+    // message so it renders as provenance (survives reload via persisted runs).
+    const sentUserMessage = conversation.messages.at(-1);
+    if (turnContext.length > 0 && sentUserMessage?.role === "user") {
+      turnContextByMessageId.set(sentUserMessage.id, turnContext);
+    }
   }
 
   // Continue a resumable failed/interrupted run. Distinct from retry-from-scratch:
@@ -1922,6 +2004,10 @@
     persistedMessageIds.clear();
     reportedToolErrorKeys.clear();
     resumableRun = null;
+    // A cleared chat drops manual chips and prior dismissals; the reconcile
+    // effect re-seeds fresh page/document chips for the new turn.
+    runContextSelection = createEmptyAgentRunContextSelection();
+    turnContextByMessageId.clear();
     lastPersistStatus = "idle";
     input = "";
     artifactWarehouse.clearActiveArtifact(activeSessionId);
@@ -2062,6 +2148,11 @@
       onClear={handleClear}
       runRecovery={runRecovery}
       onContinue={handleContinue}
+      contextItems={runContextSelection.items}
+      contextSources={contextCandidates.sources}
+      onAttachContext={handleAttachContext}
+      onRemoveContext={handleRemoveContext}
+      messageContext={messageContextItems}
       shouldRenderArtifact={shouldRenderInlineArtifact}
     >
       {#snippet actions()}
