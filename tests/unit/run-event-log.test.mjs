@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import {
   SPEC_DATA_PART_TYPE,
+  buildRunReattachMessage,
   createRunEventMapper,
   rebuildRunMessageParts,
   rebuildRunMessageText,
+  runAssistantTurnPersisted,
   startRunRecorder,
   teeRunEvents,
 } from "../../apps/standalone-sveltekit/src/lib/server/run-event-log.ts";
@@ -215,6 +217,94 @@ const port = {
   await drain(teeRunEvents(streamOf([{ type: "text-delta", id: "t", delta: "hi" }, { type: "text-end", id: "t" }]), recorder));
   const events = listWorkspaceRunEvents(recorder.runId);
   assert.ok(!events.some((entry) => entry.event.kind === "status" && entry.event.label === "analytics_hints"), "absent hints leave the run event log unchanged");
+}
+
+// --- recorder + tee: an error part that closes the stream normally finalizes
+//     failed + resumable (not succeeded), with exactly one error event and the
+//     assistant message id back-filled from the `start` chunk ---
+{
+  const session = createWorkspaceSession({ id: "run-log-error-part", name: "error part", mode: "chat" });
+  const recorder = await startRunRecorder(port, { sessionId: session.id, correlation: { requestId: "req_e", traceId: "0123456789abcdef0123456789abcdef", traceparent: "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01" } });
+  const chunks = [
+    { type: "start", messageId: "msg-error-part" },
+    { type: "text-delta", id: "t", delta: "Partial before the error" },
+    { type: "text-end", id: "t" },
+    { type: "error", errorText: "model stream error" },
+  ];
+  // The source closes normally (no failAt) even though it emitted an error part.
+  await drain(teeRunEvents(streamOf(chunks), recorder));
+  const run = getWorkspaceRun(recorder.runId);
+  assert.equal(run.status, "failed", "an error part downgrades a normal close to failed");
+  assert.equal(run.resumable, true, "error-part runs stay resumable so they reattach and offer Continue");
+  assert.ok(run.error_code, "a run error code is classified from the error part");
+  assert.equal(run.message_id, "msg-error-part", "the assistant message id is back-filled from the start chunk");
+  const events = listWorkspaceRunEvents(recorder.runId);
+  const errorEvents = events.filter((entry) => entry.event.kind === "error");
+  assert.equal(errorEvents.length, 1, "the mapped error part is the only error event (no synthesized duplicate)");
+}
+
+// --- reattach dedup: a failed turn the client already persisted (tab stayed
+//     alive) is NOT reattached; a tab-killed turn (nothing persisted) still is ---
+{
+  const session = createWorkspaceSession({ id: "run-reattach-dedup", name: "dedup", mode: "chat" });
+  const run = createWorkspaceRun({ session_id: session.id });
+  appendWorkspaceRunEvent({ run_id: run.id, session_id: session.id, kind: "text", event: { kind: "text", text: "Partial answer that never finished" } });
+  updateWorkspaceRun(run.id, { status: "failed", resumable: true, error_code: "AGENT_STREAM_FAILED" });
+  const failedRun = getWorkspaceRun(run.id);
+  const events = listWorkspaceRunEvents(run.id);
+
+  // Tab stayed alive: the client persisted this turn (user + partial assistant).
+  const tabAlive = buildRunReattachMessage({
+    run: failedRun,
+    runCount: 1,
+    messages: [
+      { id: "user-1", role: "user" },
+      { id: "msg-assistant-1", role: "assistant" },
+    ],
+    events,
+  });
+  assert.equal(tabAlive, null, "an already-persisted assistant turn is not reattached (no double bubble)");
+
+  // Tab was killed mid-stream: nothing was persisted client-side.
+  const tabKilled = buildRunReattachMessage({ run: failedRun, runCount: 1, messages: [], events });
+  assert.ok(tabKilled, "an unpersisted interrupted turn is reattached from the event log");
+  assert.equal(tabKilled.role, "assistant");
+  assert.match(tabKilled.content, /Partial answer/);
+
+  // Back-filled message id present among the persisted messages: also skipped.
+  const withMessageId = getWorkspaceRun(updateWorkspaceRun(run.id, { message_id: "msg-assistant-1" }).id);
+  const byMessageId = buildRunReattachMessage({
+    run: withMessageId,
+    runCount: 1,
+    messages: [{ id: "msg-assistant-1", role: "assistant" }],
+    events,
+  });
+  assert.equal(byMessageId, null, "a run whose back-filled message id is already persisted is not reattached");
+}
+
+// --- reattach dedup: multi-turn tab-kill still reattaches the latest turn -----
+// Prior turns' assistant messages are persisted; the interrupted latest turn is
+// not, so the assistant count is below the run count and reattach proceeds.
+{
+  assert.equal(
+    runAssistantTurnPersisted({ message_id: null }, 2, [
+      { id: "user-1", role: "user" },
+      { id: "assistant-1", role: "assistant" },
+      { id: "user-2", role: "user" },
+    ]),
+    false,
+    "a latest interrupted turn with no persisted assistant reattaches even after prior turns",
+  );
+  assert.equal(
+    runAssistantTurnPersisted({ message_id: null }, 2, [
+      { id: "user-1", role: "user" },
+      { id: "assistant-1", role: "assistant" },
+      { id: "user-2", role: "user" },
+      { id: "assistant-2", role: "assistant" },
+    ]),
+    true,
+    "once every turn's assistant is persisted, the latest turn is not reattached",
+  );
 }
 
 console.log("run-event-log tests passed");

@@ -14,7 +14,7 @@ import {
   listRequestWorkspaceTelemetryEvents,
   patchRequestWorkspaceSession,
 } from "$lib/server/workspace-request-store";
-import { rebuildRunMessageParts, rebuildRunMessageText } from "$lib/server/run-event-log";
+import { buildRunReattachMessage, runAssistantTurnPersisted, type RunReattachMessage } from "$lib/server/run-event-log";
 import type { PersistedRunEvent } from "@sonik-agent-ui/tool-contracts";
 import { routeString, WORKSPACE_TITLE_MAX_CHARS } from "$lib/server/workspace-route-limits";
 import type { RequestHandler } from "./$types";
@@ -35,17 +35,14 @@ export const GET: RequestHandler = async (event) => {
   const activeArtifactVersions = activeArtifact ? await listRequestWorkspaceArtifactVersions(event, activeArtifact.id) : [];
 
   // Reattach: rebuild the latest run's assistant message from persisted events.
-  // Succeeded runs' assistant messages are already persisted client-side, so we
-  // only reattach a non-succeeded (interrupted/failed) latest run's message —
-  // otherwise it would double the last turn.
+  // Only for a non-succeeded latest run whose turn was not already persisted
+  // client-side (a tab that stayed alive persists the partial assistant message
+  // itself) — reattaching that would double the last turn.
   const latestRun = runs.at(-1) ?? null;
-  let reattachMessage: { id: string; role: "assistant"; content: string; parts: unknown[] } | null = null;
-  if (latestRun && latestRun.status !== "succeeded") {
+  let reattachMessage: RunReattachMessage | null = null;
+  if (latestRun && latestRun.status !== "succeeded" && !runAssistantTurnPersisted(latestRun, runs.length, messages)) {
     const runEvents = await listRequestWorkspaceRunEvents<PersistedRunEvent>(event, latestRun.id).catch(() => []);
-    const parts = rebuildRunMessageParts(runEvents);
-    if (parts.length > 0) {
-      reattachMessage = { id: `run:${latestRun.id}`, role: "assistant", content: rebuildRunMessageText(runEvents), parts };
-    }
+    reattachMessage = buildRunReattachMessage({ run: latestRun, runCount: runs.length, messages, events: runEvents });
   }
 
   return json({

@@ -1,5 +1,6 @@
 import { SPEC_DATA_PART_TYPE } from "@json-render/core";
 export { SPEC_DATA_PART_TYPE } from "@json-render/core";
+import { classifyRunErrorCode } from "@sonik-agent-ui/tool-contracts";
 import type { AgentAnalyticsHints, PersistedRunEvent, RunCorrelation, RunErrorCode } from "@sonik-agent-ui/tool-contracts";
 import type { AgentRunContextSelection } from "@sonik-agent-ui/tool-contracts/run-context";
 import type { WorkspaceRunContextSelection, WorkspaceRunEventRecord, WorkspaceRunRecord, WorkspaceRunStatus } from "@sonik-agent-ui/workspace-session";
@@ -138,6 +139,16 @@ function numberOrUndefined(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+// The AI-SDK UI-message stream opens with a `start` chunk that may carry the
+// assistant message id the client renders/persists under. Captured (when present)
+// so the run can be keyed to that same id.
+function readAssistantMessageId(chunk: unknown): string | null {
+  if (!chunk || typeof chunk !== "object") return null;
+  const candidate = chunk as { type?: unknown; messageId?: unknown };
+  if (candidate.type === "start" && typeof candidate.messageId === "string" && candidate.messageId) return candidate.messageId;
+  return null;
+}
+
 export interface RebuiltToolPart {
   type: string;
   toolCallId: string;
@@ -229,6 +240,48 @@ export function rebuildRunMessageText(events: Array<Pick<WorkspaceRunEventRecord
   return text;
 }
 
+// The client persists an interrupted turn (user + partial assistant) together once
+// the tab survives to a not-streaming state, under the assistant message's own id.
+// Reattaching the same turn from the run event log would then double it. A run's
+// assistant turn is already persisted when its back-filled message_id is among the
+// persisted messages, or — when that id was never captured — when the persisted
+// assistant messages already cover every run (runs are 1:1 with turns, so an
+// assistant count below the run count means the latest turn was never persisted).
+export function runAssistantTurnPersisted(
+  run: { message_id?: string | null },
+  runCount: number,
+  messages: ReadonlyArray<{ id: string; role: string }>,
+): boolean {
+  if (run.message_id && messages.some((message) => message.id === run.message_id)) return true;
+  const assistantCount = messages.reduce((count, message) => (message.role === "assistant" ? count + 1 : count), 0);
+  return assistantCount >= runCount;
+}
+
+export interface RunReattachMessage {
+  id: string;
+  role: "assistant";
+  content: string;
+  parts: RebuiltMessagePart[];
+}
+
+// Builds the assistant message to reattach for a non-succeeded latest run, or null
+// when there is nothing to reattach (succeeded, already persisted client-side, or
+// no rebuildable parts). Keyed to the run's back-filled message_id when known so it
+// dedupes against the persisted turn; falls back to `run:<id>` otherwise.
+export function buildRunReattachMessage(input: {
+  run: { id: string; status: WorkspaceRunStatus; message_id?: string | null };
+  runCount: number;
+  messages: ReadonlyArray<{ id: string; role: string }>;
+  events: Array<Pick<WorkspaceRunEventRecord<PersistedRunEvent>, "event">> | PersistedRunEvent[];
+}): RunReattachMessage | null {
+  const { run } = input;
+  if (run.status === "succeeded") return null;
+  if (runAssistantTurnPersisted(run, input.runCount, input.messages)) return null;
+  const parts = rebuildRunMessageParts(input.events);
+  if (parts.length === 0) return null;
+  return { id: run.message_id ?? `run:${run.id}`, role: "assistant", content: rebuildRunMessageText(input.events), parts };
+}
+
 // Minimal persistence surface the recorder needs. Accepts sync or async
 // implementations (in-memory adapter is sync; cloud is async) by awaiting.
 export interface RunPersistencePort {
@@ -284,6 +337,14 @@ export async function startRunRecorder(
 
   const mapper = createRunEventMapper();
   let finalized = false;
+  // The assistant message id from the stream's `start` chunk, back-filled onto the
+  // run on finalize so a persisted assistant turn and its run share one id namespace
+  // (reattach can then tell an already-persisted turn from an interrupted one).
+  let assistantMessageId: string | null = null;
+  // Set when the mapper persists an error event from an AI-SDK `error` chunk, so a
+  // turn that emitted an error part but still closed the stream normally finalizes
+  // failed rather than succeeded.
+  let recordedErrorMessage: string | null = null;
   // Serialize persistence so appended events keep a monotonic seq and never
   // race, while the stream itself is never blocked on a persistence write.
   let tail: Promise<unknown> = Promise.resolve();
@@ -324,7 +385,15 @@ export async function startRunRecorder(
     runId: run.id,
     record(chunk: unknown): void {
       try {
-        persistEvents(mapper.map(chunk));
+        if (!assistantMessageId) {
+          const id = readAssistantMessageId(chunk);
+          if (id) assistantMessageId = id;
+        }
+        const events = mapper.map(chunk);
+        for (const event of events) {
+          if (event.kind === "error" && !recordedErrorMessage) recordedErrorMessage = event.message || "Stream error";
+        }
+        persistEvents(events);
       } catch {
         // Persistence must never break the user-visible stream.
       }
@@ -333,23 +402,40 @@ export async function startRunRecorder(
       if (finalized) return;
       finalized = true;
       persistEvents(mapper.finalize());
-      if (finalizeInput.status === "failed" && finalizeInput.errorCode) {
+      let status = finalizeInput.status;
+      let error = finalizeInput.error ?? null;
+      let errorCode: RunErrorCode | null = finalizeInput.errorCode ?? null;
+      let resumable = finalizeInput.resumable ?? false;
+      // A turn that emitted an AI-SDK error part but still closed the stream
+      // normally has really failed: finalize it failed + resumable so it reattaches
+      // and offers Continue rather than masquerading as a clean success.
+      if (status === "succeeded" && recordedErrorMessage) {
+        status = "failed";
+        error = error ?? recordedErrorMessage;
+        errorCode = errorCode ?? classifyRunErrorCode({ message: recordedErrorMessage });
+        resumable = true;
+      }
+      // Synthesize a typed error event only when the stream failed without the
+      // mapper already logging one (e.g. a transport rejection). An error part that
+      // flowed through the mapper is already persisted.
+      if (status === "failed" && errorCode && !recordedErrorMessage) {
         enqueue(() =>
           persistence.appendRunEvent({
             run_id: run.id,
             session_id: input.sessionId,
             kind: "error",
-            event: { kind: "error", message: finalizeInput.error ?? "Run failed", code: finalizeInput.errorCode ?? undefined },
+            event: { kind: "error", message: error ?? "Run failed", code: errorCode ?? undefined },
           }),
         );
       }
       await tail;
       try {
         await persistence.updateRun(run.id, {
-          status: finalizeInput.status,
-          resumable: finalizeInput.resumable ?? false,
-          error: finalizeInput.error ?? null,
-          error_code: finalizeInput.errorCode ?? null,
+          status,
+          resumable,
+          error,
+          error_code: errorCode,
+          ...(assistantMessageId ? { message_id: assistantMessageId } : {}),
         });
       } catch {
         // Best-effort: a status write failure must not surface as a stream error.
